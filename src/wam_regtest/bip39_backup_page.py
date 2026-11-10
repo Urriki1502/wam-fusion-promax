@@ -8,6 +8,7 @@ from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFrame, QLabel,
     QLineEdit, QPushButton, QCheckBox, QStackedWidget, QScrollArea, QProgressBar, QSizePolicy,
+    QDialog, QDialogButtonBox,
 )
 
 from .bip39_locale import t
@@ -37,6 +38,44 @@ class _WordCard(QFrame):
         self.setMinimumWidth(140)
 
 
+class BackupLeaveConfirm(QDialog):
+    """Explicit confirmation before the only seed display is dismissed.
+
+    Stay is the default and the Escape/close result. Presentation only: it
+    never receives, shows, stores or logs recovery words.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("FusionApproval")
+        self.setWindowTitle(t("leave_backup_title"))
+        self.setModal(True)
+        self.resize(540, 260)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        for text, role in ((t("leave_backup_title"), "PageTitle"),
+                           (t("leave_backup_message"), "FusionGold")):
+            wrapped = label(text, role)
+            policy = wrapped.sizePolicy()
+            policy.setVerticalPolicy(QSizePolicy.Policy.Minimum)
+            policy.setHeightForWidth(True)
+            wrapped.setSizePolicy(policy)
+            layout.addWidget(wrapped)
+        buttons = QDialogButtonBox()
+        self.stay_button = buttons.addButton(
+            t("leave_backup_stay"), QDialogButtonBox.ButtonRole.RejectRole)
+        self.leave_button = buttons.addButton(
+            t("leave_backup_confirm"), QDialogButtonBox.ButtonRole.AcceptRole)
+        self.stay_button.setObjectName("FusionPrimary")
+        self.stay_button.setDefault(True)
+        self.leave_button.setObjectName("FusionDestructive")
+        self.leave_button.setAutoDefault(False)
+        buttons.rejected.connect(self.reject)
+        buttons.accepted.connect(self.accept)
+        layout.addWidget(buttons)
+        self.stay_button.setFocus()
+
+
 class Bip39BackupPage(QWidget):
     """Full onboarding backup page: grid → verification → success."""
 
@@ -53,6 +92,7 @@ class Bip39BackupPage(QWidget):
         self._challenge_id = None
         self._verify_inputs = []
         self._verify_cards = []
+        self._departure_open = False
         self._build_ui()
 
     def _build_ui(self):
@@ -235,8 +275,14 @@ class Bip39BackupPage(QWidget):
     def _clear_grid(self):
         while self._grid.count():
             item = self._grid.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            card = item.widget()
+            if card:
+                # deleteLater() only runs on a later event-loop pass. Blank
+                # the words now so no live widget keeps them in the meantime.
+                for text in card.findChildren(QLabel):
+                    text.clear()
+                card.hide()
+                card.deleteLater()
 
     def _clear_challenge(self):
         self._challenge_id = None
@@ -278,7 +324,38 @@ class Bip39BackupPage(QWidget):
         if self._challenge_id is not None:
             self._stack.setCurrentWidget(self._verify_page)
 
+    def holds_unverified_phrase(self):
+        """True while this page still holds the only display of the phrase."""
+        return bool(self._phrase_words)
+
+    def _departure_prompt(self):
+        dialog = BackupLeaveConfirm(self.window())
+        try:
+            return dialog.exec() == QDialog.DialogCode.Accepted
+        finally:
+            dialog.deleteLater()
+
+    def confirm_departure(self):
+        """Ask before the unverified phrase is dismissed; Stay is the default.
+
+        Returns True only for an explicit confirmation. A prompt that is
+        already open, or one that fails, keeps the phrase on screen.
+        """
+        if not self._phrase_words:
+            return True
+        if self._departure_open:
+            return False
+        self._departure_open = True
+        try:
+            return self._departure_prompt() is True
+        except Exception:
+            return False
+        finally:
+            self._departure_open = False
+
     def _on_back_up_later(self):
+        if not self.confirm_departure():
+            return
         self.clear_phrase()
         self.deferred_requested.emit()
 
@@ -320,7 +397,14 @@ class Bip39BackupPage(QWidget):
         self._written_check.setChecked(False)
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape:
-            self._on_back_up_later()
+        if event.key() == Qt.Key.Key_Escape:
+            # Page-specific Escape. It never defers a verified backup and
+            # never dismisses the phrase without the explicit confirmation.
+            current = self._stack.currentWidget()
+            if current is self._phrase_page:
+                self._on_back_up_later()
+            elif current is self._verify_page and self._phrase_words:
+                self._on_verify_back()
+            event.accept()
             return
         super().keyPressEvent(event)

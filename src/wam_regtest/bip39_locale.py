@@ -53,6 +53,11 @@ _STRINGS = {
         "backup_back": "Back",
         "backup_step_progress": "STEP {step} OF {total}",
         "backup_privacy_note": "Verification happens locally.",
+        # UI-FIX-01: explicit confirmation before leaving the only seed display.
+        "leave_backup_title": "Leave without finishing backup?",
+        "leave_backup_message": "These 12 words are shown only once and will not be displayed again. If you leave now, this wallet locks and reopening it requires words from this phrase. Leave only if you have already written all 12 words down in order.",
+        "leave_backup_stay": "Stay",
+        "leave_backup_confirm": "Leave and lock wallet",
     },
     "vi": {
         "app_name": "WAM Fusion",
@@ -79,6 +84,10 @@ _STRINGS = {
         "close_to_lock": "Đóng mà không xác minh sẽ khóa ví. Bạn có thể hoàn tất sao lưu khi mở lại.",
         "ok": "OK",
         "cancel": "Hủy",
+        "leave_backup_title": "Rời đi khi chưa hoàn tất sao lưu?",
+        "leave_backup_message": "12 từ này chỉ được hiển thị một lần và sẽ không hiển thị lại. Nếu rời đi lúc này, ví sẽ khóa và việc mở lại yêu cầu các từ trong cụm này. Chỉ rời đi nếu bạn đã viết đủ 12 từ theo đúng thứ tự.",
+        "leave_backup_stay": "Ở lại",
+        "leave_backup_confirm": "Rời đi và khóa ví",
     },
 }
 

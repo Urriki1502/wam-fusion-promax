@@ -345,6 +345,26 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
             # Not recorded: the caller fails closed and onboarding asks again.
             raise Q06ReadOnlyError(_ACK_DENIED) from None
 
+    def _q06_ack_authenticated(self, folder):
+        """True only for an acknowledgement whose MAC verifies for this open seed.
+
+        A sidecar that merely claims acknowledgement is never trusted: without
+        a valid MAC under the seed's own key this returns False.
+        """
+        acknowledged, _deferred, integrity = self._q06_read_ack(folder)
+        if acknowledged is not True or not integrity or self._secret is None:
+            return False
+        try:
+            from .bip39_seed_vault import open_owned_seed_container
+            with open_owned_seed_container(
+                    self._core(), folder, self.source, bytes(self._secret),
+                    authorized=True, keychain=self.keychain) as keys:
+                secret = keys.backup_ack_key()
+            verified, _deferred, integrity = self._q06_read_ack(folder, secret)
+            return verified is True and integrity is True
+        except Exception:
+            return False
+
     def _only_seed(self, owner):
         from .bip39_seed_vault import _folder
         if (owner.directory / "wallet-vault").exists() or (owner.root / "supervisor.wallet").exists():
@@ -896,14 +916,20 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
             folder = Path(args[0])
             if folder != self._seed_folder:
                 raise Q06ReadOnlyError("Q06_GUI_ACK_FOLDER_MISMATCH")
-            self._q06_write_ack(folder, False, deferred=True)
+            # An authenticated verified acknowledgement never regresses.
+            if not self._q06_ack_authenticated(folder):
+                self._q06_write_ack(folder, False, deferred=True)
             return None
         if action == "backup_defer":
             if args or kwargs:
                 raise Q06ReadOnlyError("Q06_GUI_BACKUP_DEFER_ARGS_DENIED")
             if self._seed_folder is None:
                 raise Q06ReadOnlyError("Q06_GUI_BACKUP_DEFER_NO_SEED")
-            self._q06_write_ack(self._seed_folder, False, deferred=True)
+            # Deferral still locks (fail-closed), but an authenticated verified
+            # acknowledgement is never rewritten as deferred. An unauthenticated
+            # or forged claim is not trusted and is replaced by the marker.
+            if not self._q06_ack_authenticated(self._seed_folder):
+                self._q06_write_ack(self._seed_folder, False, deferred=True)
             self._lock_q06()
             return None
         if action == 'backup_challenge_cancel':

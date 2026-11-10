@@ -262,6 +262,7 @@ class Bip39TrialWindow(QWidget):
         self._closed = False
         self._backup_unacked = False
         self._backup_flow_active = False
+        self._backup_verified = False
         self._backup_result = None
         self.setWindowTitle("WAM Fusion · BIP39 12-word REGTEST trial")
         self.resize(750, 475)
@@ -613,6 +614,7 @@ class Bip39TrialWindow(QWidget):
                         return
                 self._backup_result = result
                 self._backup_flow_active = True
+                self._backup_verified = False
                 self._present_backup_ack(result)
                 return
             self._ready=True
@@ -755,6 +757,7 @@ class Bip39TrialWindow(QWidget):
         elif action=="lock":
             self._backup_unacked=False
             self._backup_flow_active=False
+            self._backup_verified=False
             self._backup_result=None
             self._ready=False
             self._unlock_allowed=True
@@ -796,6 +799,7 @@ class Bip39TrialWindow(QWidget):
             elif backup_status == "deferred":
                 self._backup_unacked = False
                 self._backup_flow_active = True
+                self._backup_verified = False
                 self._backup_result = result
                 self._unlock_allowed = False
                 self._present_backup_ack(result)
@@ -855,6 +859,11 @@ class Bip39TrialWindow(QWidget):
         if not self._backup_flow_active:
             return
         self._backup_flow_active = False
+        if self._backup_verified:
+            # The backend already recorded the verified acknowledgement.
+            # Leaving the success page must never downgrade it to deferred.
+            self._backup_flow_completed(True)
+            return
         try:
             self.executor.request("backup_defer", timeout=30)
         except Exception:

@@ -442,6 +442,109 @@ class Q06OwnerBackendContracts(unittest.TestCase):
         self.assertTrue(reopened["receive_code"].startswith("wamrtsp1"))
         self.backend.execute("lock", (), {})
 
+    # ---- UI-FIX-01 (D2): a verified acknowledgement never regresses ----
+    def _create_and_verify(self):
+        folder = self.root / ("bip39-12-" + ("0" * 32))
+        with (patch("wam_regtest.bip39_12.generate_phrase", return_value=PHRASE),
+              patch("wam_regtest.bip39_seed_vault.create_owned_seed_container",
+                    return_value=(folder, {"profile": "q06",
+                        "account_id": "public-identity",
+                        "receive_code": "wamrtsp1public"}))):
+            self.backend.execute("open", (PASSWORD, "create", ""), {})
+        ack_path = self.root / "q06-gui-state" / "ack" / (folder.name + ".json")
+        return folder, ack_path
+
+    @contextmanager
+    def _seed_container(self, failure=None):
+        with (patch("wam_regtest.bip39_seed_vault.read_seed_phrase", return_value=PHRASE),
+              patch("wam_regtest.bip39_seed_vault._owner_binding", return_value="0" * 64),
+              patch("wam_regtest.bip39_seed_vault.open_owned_seed_container") as opened):
+            if failure is not None:
+                opened.side_effect = failure
+            else:
+                opened.return_value.__enter__ = lambda *a, **kw: self._fake_opened_keys()
+                opened.return_value.__exit__ = lambda *a, **kw: None
+            yield opened
+
+    def _verify_backup(self):
+        challenge = self.backend.execute("backup_challenge", (), {})
+        answers = [PHRASE.split()[p - 1] for p in challenge["positions"]]
+        self.assertTrue(self.backend.execute(
+            "backup_verify", (challenge["challenge_id"], answers), {}))
+
+    def test_backup_defer_never_regresses_authenticated_verified_ack(self):
+        folder, ack_path = self._create_and_verify()
+        with self._seed_container():
+            self._verify_backup()
+            verified = ack_path.read_bytes()
+            self.assertTrue(json.loads(verified)["acknowledged"])
+            self.backend.execute("backup_defer", (), {})
+        # Still fail-closed (locked), but the authenticated record is intact.
+        self.assertTrue(self.backend.public_state()["locked"])
+        self.assertIsNone(self.backend._secret)
+        self.assertEqual(ack_path.read_bytes(), verified)
+        folder.mkdir(parents=True)
+        with self._seed_container():
+            reopened = self.backend.execute("open", (PASSWORD, "reopen", ""), {})
+        self.assertEqual(reopened["backup_status"], "verified")
+        self.assertEqual(reopened["mnemonic_once"], "")
+        self.backend.execute("lock", (), {})
+
+    def test_create_pending_marker_never_regresses_authenticated_verified_ack(self):
+        folder, ack_path = self._create_and_verify()
+        with self._seed_container():
+            self._verify_backup()
+            verified = ack_path.read_bytes()
+            self.backend.execute("acknowledge_create_pending", (str(folder),), {})
+        self.assertEqual(ack_path.read_bytes(), verified)
+        self.backend.execute("lock", (), {})
+
+    def test_backup_defer_does_not_trust_unauthenticated_acknowledged_claim(self):
+        for name, forge in (
+                ("no-mac", lambda f: self.backend._q06_write_ack(f, True)),
+                ("wrong-mac", lambda f: self.backend._q06_write_ack(f, True, secret=b"x" * 32))):
+            with self.subTest(claim=name):
+                folder, ack_path = self._create_and_verify()
+                forge(folder)
+                self.assertTrue(json.loads(ack_path.read_text())["acknowledged"])
+                with self._seed_container():
+                    self.assertFalse(self.backend._q06_ack_authenticated(folder))
+                    self.backend.execute("backup_defer", (), {})
+                data = json.loads(ack_path.read_text())
+                self.assertFalse(data["acknowledged"])
+                self.assertTrue(data["deferred"])
+                self.assertNotIn("mac", data)
+                self.assertTrue(self.backend.public_state()["locked"])
+                ack_path.unlink()
+
+    def test_backup_defer_falls_back_to_deferred_when_ack_cannot_be_authenticated(self):
+        folder, ack_path = self._create_and_verify()
+        with self._seed_container():
+            self._verify_backup()
+        with self._seed_container(failure=ValueError("PUBLIC_TEST_CONTAINER_UNAVAILABLE")):
+            self.backend.execute("backup_defer", (), {})
+        data = json.loads(ack_path.read_text())
+        self.assertFalse(data["acknowledged"])
+        self.assertTrue(data["deferred"])
+        self.assertTrue(self.backend.public_state()["locked"])
+
+    def test_backup_defer_ack_write_failure_is_still_reported(self):
+        self._create_and_verify()
+        with (patch("wam_regtest.bip39_owner_backend._ack_write",
+                    side_effect=OSError("PUBLIC_TEST_WRITE_FAILURE")),
+              self.assertRaises(Q06ReadOnlyError) as refused):
+            self.backend.execute("backup_defer", (), {})
+        self.assertNotIn("PUBLIC_TEST_WRITE_FAILURE", str(refused.exception))
+        self.backend.execute("lock", (), {})
+
+    def test_backup_defer_requires_an_open_seed_and_no_arguments(self):
+        with self.assertRaises(Q06ReadOnlyError):
+            self.backend.execute("backup_defer", (), {})
+        self._create_and_verify()
+        with self.assertRaises(Q06ReadOnlyError):
+            self.backend.execute("backup_defer", ("extra",), {})
+        self.backend.execute("lock", (), {})
+
     def test_create_pending_marker_is_deferred_and_allows_reopen_verify(self):
         folder = self.root / ("bip39-12-" + ("0" * 32))
         with (patch("wam_regtest.bip39_12.generate_phrase", return_value=PHRASE),

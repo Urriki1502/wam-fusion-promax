@@ -233,9 +233,15 @@ class BackupPageContract(unittest.TestCase):
         self.assertTrue(now.isEnabled())
 
     def test_back_up_later_defers_and_locks_backend(self):
+        # UI-FIX-01 (D1): deferral now needs the explicit confirmation; the
+        # real dialog is answered "Leave". Stay paths are covered in
+        # tests/test_q06_bip39_backup_safety.py.
+        from test_q06_bip39_backup_safety import _DialogDriver
         self._show_required()
-        _find_button(self.window.backup_page, "Back up later").click()
+        with _DialogDriver(self.app, "leave") as driver:
+            _find_button(self.window.backup_page, "Back up later").click()
         self.app.processEvents()
+        self.assertEqual(len(driver.seen), 1)
         self.assertTrue(self.window.executor.locked)
         self.assertIn(("defer",), self.window.executor.log)
         self.assertTrue(self.window._backup_unacked)
@@ -272,9 +278,14 @@ class BackupPageContract(unittest.TestCase):
         self.assertEqual(privacy, ["Verification happens locally."])
 
     def test_escape_defers_and_locks_backend(self):
+        # UI-FIX-01 (D1): Escape on the seed display asks first; only the
+        # explicit "Leave" answer defers and locks.
+        from test_q06_bip39_backup_safety import _DialogDriver
         self._show_required()
-        QTest.keyClick(self.window.backup_page, Qt.Key_Escape)
+        with _DialogDriver(self.app, "leave") as driver:
+            QTest.keyClick(self.window.backup_page, Qt.Key_Escape)
         self.app.processEvents()
+        self.assertEqual(len(driver.seen), 1)
         self.assertTrue(self.window.executor.locked)
         self.assertTrue(self.window._backup_unacked)
         self.assertFalse(self.window._ready)

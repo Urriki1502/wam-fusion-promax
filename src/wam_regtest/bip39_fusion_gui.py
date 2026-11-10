@@ -772,12 +772,19 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self._on_backup_challenge()
             return
         if ok:
+            self._backup_verified = True
             self.backup_page.show_success()
         else:
             self.backup_page.show_verification_error()
             self._on_backup_challenge()
 
     def _on_backup_deferred(self):
+        if not self._backup_flow_active:
+            return  # Repeated/late signal: the flow already ended.
+        if self._backup_verified:
+            # Verified acknowledgement is final; never send a deferral for it.
+            self._backup_flow_completed(True)
+            return
         try:
             self.executor.request("backup_defer", timeout=30)
         except Exception as error:
@@ -788,7 +795,19 @@ class Bip39FusionWindow(Bip39TrialWindow):
     def _on_backup_continue(self):
         self._backup_flow_completed(True)
 
+    def request_quit(self):
+        # Window close and quit while the only seed display is still on
+        # screen need the same explicit confirmation as Back up later.
+        if (self._backup_flow_active and not self._quit_requested
+                and not self._backup_verified
+                and self.backup_page.holds_unverified_phrase()
+                and not self.backup_page.confirm_departure()):
+            return
+        super().request_quit()
+
     def _backup_flow_completed(self, success):
+        # Every exit route drops the recovery words from the widgets.
+        self.backup_page.clear_phrase()
         self.navigation.setEnabled(True)
         self.stack.setCurrentIndex(0)
         self.navigation.setCurrentRow(0)
