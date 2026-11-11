@@ -322,6 +322,58 @@ class Q06OwnedSpendSession(WalletSession):
             return {'status': 'Q06_SIGNED_INTENT_RESUBMITTED', 'txid': actual,
                     'resigned': False, 'automatic': False, 'mainnet_allowed': False}
 
+    def _recover_pending_broadcast(self):
+        """Read-only: re-identify this profile's one unconfirmed broadcast after reopen.
+
+        A broadcast TXID was kept only in memory, so after a restart the wallet
+        showed no TXID and the exact-TXID confirmation was unavailable although
+        the transaction was still in Core's mempool (Jeeves J-TX-01/J-TX-02).
+        Authority stays with the native-anchored 'broadcast' reservation rows
+        and the create-only encrypted 'broadcast' evidence of the same token.
+        This only restores the existing confirm_pending precondition. It never
+        re-signs, resubmits, releases a reservation or mines. Any ambiguity
+        (several tokens, unreadable or mismatched evidence, already confirmed,
+        absent from the mempool) leaves nothing pending.
+        """
+        import re
+        from wam_sp.psbt import PSBT
+        with self._lock:
+            if (self._q06_uncertain or self.faulted
+                    or self._q06_pending_confirm is not None):
+                return None
+            with self.scanner.store.transaction():
+                rows = self.scanner.store.db.execute(
+                    "SELECT txid,vout,token FROM reservations "
+                    "WHERE state='broadcast' ORDER BY token,txid,vout").fetchall()
+                confirmed = {r[0] for r in self.scanner.store.db.execute(
+                    'SELECT txid FROM history WHERE height>0')}
+            groups = {}
+            for txid, vout, token in rows:
+                groups.setdefault(token, set()).add((txid, vout))
+            pending = []
+            for token, outpoints in groups.items():
+                try:
+                    body = self._read_payment_evidence(token, 'broadcast')
+                    inputs = (None if body is None else
+                              set(PSBT.decode(bytes.fromhex(body['signed_psbt'])).tx.inputs))
+                except Exception:
+                    return None
+                if body is None or inputs != outpoints:
+                    return None
+                if body['txid'] not in confirmed:
+                    pending.append(body['txid'])
+            if len(pending) != 1:
+                return None
+            mempool = self._rpc()._call('getrawmempool', [])
+            if (type(mempool) is not list or any(
+                    type(i) is not str or re.fullmatch('[0-9a-f]{64}', i) is None
+                    for i in mempool)):
+                raise Q06SpendSessionError('Q06_PENDING_BROADCAST_UNVERIFIED')
+            if pending[0] not in mempool:
+                return None
+            self._q06_pending_confirm = pending[0]
+            return pending[0]
+
     def _before_broadcast_submission(self):
         # Called only after the read-only preflight accepted, and BEFORE the
         # durable 'uncertain' checkpoint and sendrawtransaction. A rejected
@@ -590,6 +642,8 @@ def open_owned_spend_session(owner, seed_folder, source, password, *,
         # the exact native checkpoint before passing this to any GUI.
         phase = 'OWNED_SESSION_RPC'
         session._rpc()
+        phase = 'PENDING_BROADCAST_RECOVERY'
+        session._recover_pending_broadcast()
         transferred = True
         return session
     except Exception:

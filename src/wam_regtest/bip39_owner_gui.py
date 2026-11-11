@@ -643,6 +643,10 @@ class Bip39TrialWindow(QWidget):
                 # Confirm/lock still clear this field explicitly.
                 if pending is not None:
                     self._pending_confirm_txid = pending
+                    # After a reopen the session re-identifies its unconfirmed
+                    # broadcast from anchored evidence; show that exact TXID.
+                    if not self.last_txid.text().strip():
+                        self.last_txid.setText(pending)
                 if hasattr(self, '_last_review'):
                     self._last_review = review
             self.receive.setText(result["receive_code"])
@@ -660,6 +664,11 @@ class Bip39TrialWindow(QWidget):
                 self.status.setText(
                     "An unsigned draft remains from this original wallet. Use Cancel unsigned draft "
                     "explicitly before reviewing a new payment. Signed/uncertain locks are never released.")
+            elif self._spend_enabled and self._pending_confirm_txid is not None:
+                self.status.setText(
+                    "Broadcast TXID {} is awaiting its first REGTEST confirmation. "
+                    "Use Confirm 1 REGTEST block; do not send this payment again.".format(
+                        self._pending_confirm_txid))
             elif (self._spend_enabled and result.get("reservation_count",0)>0
                     and self._pending_confirm_txid is None):
                 self.status.setText(
