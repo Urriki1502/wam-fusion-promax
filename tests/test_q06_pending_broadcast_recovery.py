@@ -230,5 +230,39 @@ class ReopenedWindowShowsPendingBroadcast(unittest.TestCase):
             app.processEvents()
 
 
+    def test_send_page_says_confirmed_only_after_the_exact_verified_confirm(self):
+        from PySide6.QtWidgets import QApplication
+        from wam_regtest.bip39_fusion_gui import Bip39FusionWindow
+        from wam_regtest.wallet_executor import ExecutorState, immutable
+        app = QApplication.instance() or QApplication([])
+        class Owner:
+            state = ExecutorState(locked=False, core_alive=True)
+            busy = False
+            closed = False
+        for confirmed_txid, expect_confirmed in ((TX_A, True), (TX_B, False)):
+            window = Bip39FusionWindow(Owner())
+            try:
+                window._ready = window._spend_enabled = True
+                window._on_ready("broadcast", TX_A)
+                window._on_ready("inspect_confirmed", immutable({
+                    "status": "Q06_TX_NOT_IN_CONFIRMED_HISTORY", "in_mempool": True, "txid": TX_A}))
+                self.assertIn("pending", window.send_result.text())
+                window._on_ready("confirm", immutable({
+                    "status": "Q06_REGTEST_EXACT_SEND_CONFIRMED", "height": 103,
+                    "txid": confirmed_txid, "mainnet_allowed": False}))
+                text = window.send_result.text()
+                if expect_confirmed:
+                    self.assertTrue(text.startswith("Confirmed on this REGTEST chain."), text)
+                    self.assertIn(TX_A, text)
+                else:  # identity mismatch: never claim confirmation
+                    self.assertNotIn("Confirmed", text)
+                    self.assertEqual(window._pending_confirm_txid, TX_A)
+            finally:
+                window._poll.stop()
+                window.hide()
+                window.deleteLater()
+                app.processEvents()
+
+
 if __name__ == "__main__":
     unittest.main()

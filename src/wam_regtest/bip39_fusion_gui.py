@@ -994,6 +994,13 @@ class Bip39FusionWindow(Bip39TrialWindow):
             else:
                 self.send_result.setText(describe_broadcast_result(None))
                 self._broadcast_complete = False
+        if (action == "confirm" and isinstance(result, dict)
+                and result.get("status") == "Q06_REGTEST_EXACT_SEND_CONFIRMED"
+                and type(result.get("txid")) is str and self._pending_confirm_txid is None):
+            # confirm_pending returns this only after the exact TXID is in
+            # verified history; the base handler already matched the TXID.
+            self.send_result.setText(describe_broadcast_result(
+                result["txid"], {"status": "Q06_CONFIRMED_IN_VERIFIED_HISTORY"}))
         if action == "inspect_confirmed":
             facts = result if isinstance(result, dict) else None
             txid = facts.get("txid") if facts is not None else None
