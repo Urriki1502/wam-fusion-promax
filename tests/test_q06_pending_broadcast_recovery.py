@@ -129,6 +129,23 @@ class PendingBroadcastRecovery(unittest.TestCase):
         self.assertIsNone(self.recover(s))
         self.assertEqual(s._q06_pending_confirm, TX_B)
 
+    def test_confirmed_earlier_broadcast_plus_one_mempool_broadcast_restores_only_the_pending(self):
+        s = _session([(IN_2[0], IN_2[1], "t0", "broadcast"), (IN_1[0], IN_1[1], "t1", "broadcast")],
+                     history=((TX_B, 103),),
+                     evidence={"t0": _body(TX_B, "02"), "t1": _body(TX_A, "01")})
+        self.assertEqual(self.recover(s), TX_A)
+
+    def test_unreadable_historical_evidence_suppresses_recovery(self):
+        s = _session([(IN_2[0], IN_2[1], "t0", "broadcast"), (IN_1[0], IN_1[1], "t1", "broadcast")],
+                     history=((TX_B, 103),), evidence={"t1": _body(TX_A, "01")})
+        def reader(token, stage):
+            if token == "t0":
+                raise ValueError("Q06_PAYMENT_EVIDENCE_INVALID")
+            return _body(TX_A, "01")
+        s._read_payment_evidence = reader
+        self.assertNothingPending(s)
+        self.assertEqual(s._rpc_calls, [])
+
     def test_malformed_mempool_reply_fails_closed(self):
         from wam_regtest.bip39_spend_session import Q06SpendSessionError
         s = _session([(IN_1[0], IN_1[1], "t1", "broadcast")],
@@ -172,6 +189,40 @@ class ReopenedWindowShowsPendingBroadcast(unittest.TestCase):
             self.assertEqual(window.last_txid.text(), TX_A)
             self.assertIn(TX_A, window.status.text())
             self.assertIn("do not send this payment again", window.status.text())
+            self.assertTrue(window.confirm.isEnabled())
+        finally:
+            window._poll.stop()
+            window.hide()
+            window.deleteLater()
+            app.processEvents()
+
+
+    def test_reopened_fusion_window_shows_recovered_payment_without_auto_inspect(self):
+        from PySide6.QtWidgets import QApplication
+        from wam_regtest.bip39_fusion_gui import Bip39FusionWindow
+        from wam_regtest.wallet_executor import ExecutorState, immutable
+        app = QApplication.instance() or QApplication([])
+        class Owner:
+            state = ExecutorState(locked=False, core_alive=True)
+            busy = False
+            closed = False
+        window = Bip39FusionWindow(Owner())
+        try:
+            window._ready = window._spend_enabled = True
+            self.assertFalse(window._broadcast_complete)
+            window._on_ready("snapshot", immutable({
+                "signer_allowed": True, "broadcast_allowed": True,
+                "mainnet_allowed": False, "receive_code": "wamrtsp1public",
+                "confirmed_atoms": 5, "available_atoms": 0, "height": 102,
+                "tip": "a" * 64, "history": (), "reservation_count": 1,
+                "payment_review": None, "payment_signed": False,
+                "pending_confirm_txid": TX_A,
+            }))
+            self.assertEqual(window.last_txid.text(), TX_A)
+            self.assertIn(TX_A, window.send_result.text())
+            self.assertIn("Confirmation is pending", window.send_result.text())
+            self.assertIsNone(window._pending_action)  # no automatic inspect on reopen
+            self.assertTrue(window.confirm.isEnabled())
         finally:
             window._poll.stop()
             window.hide()

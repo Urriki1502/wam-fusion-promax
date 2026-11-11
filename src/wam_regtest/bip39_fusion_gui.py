@@ -1015,6 +1015,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
             if (action == "snapshot" and self._broadcast_complete
                     and type(txid) is str and len(txid) == 64):
                 self._pending_action = ("inspect_confirmed", txid)
+            elif (type(txid) is str and len(txid) == 64 and not self._broadcast_complete
+                    and self._last_review is None):
+                # Reopened wallet: the session re-identified its unconfirmed
+                # broadcast. Show it on Send too; display only, no auto-inspect.
+                self.send_result.setText(describe_broadcast_result(txid))
         elif action == "open":
             self._clear_visuals()
             # Same owner, bounded read-only chain sync only after the explicit
