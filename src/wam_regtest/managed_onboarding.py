@@ -56,7 +56,8 @@ def welcome_dialog():
     dialog.setObjectName("WAMFusionWelcome")
     dialog.setWindowTitle("WAM Fusion · Privacy Wallet")
     dialog.setMinimumSize(540, 550)
-    dialog.setModal(True)
+    # Not modal: see run_welcome(). It is the only window while it is shown.
+    dialog.setWindowModality(Qt.WindowModality.NonModal)
     dialog.selection = None
     dialog.buttons = {}
     hint = QApplication.styleHints()
@@ -175,6 +176,24 @@ def assert_unified_welcome_qt():
     qualify_password_dialogs()
 
 
+def run_welcome(dialog):
+    """Show Welcome and wait for its result without an application-modal session.
+
+    QDialog.exec() is always application-modal for this parentless dialog. On
+    macOS, AppKit then disables the application menu's Quit item, so Command+Q
+    did nothing on Welcome. Nothing else is open yet, so modality protected
+    nothing. Quit now closes the dialog (rejected), exactly like Cancel.
+    """
+    from PySide6.QtCore import QEventLoop
+    loop = QEventLoop()
+    dialog.finished.connect(loop.quit)
+    dialog.show()
+    dialog.raise_()
+    dialog.activateWindow()
+    loop.exec()
+    return dialog.result()
+
+
 def launch(core, source):
     from .desktop import qt_application
     from PySide6.QtWidgets import QFileDialog, QDialog, QMessageBox
@@ -182,7 +201,7 @@ def launch(core, source):
     while True:
         dialog = welcome_dialog()
         try:
-            if dialog.exec() != QDialog.DialogCode.Accepted:
+            if run_welcome(dialog) != QDialog.DialogCode.Accepted:
                 return 0
             choice = dialog.selection
             shared = dialog.shared_mode.isChecked()
