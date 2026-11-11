@@ -182,7 +182,8 @@ def run_welcome(dialog):
     QDialog.exec() is always application-modal for this parentless dialog. On
     macOS, AppKit then disables the application menu's Quit item, so Command+Q
     did nothing on Welcome. Nothing else is open yet, so modality protected
-    nothing. Quit now closes the dialog (rejected), exactly like Cancel.
+    nothing. Quit now closes the dialog as rejected, like Escape or closing
+    the window.
     """
     from PySide6.QtCore import QEventLoop
     loop = QEventLoop()

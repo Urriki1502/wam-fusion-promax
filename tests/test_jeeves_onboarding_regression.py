@@ -93,8 +93,8 @@ class OnboardingRecovery(unittest.TestCase):
         self.assertFalse(result['backend_created'])
 
 
-def _macos_quit_menu_item_enabled():
-    """Validated state of AppKit's application-menu Command+Q item (cocoa only)."""
+def _appkit():
+    """Minimal Objective-C runtime access for AppKit checks (cocoa only)."""
     import ctypes, ctypes.util
     objc = ctypes.CDLL(ctypes.util.find_library('objc'))
     ctypes.CDLL('/System/Library/Frameworks/AppKit.framework/AppKit')
@@ -106,7 +106,14 @@ def _macos_quit_menu_item_enabled():
         send.restype, send.argtypes = restype, [ctypes.c_void_p, ctypes.c_void_p, *argtypes]
         return send(obj, objc.sel_registerName(sel.encode()), *args)
 
-    app = msg(objc.objc_getClass(b'NSApplication'), 'sharedApplication')
+    def cls(name):
+        return objc.objc_getClass(name.encode())
+    return ctypes, msg, cls, msg(cls('NSApplication'), 'sharedApplication')
+
+
+def _macos_quit_menu_item_enabled():
+    """Validated state of AppKit's application-menu Command+Q item."""
+    ctypes, msg, _cls, app = _appkit()
     menu = msg(msg(msg(app, 'mainMenu'), 'itemAtIndex:', 0, argtypes=(ctypes.c_long,)), 'submenu')
     msg(menu, 'update', restype=None)
     for index in range(msg(menu, 'numberOfItems', restype=ctypes.c_long)):
@@ -117,6 +124,25 @@ def _macos_quit_menu_item_enabled():
     raise AssertionError('AppKit application menu has no Command+Q item')
 
 
+def _macos_send_command_q():
+    """Deliver a real Command+Q key-down NSEvent through -[NSApplication sendEvent:]."""
+    ctypes, msg, cls, app = _appkit()
+
+    class NSPoint(ctypes.Structure):
+        _fields_ = [('x', ctypes.c_double), ('y', ctypes.c_double)]
+    window = msg(app, 'keyWindow')
+    number = msg(window, 'windowNumber', restype=ctypes.c_long) if window else 0
+    q = msg(cls('NSString'), 'stringWithUTF8String:', b'q', argtypes=(ctypes.c_char_p,))
+    event = msg(cls('NSEvent'),
+                'keyEventWithType:location:modifierFlags:timestamp:windowNumber:context:'
+                'characters:charactersIgnoringModifiers:isARepeat:keyCode:',
+                10, NSPoint(0, 0), 1 << 20, 0.0, number, None, q, q, False, 12,
+                argtypes=(ctypes.c_ulong, NSPoint, ctypes.c_ulong, ctypes.c_double, ctypes.c_long,
+                          ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_bool,
+                          ctypes.c_ushort))
+    msg(app, 'sendEvent:', event, restype=None, argtypes=(ctypes.c_void_p,))
+
+
 @unittest.skipUnless(QT_AVAILABLE, "Requires native Qt-capable runner")
 class WelcomeQuit(unittest.TestCase):
     """J-UI-02: Command+Q / application Quit must end the Welcome screen."""
@@ -125,10 +151,15 @@ class WelcomeQuit(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
-    def _launch_with_quit(self, probe):
+    @staticmethod
+    def _post_application_quit():
         from PySide6.QtCore import QEvent
+        QApplication.postEvent(QApplication.instance(), QEvent(QEvent.Type.Quit))
+
+    def _launch_with_quit(self, probe, trigger=None):
         seen = {}
         original = onboarding.welcome_dialog
+        trigger = trigger or self._post_application_quit
 
         def welcome():
             dialog = original()
@@ -136,8 +167,14 @@ class WelcomeQuit(unittest.TestCase):
                 seen['visible'] = dialog.isVisible()
                 seen['modal'] = QApplication.activeModalWidget()
                 seen.update(probe())
-                QApplication.postEvent(QApplication.instance(), QEvent(QEvent.Type.Quit))
+                trigger()
+            def fallback():
+                # Fail instead of hanging if the trigger was swallowed.
+                if dialog.isVisible():
+                    seen['trigger_ignored'] = True
+                    dialog.reject()
             QTimer.singleShot(0, quit_while_waiting)
+            QTimer.singleShot(3000, fallback)
             return dialog
         with patch.object(onboarding, 'welcome_dialog', side_effect=welcome), \
                 patch('PySide6.QtWidgets.QFileDialog.getExistingDirectory') as folder, \
@@ -159,13 +196,17 @@ class WelcomeQuit(unittest.TestCase):
 
     def test_application_quit_on_welcome_returns_without_any_wallet_route(self):
         seen = self._launch_with_quit(dict)
+        self.assertNotIn('trigger_ignored', seen)
         self.assertTrue(seen['visible'])
         # Root cause: an application-modal session makes AppKit disable Quit.
         self.assertIsNone(seen['modal'])
 
     @unittest.skipUnless(sys.platform == 'darwin', "AppKit application menu")
-    def test_macos_application_menu_quit_is_enabled_on_welcome(self):
+    def test_macos_command_q_key_quits_welcome(self):
         if QApplication.platformName() != 'cocoa':
             self.skipTest('Requires the native cocoa platform plugin')
-        seen = self._launch_with_quit(lambda: {'quit_enabled': _macos_quit_menu_item_enabled()})
+        seen = self._launch_with_quit(
+            lambda: {'quit_enabled': _macos_quit_menu_item_enabled()},
+            trigger=_macos_send_command_q)
         self.assertTrue(seen['quit_enabled'])
+        self.assertNotIn('trigger_ignored', seen, 'Command+Q key event was swallowed')
