@@ -55,6 +55,16 @@ class TokenRules(unittest.TestCase):
         self.assertEqual(diagnostics.category_of(lower()), 'INTERNAL')
         self.assertEqual(diagnostics.record('STAGE_0123456789ABCDEF').stage, 'INVALID_STAGE')
 
+    def test_code_token_length_is_capped_at_96(self):
+        # D-PM003-1: same bound as WalletExecutor's public-code check.
+        for code in ('A_B', 'Q06_' + 'X' * 92):
+            with self.subTest(length=len(code)):
+                self.assertEqual(len(code) <= 96, True)
+                self.assertEqual(diagnostics.category_of(ValueError(code)), code)
+        for code in ('A_', 'Q06_' + 'X' * 93, 'X' * 60 + '_' + 'Y' * 60):
+            with self.subTest(length=len(code)):
+                self.assertEqual(diagnostics.category_of(ValueError(code)), 'ValueError')
+
     def test_stage_must_be_a_literal_token(self):
         self.assertEqual(diagnostics.record('UNLOCK_ACTIVATION').stage, 'UNLOCK_ACTIVATION')
         for bad in ('unlock', SECRETS[2], 'A' * 65, 42, None, 'BAD STAGE'):

@@ -12,8 +12,15 @@ What may be recorded:
     when that is an upper-case code token (``CODE_RE``), else its class name
     when that is a plain identifier, else ``INTERNAL``.
 Never recorded: exception text, other args, paths, seeds, passwords, keys,
-TXIDs, addresses or amounts. The same code-token rule is used by the existing
-``bip39_reconciliation`` diagnostics.
+TXIDs, addresses or amounts. The pre-existing ``bip39_reconciliation`` marker
+deliberately keeps its own legacy pattern and output (see
+``reconciliation_marker`` below); it does not use ``CODE_RE``.
+
+Known limit of the token rule: a code token is any 3-96 character upper-case
+identifier containing an underscore. A secret that has exactly that shape
+(for example an all-caps passphrase with an underscore) would be
+indistinguishable from a code if a caller put it alone in ``args[0]``. Callers
+must therefore only raise public codes there, never user input.
 
 Where it goes:
   * an in-process bounded ring (``records()``), read by qualification probes
@@ -34,9 +41,10 @@ import time
 
 STAGE_RE = re.compile(r'[A-Z][A-Z0-9_]{0,63}\Z')
 # A code token is an upper-case identifier WITH an underscore (all wallet codes
-# are), so a lone all-caps word such as a password cannot pass. Any run of 16+
-# hex digits (TXIDs, hashes, keys in any case) is rejected everywhere.
-CODE_RE = re.compile(r'[A-Z][A-Z0-9]*_[A-Z0-9_]{1,94}\Z')
+# are), so a lone all-caps word such as a password cannot pass. At most 96
+# characters, the same bound as WalletExecutor's public code check. Any run of
+# 16+ hex digits (TXIDs, hashes, keys in any case) is rejected everywhere.
+CODE_RE = re.compile(r'(?=[A-Z0-9_]{3,96}\Z)[A-Z][A-Z0-9]*_[A-Z0-9_]+\Z')
 _CLASS_RE = re.compile(r'[A-Z][A-Za-z0-9_]{0,47}\Z')
 _HEX_RUN = re.compile(r'[0-9A-Fa-f]{16}')
 _RING_SIZE = 64
