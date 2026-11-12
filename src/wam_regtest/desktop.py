@@ -21,6 +21,7 @@ from .wallet_read import WalletReadSnapshot, read_real_wallet_snapshot, format_w
 from .branding import brand_image
 from .fusion_ui import FusionOverview, fusion_palette, fusion_stylesheet, nav_icon_for, vector_icon, label, action
 from .fusion_pages import ReceivePage, HistoryPage
+from .infrastructure import core_compat
 
 
 _QT_APPLICATION = None
@@ -138,7 +139,7 @@ class RegtestWalletWindow(QMainWindow):
         self.navigation.addItems(('Overview','Receive','History'));side.addWidget(self.navigation,1)
         side.addWidget(label('REGTEST','FusionBadge'))
         self.warning=label('PUBLIC DEMO ACCOUNT / NO REAL FUNDS / SEND & SIGN DISABLED','Warning');side.addWidget(self.warning)
-        side.addWidget(label('WAM Core v0.1.13\nBIP352 · WSP-1','FusionMuted'));shell.addWidget(sidebar)
+        side.addWidget(label(core_compat.DISPLAY_NAME + '\nBIP352 · WSP-1','FusionMuted'));shell.addWidget(sidebar)
         workspace=QWidget();workspace.setObjectName('FusionTransparent');col=QVBoxLayout(workspace);col.setContentsMargins(28,0,22,12);col.setSpacing(18)
         topbar=QFrame();topbar.setObjectName('FusionTopbar');top=QHBoxLayout(topbar);top.setContentsMargins(0,18,0,18)
         self.workspace_title=label('Privacy wallet','FusionCardTitle');top.addWidget(self.workspace_title);top.addStretch()

@@ -35,8 +35,9 @@ def _desktop(core, source):
     # approval and an already provisioned witness. Never installs root code.
     from wam_regtest.desktop import qt_application
     from PySide6.QtWidgets import QInputDialog, QMessageBox
+    from wam_regtest.infrastructure import core_compat
     qt_application()
-    approved, ok = QInputDialog.getText(None, 'Official signed Core v0.1.13',
+    approved, ok = QInputDialog.getText(None, 'Official signed Core ' + core_compat.CORE_RELEASE,
         'Enter the independently reviewed Core manifest SHA-256.\n'
         'Official Core; independently reviewed Ubuntu24.04 loader closure.')
     if not ok:

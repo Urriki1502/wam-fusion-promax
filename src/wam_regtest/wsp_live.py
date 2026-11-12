@@ -18,6 +18,7 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+from .infrastructure import core_compat
 
 PINNED_WSP_COMMIT = "ac55f13423620252bdbf848c7e8a280c3b84721e"
 REGTEST_GENESIS = "b88f3d262f285e38e184f50bf3eea1c8e615486ae67d3d9eaf0976fbd6d3d30d"
@@ -408,8 +409,8 @@ class LiveCoreReadOnlyCli:
             from .shared_regtest import peer_status
             peer_status(self._datadir)
         version=self._call('getnetworkinfo',[])
-        if (type(version) is not dict or type(version.get('version')) is not int or version.get('version')!=113
-                or version.get('subversion')!='/WAM:0.1.13/' or type(version.get('protocolversion')) is not int or version.get('protocolversion')!=70016):
+        if (type(version) is not dict or type(version.get('version')) is not int or version.get('version')!=core_compat.RPC_VERSION
+                or version.get('subversion')!=core_compat.RPC_SUBVERSION or type(version.get('protocolversion')) is not int or version.get('protocolversion')!=core_compat.PROTOCOL_VERSION):
             raise RealWspScanError('WSP_LIVE_VERSION_DENIED')
         self._genesis = genesis
         from .rpc_scope import identity

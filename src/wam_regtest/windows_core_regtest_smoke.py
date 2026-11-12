@@ -23,6 +23,7 @@ import zipfile
 from .windows_release_preflight import (
     ASSET, ROOT, WindowsReleaseError, verify_signed_windows_archive,
 )
+from .infrastructure import core_compat
 
 
 class WindowsCoreSmokeError(ValueError):
@@ -197,7 +198,7 @@ def smoke_signed_windows_regtest(archive: Path, signing_key: Path, sha256sums: P
             observed = subprocess.check_output([str(binary), '-version'], env=env,
                 cwd=node.parent, text=True, timeout=15,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).splitlines()[0]
-            if 'v0.1.13' not in observed:
+            if core_compat.CORE_RELEASE not in observed:
                 _deny("WIN_CORE_NATIVE_VERSION_DENIED")
             versions[binary.name] = observed
         daemon = None
@@ -232,7 +233,7 @@ def smoke_signed_windows_regtest(archive: Path, signing_key: Path, sha256sums: P
             network = _rpc(cli, datadir, rpc, env, "getnetworkinfo")
             if (type(network) is not dict or type(network.get('version')) is not int
                     or (network.get('version'), network.get('subversion'), network.get('protocolversion'))
-                    != (113, '/WAM:0.1.13/', 70016)):
+                    != core_compat.SUPPORTED_RPC):
                 _deny("WIN_CORE_OBSERVED_RPC_VERSION_DENIED")
             _rpc(cli, datadir, rpc, env, "createwallet", "test")
             address = _rpc(cli, datadir, rpc, env, "-rpcwallet=test", "getnewaddress")

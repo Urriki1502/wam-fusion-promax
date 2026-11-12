@@ -32,6 +32,7 @@ from .bip39_backup_page import Bip39BackupPage
 from .wallet_read import WalletReadSnapshot, format_wam
 from .amounts import parse_amount, _parse_atoms
 from .branding import brand_image
+from .infrastructure import core_compat
 
 
 class _WrappingStatusLabel(QLabel):
@@ -318,7 +319,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         about, about_layout = panel(
             "WAM Fusion · REGTEST",
             "Local-first BIP352 silent payments. No remote account or cloud custody.")
-        about_layout.addWidget(label("WAM Core v0.1.13 · WSP-1 · BIP39 12 words"))
+        about_layout.addWidget(label(core_compat.DISPLAY_NAME + " · WSP-1 · BIP39 12 words"))
         about_layout.addWidget(label(
             "This preview is not a mainnet wallet. All test transactions stay on the owned REGTEST chain."))
         settings_layout.addWidget(about)

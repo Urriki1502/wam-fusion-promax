@@ -29,6 +29,7 @@ from .supervisor_protocol import (
 from .supervisor_store import create_once, read_exact, exclusive_lease
 from .supervisor_journal import LifecycleJournal
 from .wsp_live import REGTEST_GENESIS
+from .infrastructure import core_compat
 
 PROFILE_SCHEMA = 'wam-fusion-owned-supervisor-profile/v1'
 BUSY_COOLDOWN = 12
@@ -69,7 +70,7 @@ def _profile_read(root):
             SharedRegtestProfile.from_record(value.get('shared_profile'))
         if (type(value) is not dict or set(value) != fields
                 or value['schema'] != (SHARED_SCHEMA if shared else PROFILE_SCHEMA)
-                or value['version'] != 'v0.1.13' or value['network'] != 'regtest'
+                or value['version'] != core_compat.CORE_RELEASE or value['network'] != 'regtest'
                 or value['genesis'] != REGTEST_GENESIS
                 or value['mainnet_allowed'] is not False
                 or type(value['control_port']) is not int
@@ -159,7 +160,7 @@ class CoreSupervisor:
                         write_config(self.directory, shared_profile)
                 config, _ = private_bytes(self.directory, 'wam.conf', 4096)
                 create_once(root, 'supervisor.token', secrets.token_bytes(32))
-                profile = dict(schema=PROFILE_SCHEMA, version='v0.1.13',
+                profile = dict(schema=PROFILE_SCHEMA, version=core_compat.CORE_RELEASE,
                     network='regtest', genesis=REGTEST_GENESIS,
                     core_sha256=self.receipt['wamd_sha256'],
                     cli_sha256=self.receipt['wam_cli_sha256'],

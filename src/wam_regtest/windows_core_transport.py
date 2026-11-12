@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from . import windows_private_storage as store
 from .windows_release_preflight import ARCHIVE_SHA256, BINARY_SHA256
+from .infrastructure import core_compat
 
 
 class WindowsCoreTransportError(ValueError):
@@ -72,7 +73,7 @@ def verified_core_paths(directory):
         receipt=json.loads(read_private(directory,'receipt.json'))
         from .release import FINGERPRINT
         from .official_core_v013 import SUMS_SHA256
-        if (receipt.get('release')!='v0.1.13'
+        if (receipt.get('release')!=core_compat.CORE_RELEASE
                 or receipt.get('publisher_fingerprint')!=FINGERPRINT
                 or receipt.get('signed_sums_sha256')!=SUMS_SHA256
                 or receipt['platform']!='windows-x64' or receipt['signed_archive_verified'] is not True

@@ -12,6 +12,7 @@ import secrets
 import socket
 import stat
 import sys
+from .infrastructure import core_compat
 
 MAGIC = bytes.fromhex('57414d52')
 P2P_PORT = 29555
@@ -139,10 +140,10 @@ def validate_peers(rows, profile, *, require_connected=False):
         if (host != profile.peer_host or not 1 <= port <= 65535
                 or type(row.get('inbound')) is not bool
                 or not row['inbound'] and port != profile.peer_port
-                or type(row.get('version')) is not int or row.get('version') not in (0,70016)
-                or row.get('subver') not in ('','/WAM:0.1.13/')):
+                or type(row.get('version')) is not int or row.get('version') not in (0,core_compat.PROTOCOL_VERSION)
+                or row.get('subver') not in ('',core_compat.RPC_SUBVERSION)):
             raise SharedRegtestError('SHARED_UNEXPECTED_PEER_DENIED')
-    ready = [r for r in rows if r.get('version') == 70016 and r.get('subver') == '/WAM:0.1.13/']
+    ready = [r for r in rows if r.get('version') == core_compat.PROTOCOL_VERSION and r.get('subver') == core_compat.RPC_SUBVERSION]
     if require_connected and not ready:
         raise SharedRegtestError('SHARED_CONFIRMED_PEER_REQUIRED')
     return {'connected': bool(ready), 'peer_count':len(ready),

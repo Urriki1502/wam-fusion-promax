@@ -23,13 +23,14 @@ from .core_process import OwnedCoreBinding, CoreBindingError
 from .rpc_credentials import CredentialSource, CredentialError, private_bytes
 from .telemetry import increment
 from .wsp_live import REGTEST_GENESIS
+from .infrastructure import core_compat
 
 
 MAX_REPLY = 1024 * 1024
 MAX_BLOCK_REPLY = 32 * 1024 * 1024
 MAX_IDLE_REUSE_SECONDS = 5
 MAX_TRUST_CACHE_SECONDS = 5
-SUPPORTED_RPC = (113, '/WAM:0.1.13/', 70016)
+SUPPORTED_RPC = core_compat.SUPPORTED_RPC
 
 _HTTP_READS = frozenset((
     'getblockchaininfo', 'getblockcount', 'getbestblockhash', 'getblockhash',

@@ -15,6 +15,7 @@ from .wallet_read import WalletReadSnapshot, format_wam
 from .branding import brand_image
 from .fusion_motion import motion_reduced, slide_geometry, fade_widget, CHART_MS, StatusGlyph
 from .fusion_status import classify
+from .infrastructure import core_compat
 
 SPACING = (4, 8, 12, 16, 24, 32)
 TYPE = {'display': 48, 'heading': 26, 'section': 17, 'body': 14, 'caption': 12}
@@ -1237,7 +1238,7 @@ class FusionOverview(QScrollArea):
             'Confirmed balance, custody and chain height come from this verified snapshot.'
             if not faulted else 'Original reservations are preserved. Do not retry uncertain payments.')
         self.wallet_profile.setText('Operational REGTEST wallet' if operational else 'Read-only REGTEST wallet')
-        self.environment_core.setText('WAM Core v0.1.13  ·  SHA-256 ' + snap.core_sha256[:12] + '…')
+        self.environment_core.setText(core_compat.DISPLAY_NAME + '  ·  SHA-256 ' + snap.core_sha256[:12] + '…')
         self.environment_core.setToolTip('Core SHA-256: ' + snap.core_sha256)
         rows = snap.history[:4]
         self._txids = [r.txid for r in rows]

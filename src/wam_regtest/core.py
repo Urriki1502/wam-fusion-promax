@@ -19,6 +19,7 @@ from .release import ARCHIVES, CLI_SHA256, FINGERPRINT, VERSION, _sha
 from .official_core_v013 import ARCHIVES as SIGNED_ARCHIVES
 from .custody import private_temporary_directory
 from .telemetry import increment
+from .infrastructure import core_compat
 
 
 class CoreSmokeError(RuntimeError):
@@ -274,8 +275,8 @@ def smoke_real_core(core_dir: Path, *, explicit_consent: bool, timeout: int = 12
             genesis=_read_cli(prefix + ['getblockhash','0'])
             if genesis!=REGTEST_GENESIS:raise CoreSmokeError('CORE_WRONG_GENESIS_DENIED')
             version=_read_cli(prefix + ['getnetworkinfo'])
-            if (type(version) is not dict or type(version.get('version')) is not int or version.get('version')!=113
-                    or version.get('subversion')!='/WAM:0.1.13/' or type(version.get('protocolversion')) is not int or version.get('protocolversion')!=70016):
+            if (type(version) is not dict or type(version.get('version')) is not int or version.get('version')!=core_compat.RPC_VERSION
+                    or version.get('subversion')!=core_compat.RPC_SUBVERSION or type(version.get('protocolversion')) is not int or version.get('protocolversion')!=core_compat.PROTOCOL_VERSION):
                 raise CoreSmokeError('CORE_RPC_VERSION_DENIED')
             if _read_cli(prefix + ["getconnectioncount"]) != 0:
                 raise CoreSmokeError("CORE_EXTERNAL_PEERS_DENIED")
