@@ -35,6 +35,7 @@ FOCUS_SELECTORS = (
     'QTableWidget' + _KF,
     'QTableWidget#FusionActivityTable' + _KF,
     'QToolButton#FusionSegment' + _KF,
+    'QFrame#FusionSegmented' + _KF,
     'QTableWidget' + _KF + '::item:focus',
 )
 

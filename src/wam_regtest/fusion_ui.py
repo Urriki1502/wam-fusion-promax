@@ -234,6 +234,7 @@ def fusion_stylesheet(mode):
     QFrame#FusionInset {{background:{c['panel']};border:1px solid {c['border']};border-radius:{r['inset']}px;}}
     QFrame#FusionHero {{background:transparent;}}
     QFrame#FusionSegmented {{background:{c['segment']};border:1px solid {c['border']};border-radius:{r['control']}px;}}
+    QFrame#FusionSegmented{kf} {{border:{ring}px solid {c['focus']};}}
     QToolButton#FusionSegment {{background:transparent;color:{c['muted']};border:0;border-radius:{r['segment']}px;padding:{s['sm']}px {s['md']}px;font-weight:{w['semibold']};}}
     QToolButton#FusionSegment:checked {{background:transparent;color:{c['onaccent']};}}
     QToolButton#FusionSegment:hover:!checked {{color:{c['text']};}}
