@@ -157,10 +157,10 @@ class CatalogTests(unittest.TestCase):
         for key, english in CATALOG['en'].items():
             self.assertEqual(text(key, 'de'), english)
             self.assertEqual(text(key), english)
-            for language in ('vi', 'ja', 'zh-Hans'):
+            for language in ('vi', 'ja', 'zh-Hans', 'ko', 'id'):
                 self.assertEqual(text(key, language), CATALOG[language][key])
         self.assertEqual(text('missing.key', 'vi'), 'missing.key')
-        for language in ('en', 'vi', 'ja', 'zh-Hans'):
+        for language in ('en', 'zh-Hans', 'vi', 'ko', 'id', 'ja'):
             with patch.object(bip39_locale, '_lang', return_value=language):
                 for key in CATALOG['en']:
                     self.assertEqual(bip39_locale.t(key), text(key, language))
@@ -180,6 +180,7 @@ class CatalogTests(unittest.TestCase):
                                    ('ja_JP', 'ja'), ('zh_CN', 'zh-Hans'), ('zh_Hans_CN', 'zh-Hans'),
                                    ('zh_SG', 'zh-Hans'), ('zh', 'zh-Hans'), ('zh_TW', 'en'),
                                    ('zh_HK', 'en'), ('zh_MO', 'en'), ('zh_Hant', 'en'),
+                                   ('ko_KR', 'ko'), ('ko', 'ko'), ('id_ID', 'id'), ('in_ID', 'id'),
                                    ('C', 'en'), ('fr_FR', 'en')):
                 with patch.object(bip39_locale, 'ui_settings', return_value=settings), \
                         patch.object(bip39_locale.QLocale, 'system',
@@ -228,6 +229,8 @@ class CatalogTests(unittest.TestCase):
             'wam_regtest.presentation.locales.vi',
             'wam_regtest.presentation.locales.ja',
             'wam_regtest.presentation.locales.zh_hans',
+            'wam_regtest.presentation.locales.ko',
+            'wam_regtest.presentation.locales.id',
         }
         for path in directory.rglob('*.py'):
             rel = path.relative_to(directory).as_posix()

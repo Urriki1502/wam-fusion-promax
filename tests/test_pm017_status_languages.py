@@ -126,10 +126,12 @@ class StatusCatalogTests(unittest.TestCase):
             'vi': 'Không thử lại các khoản thanh toán chưa rõ kết quả.',
             'ja': '結果が不確実な支払いを再試行しないでください。',
             'zh-Hans': '请勿重试结果不确定的付款。',
+            'ko': '불확실한 결제를 다시 시도하지 마십시오.',
+            'id': 'Jangan mencoba ulang pembayaran yang hasilnya tidak pasti.',
         }.items():
             warning = text('status.reservations_preserved', language)
             self.assertIn(prohibition, warning)
-            for automatic in ('auto', 'tự động', '自動', '自动'):
+            for automatic in ('auto', 'tự động', '自動', '自动', '자동', 'otomatis'):
                 self.assertNotIn(automatic, warning)
 
 

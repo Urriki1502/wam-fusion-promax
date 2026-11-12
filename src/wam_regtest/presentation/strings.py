@@ -5,18 +5,22 @@ unchanged. Callers format named placeholders. Seed words, addresses, TXIDs,
 hashes, amounts and public error codes are not translated here.
 """
 from wam_regtest.presentation.locales.en import EN
+from wam_regtest.presentation.locales.id import ID
 from wam_regtest.presentation.locales.ja import JA
+from wam_regtest.presentation.locales.ko import KO
 from wam_regtest.presentation.locales.vi import VI
 from wam_regtest.presentation.locales.zh_hans import ZH_HANS
 
-SUPPORTED_LANGUAGES = ('en', 'vi', 'ja', 'zh-Hans')
+SUPPORTED_LANGUAGES = ('en', 'zh-Hans', 'vi', 'ko', 'id', 'ja')
 SYSTEM_LANGUAGE = 'system'
 
 CATALOG = {
     'en': EN,
-    'vi': VI,
-    'ja': JA,
     'zh-Hans': ZH_HANS,
+    'vi': VI,
+    'ko': KO,
+    'id': ID,
+    'ja': JA,
 }
 
 
@@ -28,7 +32,10 @@ def resolve_language(choice, system_name=''):
 
     Simplified Chinese is selected for ``zh``, ``zh-Hans``, ``zh-CN``,
     ``zh-SG``, and any ``zh_Hans*`` name. Traditional and other Chinese
-    locales fall back to English.
+    locales fall back to English. A system name starting with ``ko`` selects
+    Korean. A system name starting with ``id``, or with the legacy Indonesian
+    code ``in`` (for example ``in_ID``), selects Indonesian. An explicit
+    supported choice wins over the system name. Anything else is English.
     """
     if choice in SUPPORTED_LANGUAGES:
         return choice
@@ -37,6 +44,10 @@ def resolve_language(choice, system_name=''):
         return 'vi'
     if name.startswith('ja'):
         return 'ja'
+    if name.startswith('ko'):
+        return 'ko'
+    if name.startswith('id') or name.startswith('in'):
+        return 'id'
     if name in _SIMPLIFIED_CHINESE or name.startswith('zh_hans'):
         return 'zh-Hans'
     return 'en'

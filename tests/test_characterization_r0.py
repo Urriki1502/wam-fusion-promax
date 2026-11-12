@@ -77,6 +77,7 @@ RUNTIME_SNAPSHOT = frozenset({
     'ui_settings',
     'presentation.locales', 'presentation.locales.en', 'presentation.locales.vi',
     'presentation.locales.ja', 'presentation.locales.zh_hans',
+    'presentation.locales.ko', 'presentation.locales.id',
     'infrastructure', 'infrastructure.core_compat',
     'windows_checkpoint_anchor', 'windows_core_files', 'windows_core_transport',
     'windows_private_storage', 'windows_release_preflight', 'wsp_import',

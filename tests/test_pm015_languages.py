@@ -1,5 +1,6 @@
 """PM-015 language catalogs, persisted choice, and rebuilt Fusion windows."""
 import ast
+import json
 import os
 import re
 import tempfile
@@ -29,7 +30,7 @@ def _placeholders(value):
 class LanguageCatalogTests(unittest.TestCase):
     def test_every_language_has_exactly_the_english_keys(self):
         english = set(CATALOG['en'])
-        self.assertEqual(set(CATALOG), {'en', 'vi', 'ja', 'zh-Hans'})
+        self.assertEqual(set(CATALOG), {'en', 'zh-Hans', 'vi', 'ko', 'id', 'ja'})
         for language, entries in CATALOG.items():
             self.assertEqual(set(entries), english, language)
             self.assertEqual(len(entries), len(english), language)
@@ -51,7 +52,7 @@ class LanguageCatalogTests(unittest.TestCase):
     def test_locale_modules_import_nothing(self):
         directory = ROOT / 'src/wam_regtest/presentation/locales'
         modules = sorted(path.name for path in directory.glob('*.py'))
-        self.assertEqual(modules, ['__init__.py', 'en.py', 'ja.py', 'vi.py', 'zh_hans.py'])
+        self.assertEqual(modules, ['__init__.py', 'en.py', 'id.py', 'ja.py', 'ko.py', 'vi.py', 'zh_hans.py'])
         for name in modules:
             tree = ast.parse((directory / name).read_text())
             self.assertFalse(any(isinstance(node, (ast.Import, ast.ImportFrom)) for node in ast.walk(tree)), name)
@@ -61,7 +62,16 @@ class LanguageCatalogTests(unittest.TestCase):
         self.assertEqual(resolve_language('en', 'ja_JP'), 'en')
         self.assertEqual(resolve_language('zh-Hans', 'en_US'), 'zh-Hans')
         self.assertEqual(resolve_language('vi', 'zh_CN'), 'vi')
+        self.assertEqual(resolve_language('ko', 'id_ID'), 'ko')
+        self.assertEqual(resolve_language('id', 'ko_KR'), 'id')
+        self.assertEqual(resolve_language('en', 'ko_KR'), 'en')
         self.assertEqual(resolve_language('system', 'ja_JP'), 'ja')
+        self.assertEqual(resolve_language('system', 'ko_KR'), 'ko')
+        self.assertEqual(resolve_language('system', 'ko'), 'ko')
+        for name in ('id', 'id_ID', 'id-ID', 'ID_id', 'in', 'in_ID', 'in-ID', 'IN_id'):
+            self.assertEqual(resolve_language('system', name), 'id', name)
+        self.assertEqual(resolve_language('nope', 'ko_KR'), 'ko')
+        self.assertEqual(resolve_language('nope', 'in_ID'), 'id')
         for name in ('zh', 'zh_Hans', 'zh-Hans', 'zh_CN', 'zh-CN', 'zh_SG',
                      'zh-SG', 'zh_Hans_CN', 'zh-Hans-SG'):
             self.assertEqual(resolve_language('system', name), 'zh-Hans', name)
@@ -74,7 +84,38 @@ class LanguageCatalogTests(unittest.TestCase):
         self.assertEqual(resolve_language(None, ''), 'en')
         self.assertEqual(resolve_language('nope', 'ja_JP'), 'ja')
         self.assertEqual(text('fusion.overview', 'ja'), '概要')
+        self.assertEqual(text('fusion.overview', 'ko'), '개요')
+        self.assertEqual(text('fusion.overview', 'id'), 'Ringkasan')
         self.assertEqual(text('fusion.overview', 'de'), 'Overview')
+
+    def test_korean_block_confirm_stays_distinct_from_payment_approval(self):
+        block = CATALOG['ko']['owner.confirm_block']
+        title = CATALOG['ko']['owner.confirm_title']
+        self.assertEqual(block, '1 REGTEST 블록을 확인')
+        self.assertIn('확인', block)
+        self.assertNotIn('승인', block)
+        self.assertIn('확인', title)
+        self.assertNotIn('승인', title)
+        self.assertEqual(CATALOG['ko']['pages.approve'], '승인')
+        self.assertNotIn('확인', CATALOG['ko']['pages.approve'])
+        self.assertIn('승인', CATALOG['ko']['pages.approve_signature'])
+        self.assertIn(block, CATALOG['ko']['owner.awaiting_confirmation'])
+
+    def test_security_review_manifest_exists_in_every_language(self):
+        manifest = json.loads((ROOT / 'tests/l10n_security_review_keys.json').read_text())
+        self.assertEqual(manifest['review_status'], 'pending native review')
+        self.assertEqual(
+            manifest['pending_native_review'],
+            ['vi', 'ja', 'zh-Hans', 'ko', 'id'])
+        self.assertIn('not a review receipt', manifest['note'].lower())
+        items = manifest['keys']
+        keys = [item['key'] for item in items]
+        self.assertEqual(len(keys), len(set(keys)))
+        self.assertGreaterEqual(len(keys), 100)
+        for item in items:
+            self.assertTrue(item['reason'].strip())
+            for language in ('en', 'zh-Hans', 'vi', 'ko', 'id', 'ja'):
+                self.assertIn(item['key'], CATALOG[language])
 
     def test_automatic_wording_is_not_by_oneself(self):
         for key, english in CATALOG['en'].items():
@@ -84,6 +125,8 @@ class LanguageCatalogTests(unittest.TestCase):
             self.assertIn('tự động', CATALOG['vi'][key].lower(), key)
             self.assertIn('自動', CATALOG['ja'][key], key)
             self.assertIn('自动', CATALOG['zh-Hans'][key], key)
+            self.assertIn('자동', CATALOG['ko'][key], key)
+            self.assertIn('otomatis', CATALOG['id'][key].lower(), key)
 
     def test_persisted_choice_round_trip_uses_an_isolated_file(self):
         from PySide6.QtCore import QSettings

@@ -213,7 +213,7 @@ class LegacyCatalogTests(unittest.TestCase):
                 self.assertEqual(PROTECTED.findall(value), expected_tokens, (language, key))
                 self.assertNotRegex(value, r'(?i)\b[0-9a-f]{64}\b', (language, key))
                 self.assertNotRegex(value, r'(?i)\b(?:wamrtsp|bc1)[a-z0-9]{12,}', (language, key))
-        self.assertEqual(set(CATALOG), {'en', 'vi', 'ja', 'zh-Hans'})
+        self.assertEqual(set(CATALOG), {'en', 'zh-Hans', 'vi', 'ko', 'id', 'ja'})
         for language, entries in CATALOG.items():
             self.assertEqual(set(entries), set(CATALOG['en']), language)
 
@@ -237,11 +237,15 @@ class LegacyCatalogTests(unittest.TestCase):
                 'vi': 'Không bao giờ thử lại trong im lặng.',
                 'ja': '通知なしに再試行されることは決してありません。',
                 'zh-Hans': '切勿静默重试。',
+                'ko': '조용히 다시 시도하지 않습니다.',
+                'id': 'Tidak pernah mencoba ulang secara diam-diam.',
             },
             'operational.linux_experimental': {
                 'vi': ('Không có thao tác sản xuất.', 'Không có thao tác với tiền thật.'),
                 'ja': ('本番の操作はありません。', '実資金の操作はありません。'),
                 'zh-Hans': ('没有生产操作。', '没有真实资金操作。'),
+                'ko': ('프로덕션 작업은 없습니다.', '실제 자금 작업은 없습니다.'),
+                'id': ('Tidak ada operasi produksi.', 'Tidak ada operasi dana nyata.'),
             },
             'operational.reauth_body': {
                 'vi': ('Không được nhận nút bên ngoài.', 'Không thử lại giao dịch.',
@@ -250,12 +254,18 @@ class LegacyCatalogTests(unittest.TestCase):
                        'ウォレットの置き換えは許可されません。', '保管のリセットは許可されません。'),
                 'zh-Hans': ('不允许采纳外部节点。', '不允许重试交易。',
                             '不允许更换钱包。', '不允许重置托管。'),
+                'ko': ('외부 노드를 채택하지 않습니다.', '거래를 다시 시도하지 않습니다.',
+                       '지갑을 교체하지 않습니다.', '보관을 초기화하지 않습니다.'),
+                'id': ('Tidak mengadopsi node eksternal.', 'Tidak mencoba ulang transaksi.',
+                       'Tidak mengganti dompet.', 'Tidak mengatur ulang kustodi.'),
             },
             'operational.network_verified': {
                 'vi': ('Không có tuyến từ xa.', 'Không có proxy.', 'Không có dự phòng clearnet.'),
                 'ja': ('リモート経路はありません。', 'プロキシはありません。',
                        'clearnet のフォールバックはありません。'),
                 'zh-Hans': ('没有远程路由。', '没有代理。', '没有 clearnet 回退。'),
+                'ko': ('원격 경로는 없습니다.', '프록시는 없습니다.', 'clearnet 대체 경로는 없습니다.'),
+                'id': ('Tidak ada rute jarak jauh.', 'Tidak ada proksi.', 'Tidak ada fallback clearnet.'),
             },
         }
         for key, languages in expectations.items():

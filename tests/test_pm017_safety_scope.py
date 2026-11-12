@@ -10,6 +10,8 @@ class SafetyScopeTests(unittest.TestCase):
         clauses = {
             'vi': ('Không bao giờ giải phóng khóa.', 'Đừng giải phóng khóa.'),
             'zh-Hans': ('绝不解除锁定。', '请不要释放锁定。'),
+            'ko': ('잠금을 해제하지 않습니다.', '잠금을 해제하지 마십시오.'),
+            'id': ('Jangan pernah melepas kunci.', 'Jangan melepas kunci.'),
         }
         for language, (reservation, signing) in clauses.items():
             self.assertIn(reservation, CATALOG[language]['owner.reservations_warning'])
@@ -22,6 +24,11 @@ class SafetyScopeTests(unittest.TestCase):
             'vi': ('Không bao giờ ký lại.', 'Không bao giờ tự động thử lại.',
                    'Không bao giờ giải phóng các khoản giữ chỗ.'),
             'zh-Hans': ('绝不重新签名。', '绝不自动重试。', '绝不解除预留。'),
+            'ko': ('다시 서명하지 않습니다.', '자동으로 다시 시도하지 않습니다.',
+                   '잠금을 해제하지 않습니다.'),
+            'id': ('Tidak pernah menandatangani ulang.',
+                   'Tidak pernah mencoba ulang secara otomatis.',
+                   'Tidak pernah melepas kunci.'),
         }.items():
             value = CATALOG[language]['owner.resume_tooltip']
             for clause in clauses:
@@ -32,6 +39,8 @@ class SafetyScopeTests(unittest.TestCase):
             'vi': 'Không được nhận nút bên ngoài.',
             'ja': '外部ノードの採用は許可されません。',
             'zh-Hans': '不允许采纳外部节点。',
+            'ko': '외부 노드 채택은 허용되지 않습니다.',
+            'id': 'Mengadopsi node eksternal tidak diizinkan.',
         }.items():
             self.assertIn(clause, CATALOG[language]['errors.WALLET_CORE_REAUTHENTICATION_REQUIRED'])
 

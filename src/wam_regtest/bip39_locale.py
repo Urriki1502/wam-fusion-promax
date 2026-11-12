@@ -2,8 +2,9 @@
 
 An explicit ui_language value in the UI preference store wins, including
 'system'. When the key is missing, the native production store follows the
-Qt locale and every other process uses English. vi and ja prefixes select
-those catalogs. Simplified Chinese is selected only for zh, zh-Hans, zh-CN,
+Qt locale and every other process uses English. vi, ja, and ko prefixes
+select those catalogs. id and the legacy Indonesian in prefix select
+Indonesian. Simplified Chinese is selected only for zh, zh-Hans, zh-CN,
 zh-SG, and zh_Hans* names; Traditional and other Chinese locales use English.
 This does not select the BIP39 wordlist language.
 """

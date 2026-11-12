@@ -1,0 +1,1365 @@
+{
+  "review_status": "pending native review",
+  "pending_native_review": [
+    "vi",
+    "ja",
+    "zh-Hans",
+    "ko",
+    "id"
+  ],
+  "note": "Machine-assisted translations. Not verified by a native speaker. This list is the native-speaker review queue, not a review receipt.",
+  "keys": [
+    {
+      "key": "backup_subtitle",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "backup_warning",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "verify_title",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "verify_subtitle",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "verify_error",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "verify_unavailable",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "success_title",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "success_subtitle",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "locked_title",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "locked_subtitle",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "close_to_lock",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "recovery_verify_kicker",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "recovery_verify_title",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "recovery_verify_subtitle",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "recovery_readonly_notice",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "recovery_invalid",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "backup_flow_kicker",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "confirm_title",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "confirm_subtitle",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "verify_backup",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "leave_backup_title",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "leave_backup_message",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "leave_backup_confirm",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "welcome.shared_tooltip",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "welcome.experience",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "welcome.regtest_preview_no_real_funds",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "welcome.create_detail",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "welcome.open_detail",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "welcome.restore_detail",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "welcome.legacy_notice",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "fusion.credit_debit_activity",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "fusion.confirmed_wallet_balance_history",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "fusion.send_disabled",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "fusion.pinned_binary_identity",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "fusion.native_custody_state",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "fusion.no_activity_yet",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "fusion.verified_sources_only",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "fusion.core_identity_pending",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "fusion.locked",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "fusion.wallet_lock_unlock_switch",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "fusion.confirmed_count_block",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "fusion.block_credit_debit",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "fusion.no_chart_activity",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "fusion.verified_block_amount",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "fusion.amount_at_block",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "fusion.confirmed_balance",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "fusion.unlock_to_show_values",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "fusion.utxo_summary",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "fusion.no_real_funds",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "fusion.snapshot_sources",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "fusion.keep_reservations",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "pages.broadcast_uncertain",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "pages.no_retry_until_confirmed",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "pages.search_confirmed_transactions",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "pages.newer_confirmed_history",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "pages.older_confirmed_history",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "pages.history_empty",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "pages.select_row",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "pages.block_amounts",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "pages.original_wallet_password",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "pages.confirmed_on_this_regtest_chain",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "pages.no_retry_reserved",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "pages.no_retry_or_release",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "pages.submitted_pending",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "pages.peers_after_check",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "pages.shared_identity_scope",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "pages.manual_peer_controls",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "pages.v1_net_commands",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "pages.isolated_zero_peer",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "pages.address_unavailable",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "pages.silent_payments_note",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "pages.disposable_funds",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "pages.address_locked",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "pages.confirmed",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "pages.no_matching_confirmed_transactions",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "pages.no_verified_transactions",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "pages.approve_signature",
+      "reason": "Payment approval. Keep this distinct from block confirmation."
+    },
+    {
+      "key": "pages.broadcast",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "pages.approve_broadcast",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "pages.explicit_transaction_approval",
+      "reason": "Payment approval. Keep this distinct from block confirmation."
+    },
+    {
+      "key": "pages.approve_sign",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "pages.approve_broadcast_2",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "pages.mempool_pending",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "pages.txid_uncertain",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "pages.manual_peer",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "pages.receive_count",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "pages.record_count",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "pages.history_fingerprinted",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "pages.unlock",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "pages.approve",
+      "reason": "Payment approval. Keep this distinct from block confirmation."
+    },
+    {
+      "key": "pages.sign_irreversible",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "pages.broadcast_reply_uncertain",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "pages.peer_count",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "pages.zero_peer_isolated_profile",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "errors.WALLET_NATIVE_CHECKPOINT_VERIFICATION_REQUIRED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.Q06_SHARED_RECONCILIATION_DENIED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.Q06_RECONCILIATION_NOT_NEEDED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.SHARED_CONFIRMED_PEER_REQUIRED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.SHARED_SINGLE_COORDINATOR_REQUIRED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_EXECUTOR_OPERATION_STILL_PENDING",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_EXECUTOR_BUSY_OR_CLOSED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_MANAGED_RUNTIME_PRESERVED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_MANAGED_OPEN_DENIED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_CORE_REAUTHENTICATION_REQUIRED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_CORE_AUTHENTICATION_DENIED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_CORE_IDENTITY_DENIED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_CORE_UNAVAILABLE",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_CORE_UNVERIFIED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_INPUT_AMOUNT_INVALID",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_INPUT_FEE_INVALID",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_INPUT_RECIPIENT_INVALID",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_INPUT_FUNDS_UNAVAILABLE",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_STALE_SESSION_DENIED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_REVIEW_CHAIN_CHANGED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_REVIEW_UTXO_CHANGED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_PAYMENT_ALREADY_PENDING",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_SIGN_UNCERTAIN_LOCK_RETAINED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_BROADCAST_UNCERTAIN_LOCK_RETAINED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_BROADCAST_REJECTED_LOCK_RETAINED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_BROADCAST_NOT_SUBMITTED_LOCK_RETAINED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_LOCK_CLEANUP_UNCERTAIN",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_ROOT_LEASE_UNCERTAIN_LOCK_RETAINED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_BACKUP_STALE_OR_TAMPERED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_UNLOCK_REFUSED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_RECOVERY_REFUSED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_BACKUP_DIRECTORY_DENIED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_LOCKED_OR_FAULTED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_SYNC_UNVERIFIED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "errors.WALLET_OPERATION_DENIED_STATE_RETAINED",
+      "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
+      "key": "owner.recovery_word",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "owner.trial_notice",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "owner.receive_locked",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "owner.last_txid",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.no_session_broadcast",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.account_locked",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "owner.broadcast_signed",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.confirm_block",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "owner.verify_recovery",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "owner.review_signed",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.submit_signed",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.lock_q06",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "owner.unlock",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "owner.resume_tooltip",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.cancel_tooltip",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.operation_pending",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "owner.password_prompt",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "owner.verifying_profile",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "owner.fund_title",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "owner.fund_consent",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.funding",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "owner.activation_title",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.activation_consent",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "owner.broadcast_title",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.broadcast_consent",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.confirm_title",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "owner.confirm_consent",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.resume_title",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.resume_consent",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.inspect_prompt",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.backup_state_unavailable",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "owner.seed_opened",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "owner.checkpoint_retained",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "owner.receive_confirmed",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "owner.balance_verified",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "owner.no_history",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "owner.draft_retained",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.awaiting_confirmation",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.reservations_warning",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.approval_title",
+      "reason": "Payment approval. Keep this distinct from block confirmation."
+    },
+    {
+      "key": "owner.approval_details",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.approval_received",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.commitment_mismatch",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.signed_ready",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.broadcast_submitted",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.confirmation_mismatch",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "owner.confirmed",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "owner.recovery_result",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "owner.txid_confirmed",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "owner.txid_pending",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "owner.txid_unknown",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "owner.intent_summary",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.intent_resumable",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.intent_protected",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "owner.resumed",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "owner.locked_status",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "owner.seed_unlocked",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "owner.unlock_backup_refused",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "owner.backup_unacknowledged",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "owner.new_password",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "owner.password_warning_title",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "owner.password_length",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "owner.confirm_password_title",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "owner.confirm_password_prompt",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "owner.restore_prompt",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "wallet.sidebar_notice",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "wallet.send_subtitle",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "wallet.prepare_subtitle",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "wallet.review_title",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "wallet.review_subtitle",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "wallet.no_broadcast_result",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "wallet.no_automatic_retry",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "wallet.security_subtitle",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "wallet.security_kicker",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "wallet.protection_subtitle",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "wallet.awaiting_wallet",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "wallet.lock",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "wallet.unlock_tooltip",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "wallet.seed_support_warning",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "wallet.recovery_title",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "wallet.reservations_retained",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "wallet.backup_status",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "wallet.recovery_support_warning",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "wallet.review_backup",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "wallet.about_body",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "wallet.preview_notice",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "wallet.verify_peer_chain",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "wallet.test_chain_warning",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "wallet.last_broadcast_kicker",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "wallet.backup_title",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "wallet.backup_explanation",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "wallet.verify_words",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "wallet.peer_suffix",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "wallet.lock_tooltip",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "wallet.unlock_password_tooltip",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "wallet.security_locked",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "wallet.security_disconnected",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "wallet.security_verified",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "wallet.security_checkpoint",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "wallet.backup_heading",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "wallet.unlock_title",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "wallet.enable_consent",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "wallet.reconcile_consent",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "wallet.confirm_title",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "wallet.confirm_consent",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "wallet.fund_title",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "wallet.fund_consent",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "wallet.backup_verify_unavailable",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "wallet.backup_defer_unavailable",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "wallet.reconciled",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "wallet.network_details",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "wallet.peer_disconnected",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "wallet.sign_approved",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "wallet.sign_declined",
+      "reason": "Payment approval. Keep this distinct from block confirmation."
+    },
+    {
+      "key": "wallet.peer_reconnect_warning",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "wallet.payment_retained",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "backup.verify_step_tooltip",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "status.header_snapshot_state",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "status.identity_after_snapshot",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "status.zero_peer",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "status.reservations_preserved",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "status.identity_pinned",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "status.pinned_process_unconfirmed",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "status.checking_identity",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "status.locked",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "status.password_required",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "status.peer_check",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "status.peers_unconfirmed",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "status.awaiting_peer_check",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "status.peer_state_after_check",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "status.pinned_disconnected",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "status.pinned_snapshot",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "status.peers_disconnected",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "status.peers_verified",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "managed.warning",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "managed.core_restarted",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "managed.recovery_completed",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "managed.locking",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "managed.restart_body",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "managed.recovery_complete_prompt",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "managed.recovery_fresh_prompt",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "managed.recovery_title",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "managed.authenticate_checkpoint",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "managed.passphrase_prompt",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "managed.passphrase_warning_title",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "managed.passphrase_warning",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "desktop.demo_warning",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "desktop.verified_disposable",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "operational.window_title",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "operational.warning",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "operational.send_subtitle",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "operational.payment_details_subtitle",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "operational.review_panel",
+      "reason": "Payment approval. Keep this distinct from block confirmation."
+    },
+    {
+      "key": "operational.approve_sign",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "operational.broadcast",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "operational.signing_warning",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "operational.security_subtitle",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "operational.security_kicker",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "operational.lock_wallet",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "operational.unlock",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "operational.checkpoint_anchor",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "operational.anchor_guard",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.encrypted_backup",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.save_backup",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.backup_contents",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.verified_recovery",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.verified_recovery_subtitle",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "operational.recover_backup",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.recovery_generations",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "operational.disclosure_panel_subtitle",
+      "reason": "Payment approval. Keep this distinct from block confirmation."
+    },
+    {
+      "key": "operational.disclosure_accessible",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "operational.linux_core_subtitle",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "operational.core_subtitle",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "operational.no_core_identity",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "operational.network_policy_subtitle",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "operational.mine_notice",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "operational.signing_payment",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "operational.submitting",
+      "reason": "Payment approval. Keep this distinct from block confirmation."
+    },
+    {
+      "key": "operational.locking",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "operational.verifying_passphrase",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.saving_backup",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.verifying_recovery",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.heading_signed",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "operational.heading_review",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "operational.submitted_review",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "operational.network_verified",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "operational.locked_anchored",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
+    },
+    {
+      "key": "operational.backup_saved",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.broadcast_submitted",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "operational.signed_retained",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "operational.review_ready_status",
+      "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
+    },
+    {
+      "key": "operational.operation_completed",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "operational.confirmed_tx",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "operational.submitted_pending",
+      "reason": "Block or balance confirmation. Do not translate this as payment approval."
+    },
+    {
+      "key": "operational.core_identity_unverified",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "operational.locked_payment_hidden",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.disclosure_title",
+      "reason": "Payment approval. Keep this distinct from block confirmation."
+    },
+    {
+      "key": "operational.disclosure_passphrase",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.disposable_title",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "operational.unlock_prompt",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.reauth_body",
+      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+    },
+    {
+      "key": "operational.backup_parent",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.backup_file",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.backup_passphrase",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.fresh_chain",
+      "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
+    },
+    {
+      "key": "operational.recover_choice",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.backup_passphrase_prompt",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.passphrase_length_title",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "operational.passphrase_length",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    }
+  ]
+}
