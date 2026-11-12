@@ -70,7 +70,8 @@ RUNTIME_SNAPSHOT = frozenset({
     'foundation', 'foundation.diagnostics',
     # PM-004: backup acknowledgement domain and owned-spend snapshot projection.
     'application', 'application.snapshot_projection',
-    'domain', 'domain.backup_ack', 'domain.errors', 'domain.payment_state',
+    'domain', 'domain.backup_ack', 'domain.errors', 'domain.payment_evidence',
+    'domain.payment_state',
     'presentation', 'presentation.action_state',
     'infrastructure', 'infrastructure.core_compat',
     'windows_checkpoint_anchor', 'windows_core_files', 'windows_core_transport',

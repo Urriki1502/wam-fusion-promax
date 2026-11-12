@@ -151,6 +151,8 @@ _DOMAIN_EXACT = frozenset({
     'linux_private_storage',
     'windows_private_storage',
     'bip39_seed_vault',
+    # payment_evidence seals through the existing custody module.
+    'custody',
 })
 
 
@@ -246,6 +248,31 @@ class DomainApplicationLayerRule(unittest.TestCase):
                 for alias in node.names:
                     self.assertFalse(alias.name.startswith(('wam_sp', 'PySide6', 'wam_regtest')))
         self.assertIn('payment_state.py', path.name)
+
+    def test_payment_evidence_imports_only_custody_and_wsp_keystore(self):
+        """PM-012. Exact modules: stdlib json/os/re, wam_regtest.custody, wam_sp.keystore, wam_sp.psbt."""
+        path = Path(__file__).resolve().parents[1] / 'src/wam_regtest/domain/payment_evidence.py'
+        tree = ast.parse(path.read_text())
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                self.assertEqual(node.level, 0, path.name)
+                module = node.module or ''
+                if module == 'wam_regtest':
+                    imported.update('wam_regtest.' + alias.name for alias in node.names)
+                else:
+                    imported.add(module)
+        self.assertEqual(imported, {
+            'json', 'os', 're',
+            'wam_regtest.custody',
+            'wam_sp.keystore',
+            'wam_sp.psbt',
+        })
+        for filename, name in self._modules('domain'):
+            if filename == 'payment_evidence.py':
+                self.assertTrue(_domain_import_allowed(name), name)
 
 
 class ExistingMarkersUnchanged(unittest.TestCase):

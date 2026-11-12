@@ -8,13 +8,13 @@ This module is not a release/owner-acceptance grant. Activation requires an
 explicit owned-Core caller and must be separately tested on frozen macOS.
 """
 import os
-import json
 from pathlib import Path
 import secrets
 import stat
 import sys
 
 from . import custody
+from .domain.payment_evidence import PaymentEvidenceStore
 from .foundation import diagnostics
 from .managed_wallet_checkpoint import _owned, _runtime
 from .managed_wallet_session import RuntimeGuard
@@ -96,6 +96,7 @@ class Q06OwnedSpendSession(WalletSession):
         self._q06_guard = guard
         self._q06_uncertain = False
         self._q06_pending_confirm = None
+        self._evidence = PaymentEvidenceStore(owner.directory, password, custody)
 
     @property
     def payment_review(self):
@@ -127,35 +128,38 @@ class Q06OwnedSpendSession(WalletSession):
             self._q06_uncertain = self.faulted = True
             raise WalletSessionError("Q06_SPEND_ANCHORED_SAVE_DENIED") from None
 
+    def _evidence_store(self):
+        """The composed store, with the password this call will seal under.
+
+        A fixture built with object.__new__ has no store until the first
+        evidence call. The password is copied at the call, not frozen at
+        open, because lock() clears self._password.
+        """
+        store = getattr(self, '_evidence', None)
+        if store is None:
+            store = PaymentEvidenceStore(self._q06_owner.directory, self._password, custody)
+            self._evidence = store
+        else:
+            store.password = self._password
+        return store
+
     def _retain_signed_payment(self, stage, *, signed=None, review=None, token=None, txid=None):
         """Create-only encrypted evidence; NEVER a replay/release authority.
 
         Native scanner reservations remain authoritative even if this
         supplemental evidence is absent. Existing vault formats are unchanged.
+        When to write, and the preserved-no-retry latch, stay here.
         """
-        from wam_sp.keystore import seal
-        from wam_sp.psbt import PSBT
         try:
             _owned(self._q06_owner)
             self._q06_guard.check()
             signed = self._signed if signed is None else signed
             review = self._review if review is None else review
             token = self._prepared.proposal.token if token is None else token
-            psbt = PSBT.decode(signed)
-            expected_txid = psbt.txid()
-            if txid is not None and txid != expected_txid:
-                raise ValueError
-            directory = self._q06_owner.directory / 'q06-payment-evidence'
-            if not directory.exists():
-                custody.create_directory(directory)
-            body = dict(version=1, owner_binding=_owner_binding(self._q06_owner),
-                        account_id=self.ring.public_metadata()['account_id'],
-                        commitment=review.commitment, token=token, stage=stage,
-                        recipient=review.code, atoms=review.atoms, fee=review.fee,
-                        signed_psbt=signed.hex(), txid=expected_txid)
-            encrypted = seal(json.dumps(body, sort_keys=True).encode(),
-                             self._password, b'recovery')
-            custody.storage().publish(directory, token+'-'+stage+'.enc', encrypted)
+            self._evidence_store().write(
+                stage, signed=signed, review=review, token=token, txid=txid,
+                owner_binding=lambda: _owner_binding(self._q06_owner),
+                account_id=lambda: self.ring.public_metadata()['account_id'])
         except Exception:
             self.faulted = self._q06_uncertain = True
             raise Q06SpendSessionError('Q06_PAYMENT_EVIDENCE_PRESERVED_NO_RETRY') from None
@@ -185,25 +189,10 @@ class Q06OwnedSpendSession(WalletSession):
     # on a security proof: the native checkpoint forbids losing these rows).
 
     def _read_payment_evidence(self, token, stage):
-        import re
-        from wam_sp.keystore import unseal
-        from wam_sp.psbt import PSBT
-        directory = self._q06_owner.directory / 'q06-payment-evidence'
-        name = token + '-' + stage + '.enc'
-        if not os.path.lexists(directory / name):
-            return None
-        body = json.loads(unseal(custody.storage().read(directory, name),
-                                 self._password, b'recovery'))
-        if (type(body) is not dict or body.get('version') != 1
-                or body.get('owner_binding') != _owner_binding(self._q06_owner)
-                or body.get('account_id') != self.ring.public_metadata()['account_id']
-                or body.get('token') != token or body.get('stage') != stage
-                or type(body.get('signed_psbt')) is not str
-                or type(body.get('commitment')) is not str
-                or re.fullmatch('[0-9a-f]{64}', body['commitment']) is None
-                or PSBT.decode(bytes.fromhex(body['signed_psbt'])).txid() != body.get('txid')):
-            raise ValueError('Q06_PAYMENT_EVIDENCE_INVALID')
-        return body
+        return self._evidence_store().read(
+            token, stage,
+            owner_binding=lambda: _owner_binding(self._q06_owner),
+            account_id=lambda: self.ring.public_metadata()['account_id'])
 
     def _intent_status_unlocked(self):
         import re
