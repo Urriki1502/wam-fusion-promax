@@ -85,5 +85,55 @@ class GalleryRenders(unittest.TestCase):
                 render_gallery(tmp, languages=('en',), sizes=((900, 630),), themes=((1, 'light'),))
 
 
+class DetectorAccuracy(unittest.TestCase):
+    """Codex PEER-079: each detector has a positive and a negative case."""
+
+    def setUp(self):
+        from PySide6.QtWidgets import QWidget
+        from wam_regtest.desktop import qt_application
+        self.app = qt_application()
+        self.root = QWidget()
+        self.root.resize(600, 400)
+        self.addCleanup(self.root.deleteLater)
+
+    def _kinds(self, widget, width, height):
+        from wam_regtest.qualification.ui_gallery import _inspect
+        widget.setParent(self.root)
+        widget.setGeometry(0, 0, width, height)
+        self.root.show()
+        widget.show()  # a child added after its parent was shown starts hidden
+        self.app.processEvents()
+        findings = []
+        _inspect(self.root, 'probe', findings)
+        widget.hide()
+        return [f['kind'] for f in findings]
+
+    def _table(self, columns):
+        from PySide6.QtWidgets import QTableWidget
+        table = QTableWidget(1, columns)
+        for column in range(columns):
+            table.setColumnWidth(column, 150)
+        return table
+
+    def test_table_horizontal_scroll_is_reported_once(self):
+        self.assertEqual(self._kinds(self._table(6), 300, 200), ['H_SCROLL'])
+        self.assertEqual(self._kinds(self._table(1), 400, 200), [])
+
+    def test_unwrapped_multiline_label_clipped_vertically(self):
+        from PySide6.QtWidgets import QLabel
+        self.assertIn('TEXT_CLIPPED_V', self._kinds(QLabel('one\ntwo\nthree'), 200, 15))
+        self.assertEqual(self._kinds(QLabel('one\ntwo\nthree'), 200, 120), [])
+
+    def test_rich_text_is_measured_as_rendered(self):
+        from PySide6.QtWidgets import QLabel
+        self.assertEqual(self._kinds(QLabel('<b>Hello</b>'), 90, 40), [])
+        self.assertIn('TEXT_CLIPPED_H', self._kinds(QLabel('<b>Hello wide world</b>'), 20, 40))
+
+    def test_button_preferred_width_is_not_clipping(self):
+        from PySide6.QtWidgets import QPushButton
+        self.assertEqual(self._kinds(QPushButton('OK'), 50, 30), [])
+        self.assertIn('BUTTON_CLIPPED', self._kinds(QPushButton('A much longer button label'), 40, 30))
+
+
 if __name__ == '__main__':
     unittest.main()

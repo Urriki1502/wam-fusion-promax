@@ -60,41 +60,106 @@ def _review():
                            fee=10_000, change_atoms=124_990_000, input_count=1)
 
 
-def _inspect(root, scene, findings):
-    """Automatic layout findings for every visible text widget under root."""
+def _renders_rich_text(widget):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import Qt as GuiQt
+    fmt = widget.textFormat()
+    if fmt == Qt.TextFormat.RichText:
+        return True
+    return fmt == Qt.TextFormat.AutoText and GuiQt.mightBeRichText(widget.text())
+
+
+def _label_text_size(widget, width):
+    """(width, height) the label's text needs; width=None means no wrapping."""
     from PySide6.QtCore import QRect, Qt
-    from PySide6.QtWidgets import QAbstractButton, QLabel, QScrollArea
-    for area in root.findChildren(QScrollArea):
-        if area.isVisible() and area.horizontalScrollBar().maximum() > 0:
-            findings.append(dict(scene=scene, kind='H_SCROLL', widget=area.objectName() or 'QScrollArea',
+    from PySide6.QtGui import QTextDocument
+    text = widget.text()
+    if _renders_rich_text(widget):
+        doc = QTextDocument()
+        doc.setDocumentMargin(0)
+        doc.setDefaultFont(widget.font())
+        doc.setHtml(text)
+        if width is not None:
+            doc.setTextWidth(max(1, width))
+            return int(doc.idealWidth() + 0.999), int(doc.size().height() + 0.999)
+        return int(doc.idealWidth() + 0.999), int(doc.size().height() + 0.999)
+    flags = int(Qt.TextFlag.TextWordWrap) if width is not None else 0
+    bounds = widget.fontMetrics().boundingRect(
+        QRect(0, 0, max(1, width if width is not None else 100000), 100000), flags, text)
+    return bounds.width(), bounds.height()
+
+
+def _button_needs(button):
+    """(needed, available) content width of a push button, check box or radio
+    button, from the style's own content rectangle; None for other buttons.
+    A preferred sizeHint wider than the button is not clipping by itself."""
+    from PySide6.QtWidgets import (QCheckBox, QPushButton, QRadioButton, QStyle,
+                                   QStyleOptionButton)
+    if isinstance(button, QPushButton):
+        element = QStyle.SubElement.SE_PushButtonContents
+    elif isinstance(button, QCheckBox):
+        element = QStyle.SubElement.SE_CheckBoxContents
+    elif isinstance(button, QRadioButton):
+        element = QStyle.SubElement.SE_RadioButtonContents
+    else:
+        return None
+    option = QStyleOptionButton()
+    button.initStyleOption(option)
+    content = button.style().subElementRect(element, option, button)
+    need = button.fontMetrics().horizontalAdvance(button.text().replace('&&', '\0').replace('&', '').replace('\0', '&'))
+    if not button.icon().isNull():
+        need += button.iconSize().width() + 4
+    return need, content.width()
+
+
+def _inspect(root, scene, findings):
+    """Automatic layout findings for every visible text widget under root.
+
+    Review input only. Findings: H_SCROLL (any scroll area, table or text
+    view that scrolls horizontally), TEXT_CLIPPED_V / TEXT_CLIPPED_H (label
+    text taller or wider than its box), TEXT_OVERFLOW_H (wrapped text with an
+    unbreakable run wider than its box), BUTTON_CLIPPED (button text and icon
+    wider than the style's content rectangle).
+    """
+    from PySide6.QtWidgets import QAbstractButton, QAbstractScrollArea, QHeaderView, QLabel
+    for area in root.findChildren(QAbstractScrollArea):
+        # Header views are scroll areas that mirror their table; the table
+        # itself is reported, so headers are skipped to avoid duplicates.
+        if isinstance(area, QHeaderView) or not area.isVisible():
+            continue
+        if area.horizontalScrollBar().maximum() > 0:
+            findings.append(dict(scene=scene, kind='H_SCROLL',
+                                 widget=area.objectName() or type(area).__name__,
                                  overflow=area.horizontalScrollBar().maximum()))
     for widget in root.findChildren(QLabel):
         text = widget.text()
         if not widget.isVisible() or not text or widget.pixmap() is not None and not widget.pixmap().isNull():
             continue
         rect = widget.contentsRect()
-        metrics = widget.fontMetrics()
+        name = widget.objectName()
         if widget.wordWrap():
-            bounds = metrics.boundingRect(QRect(0, 0, max(1, rect.width()), 100000),
-                                          int(Qt.TextFlag.TextWordWrap), text)
-            if bounds.height() > rect.height() + 1:
-                findings.append(dict(scene=scene, kind='TEXT_CLIPPED_V', widget=widget.objectName(),
-                                     text=text[:80], need=bounds.height(), have=rect.height()))
-            if bounds.width() > rect.width() + 1:
-                findings.append(dict(scene=scene, kind='TEXT_OVERFLOW_H', widget=widget.objectName(),
-                                     text=text[:80], need=bounds.width(), have=rect.width()))
+            need_w, need_h = _label_text_size(widget, rect.width())
+            if need_h > rect.height() + 1:
+                findings.append(dict(scene=scene, kind='TEXT_CLIPPED_V', widget=name,
+                                     text=text[:80], need=need_h, have=rect.height()))
+            if need_w > rect.width() + 1:
+                findings.append(dict(scene=scene, kind='TEXT_OVERFLOW_H', widget=name,
+                                     text=text[:80], need=need_w, have=rect.width()))
         else:
-            need = max((metrics.horizontalAdvance(line) for line in text.split('\n')), default=0)
-            if need > rect.width() + 1:
-                findings.append(dict(scene=scene, kind='TEXT_CLIPPED_H', widget=widget.objectName(),
-                                     text=text[:80], need=need, have=rect.width()))
+            need_w, need_h = _label_text_size(widget, None)
+            if need_w > rect.width() + 1:
+                findings.append(dict(scene=scene, kind='TEXT_CLIPPED_H', widget=name,
+                                     text=text[:80], need=need_w, have=rect.width()))
+            if need_h > rect.height() + 1:
+                findings.append(dict(scene=scene, kind='TEXT_CLIPPED_V', widget=name,
+                                     text=text[:80], need=need_h, have=rect.height()))
     for button in root.findChildren(QAbstractButton):
         if not button.isVisible() or not button.text():
             continue
-        if button.sizeHint().width() > button.width() + 1:
+        measured = _button_needs(button)
+        if measured is not None and measured[0] > measured[1] + 1:
             findings.append(dict(scene=scene, kind='BUTTON_CLIPPED', widget=button.objectName(),
-                                 text=button.text()[:60], need=button.sizeHint().width(),
-                                 have=button.width()))
+                                 text=button.text()[:60], need=measured[0], have=measured[1]))
 
 
 def render_gallery(output, languages=None, sizes=SIZES, themes=THEMES):
