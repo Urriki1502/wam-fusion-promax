@@ -274,6 +274,7 @@ class Bip39TrialWindow(QWidget):
         super().__init__()
         self.executor = executor
         self._worker = None
+        self._worker_action = None
         self._quit_requested = False
         self._closed = False
         self._backup_unacked = False
@@ -405,6 +406,7 @@ class Bip39TrialWindow(QWidget):
                              kwargs={"timeout":240} if action in ("mine","snapshot","activate","prepare","sign","broadcast","confirm","recovery_verify","inspect_confirmed","intent_status","resume_intent") else None,
                              parent=self)
         self._worker=worker
+        self._worker_action = action
         self._completed_result = None
         self._last_error_code = None
         worker.ready.connect(self._receive_result, Qt.ConnectionType.QueuedConnection)
@@ -874,10 +876,19 @@ class Bip39TrialWindow(QWidget):
 
     def _finished(self):
         self._worker=None
+        finished_action, self._worker_action = self._worker_action, None
         # Deliver only AFTER thread completion. A signature approval runs a
         # nested Qt event loop; finished must not drain the next command before
         # the operator has decided. No operation is retried or resubmitted.
         completed, self._completed_result = self._completed_result, None
+        if finished_action == "quit" and completed is not None and completed[0] is None:
+            # W-QUIT-02: a refused owner shutdown is NOT retried automatically.
+            # Without this, _check_quit resubmitted "quit" after every refusal,
+            # without bound (a refused stop or a dead owned Core spun the GUI
+            # and re-ran the stop path). The refusal is shown; each further
+            # explicit Quit (button, Cmd+Q, window close) makes exactly one
+            # new attempt. The owner stays open and app.exec() keeps running.
+            self._quit_requested = False
         if completed is not None:
             self._delivering_result = True
             try:
