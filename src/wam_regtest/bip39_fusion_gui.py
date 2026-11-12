@@ -25,7 +25,7 @@ from .gui_errors import operation_error
 from .fusion_ui import (
     FusionOverview, fusion_stylesheet, fusion_palette, page, panel,
     label, ResponsiveRow, vector_icon, nav_icon_for, FUSION_NAV_PAGES, fusion_nav_pages,
-    StateSwitch, action, ThemeSlider,
+    StateSwitch, action, ThemeSlider, grow_with_wrapped_text,
 )
 from .fusion_motion import fade_widget, PressFeedback, TransitionHost, STAGGER_MS, STANDARD_MS, motion_reduced
 from .fusion_status import classify
@@ -181,7 +181,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.navigation.setAccessibleName(t('wallet.navigation_accessible'))
         self.navigation.addItems(tuple(title for title, _icon in fusion_nav_pages()))
         side.addWidget(self.navigation, 1)
-        notice = label(t('wallet.sidebar_notice'), 'FusionMuted')
+        notice = grow_with_wrapped_text(label(t('wallet.sidebar_notice'), 'FusionMuted'))
         notice.setMinimumWidth(0)
         side.addWidget(notice)
         shell.addWidget(sidebar)

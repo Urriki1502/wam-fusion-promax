@@ -4,7 +4,7 @@ from .bip39_locale import t as ui_text
 from PySide6.QtCore import Qt, Signal, QRectF, QTimer
 from PySide6.QtGui import QColor,QPainter,QFont,QFontDatabase
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QLineEdit,QComboBox,QCheckBox,QTableWidget,QTableWidgetItem,QHeaderView,QApplication,QDialog,QDialogButtonBox,QFrame
-from .fusion_ui import label,panel,page,action,ResponsiveRow,vector_icon,fusion_palette,activity_by_block
+from .fusion_ui import label,panel,page,action,ResponsiveRow,vector_icon,fusion_palette,activity_by_block,grow_with_wrapped_text
 from .wallet_read import format_wam
 
 
@@ -140,7 +140,7 @@ class PaymentSteps(QFrame):
     def __init__(self):
         super().__init__();self.setObjectName('FusionInset');layout=QHBoxLayout(self);layout.setContentsMargins(16,13,16,13);self.labels=[]
         for i,name in enumerate((ui_text('pages.prepare'),ui_text('pages.review'),ui_text('pages.approve_signature'),ui_text('pages.broadcast'),ui_text('pages.result'))):
-            item=label(f'{i+1}  {name}','FusionMuted');item.setAlignment(Qt.AlignmentFlag.AlignCenter);layout.addWidget(item,1);self.labels.append(item)
+            item=grow_with_wrapped_text(label(f'{i+1}  {name}','FusionMuted'));item.setAlignment(Qt.AlignmentFlag.AlignCenter);layout.addWidget(item,1);self.labels.append(item)
     def set_stage(self,stage):
         for i,item in enumerate(self.labels):
             if i<stage:item.setObjectName('FusionVerified')

@@ -133,10 +133,15 @@ class Bip39BackupPage(QWidget):
         pl.addWidget(grid_card)
 
         controls = QHBoxLayout()
-        controls.addStretch()
+        # V0-A2: the confirmation checkbox has its own row. On one row with
+        # both buttons it forced a ~717 px minimum page width, so at the
+        # 900x630 minimum window the seed warning and word grid overflowed.
+        written_row = QHBoxLayout()
+        written_row.addStretch()
         self._written_check = QCheckBox(t("written_checkbox"))
-        controls.addWidget(self._written_check)
-        controls.addSpacing(16)
+        written_row.addWidget(self._written_check)
+        pl.addLayout(written_row)
+        controls.addStretch()
         self._back_up_now = action(t("back_up_now"), "check", primary=True)
         self._back_up_now.setEnabled(False)
         self._back_up_now.clicked.connect(self._on_back_up_now)

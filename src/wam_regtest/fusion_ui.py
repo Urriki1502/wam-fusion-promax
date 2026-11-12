@@ -346,6 +346,19 @@ class ReadableText(QPlainTextEdit):
         return QSize(0, 68)
 
 
+def grow_with_wrapped_text(widget):
+    """Let a word-wrapped label take the height its wrapped text needs.
+
+    label() gives wrapped labels a vertical Maximum policy, which keeps them
+    at their unwrapped height. Text that wraps to more lines (for example CJK
+    at the narrow sidebar width) was then clipped (V0-A1, V0-A4)."""
+    policy = widget.sizePolicy()
+    policy.setVerticalPolicy(QSizePolicy.Policy.Minimum)
+    policy.setHeightForWidth(True)
+    widget.setSizePolicy(policy)
+    return widget
+
+
 def label(text='', role='FusionMuted', selectable=False):
     if role == 'ReceiveCode':
         obj = ReadableText(text)
