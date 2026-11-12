@@ -6,7 +6,8 @@ from pathlib import Path
 
 from wam_regtest.domain.payment_state import (
     BROADCAST, DRAFT, EVIDENCE_STAGES, LEGAL_TRANSITIONS, RESERVATION_STATES,
-    SIGNED, UNCERTAIN, classify_payment, mark_reservations_uncertain_before_submission,
+    SIGNED, UNCERTAIN, ATTENTION_STATES, mark_reservations_uncertain_before_submission,
+    reservations_need_attention,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,23 +68,17 @@ class PaymentStateModel(unittest.TestCase):
         with self.assertRaises(sqlite3.OperationalError):
             mark_reservations_uncertain_before_submission(db, 'tok', signed_rows_only=False)
 
-    def test_classify_follows_the_reservation_and_the_latch_only(self):
-        evidence = ('signed', 'uncertain', 'broadcast')
-        pending = 'ab' * 32
-        self.assertEqual(classify_payment(('draft',), (), None, False), 'draft')
-        self.assertEqual(classify_payment(('signed',), ('signed',), None, False), 'signed')
-        self.assertEqual(classify_payment(('uncertain',), evidence, None, False), 'uncertain')
-        self.assertEqual(classify_payment(('broadcast',), evidence, pending, False), 'broadcast')
-        # Confirm clears the pending txid and leaves the row broadcast. Not 'confirmed'.
-        self.assertEqual(classify_payment(('broadcast',), evidence, None, False), 'broadcast')
-        # Confirm ambiguity sets the latch and does not rename the row in the store,
-        # but the session is uncertain. The latch outranks the row.
-        self.assertEqual(classify_payment(('broadcast',), evidence, pending, True), 'uncertain')
-        self.assertEqual(classify_payment(('signed', 'uncertain'), ('signed',), None, False), 'mixed')
-        self.assertIsNone(classify_payment((), (), None, False))
-        # Evidence and a pending txid do not override a signed reservation.
-        self.assertEqual(classify_payment(('signed',), evidence, pending, False), 'signed')
-        self.assertEqual(classify_payment(('signed',), (), None, False), 'signed')
+    def test_attention_states_exclude_only_broadcast(self):
+        """PM-011 / W-TX-03 (replaces PM-006's unused classify_payment, D-PM006-1)."""
+        self.assertEqual(ATTENTION_STATES, {DRAFT, SIGNED, UNCERTAIN})
+        self.assertFalse(reservations_need_attention(()))
+        self.assertFalse(reservations_need_attention((BROADCAST,)))
+        for state in (DRAFT, SIGNED, UNCERTAIN):
+            self.assertTrue(reservations_need_attention((state,)))
+            self.assertTrue(reservations_need_attention((BROADCAST, state)))
+        # Fail safe: a state this wallet does not know about still warns.
+        self.assertTrue(reservations_need_attention(('manual',)))
+        self.assertTrue(reservations_need_attention(('unexpected',)))
 
     def test_call_sites_keep_their_historical_predicates(self):
         wallet = ast.parse((ROOT / 'src/wam_regtest/wallet_session.py').read_text())

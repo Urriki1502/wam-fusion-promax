@@ -5,7 +5,12 @@ Application layer. May import domain and foundation. Never imports PySide6.
 
 
 def project_owned_spend_snapshot(item, session, *, profile, account_id, available_atoms):
-    """Today's public dict. Same keys and values; no reservation_states."""
+    """Public owned-spend snapshot.
+
+    ``reservation_states`` (PM-011, W-TX-03): the sorted distinct reservation
+    states the session already verified, so presentation can tell a confirmed
+    payment's leftover 'broadcast' rows from rows that still need attention.
+    """
     return {
         "status": "Q06_REGTEST_BIP39_OWNED_SPEND_VERIFIED",
         "profile": profile,
@@ -20,6 +25,10 @@ def project_owned_spend_snapshot(item, session, *, profile, account_id, availabl
             "atoms": h.credit_atoms - h.debit_atoms
         } for h in item.history),
         "reservation_count": item.reservation_count,
+        # None when the read model did not verify states (presentation then keeps
+        # the previous count-only rule); never invent an empty set.
+        "reservation_states": (None if item.reservation_states is None
+                               else tuple(item.reservation_states)),
         "payment_review": session.payment_review,
         "payment_signed": session.payment_signed,
         "recovered_unsigned_cancel_available": session.recovered_unsigned_cancel_available(),

@@ -19,6 +19,20 @@ from .bip39_owner_backend import Bip39ReadOnlyBackend
 from .bip39_12 import normalize_phrase
 from .bip39_locale import t
 from .presentation.action_state import ActionInputs, BASE_CONTROLS, available_actions
+from .domain.payment_state import reservations_need_attention
+
+
+def reservation_warning(result):
+    """Warn about reservations only when one still needs the owner's attention.
+
+    With the verified state set (W-TX-03) a confirmed payment's leftover
+    'broadcast' rows no longer warn. Without it (older result shapes) the
+    previous count-based rule applies unchanged.
+    """
+    states = result.get("reservation_states")
+    if states is None:
+        return result.get("reservation_count", 0) > 0
+    return result.get("reservation_count", 0) > 0 and reservations_need_attention(states)
 from .fusion_ui import label, action
 
 
@@ -661,8 +675,8 @@ class Bip39TrialWindow(QWidget):
                     "Broadcast TXID {} is awaiting its first REGTEST confirmation. "
                     "Use Confirm 1 REGTEST block; do not send this payment again.".format(
                         self._pending_confirm_txid))
-            elif (self._spend_enabled and result.get("reservation_count",0)>0
-                    and self._pending_confirm_txid is None):
+            elif (self._spend_enabled and self._pending_confirm_txid is None
+                    and reservation_warning(result)):
                 self.status.setText(
                     "Anchored transaction reservations exist; check previous TXID "
                     "against verified history. Never auto-rebroadcast or release locks.")

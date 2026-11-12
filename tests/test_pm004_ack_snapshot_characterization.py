@@ -3,7 +3,7 @@
 Pins behaviour at 861462c, before the backend decomposition. The same cases
 must pass after the domain/application extraction: on-disk path, JSON schema,
 MAC input, challenge rules, the never-downgrade rule, error codes, and the
-exact public snapshot dict. No reservation_states key (that projection is R2).
+exact public snapshot dict. reservation_states was added by PM-011 (R2, W-TX-03).
 """
 import hmac
 import importlib.util
@@ -257,6 +257,8 @@ class AckSnapshotCharacterization(unittest.TestCase):
                 {'txid': TXID_B, 'height': 90, 'atoms': -2000},
             ),
             'reservation_count': 2,
+            # PM-011 (W-TX-03, intentional public-dict addition): verified state set.
+            'reservation_states': ('broadcast',),
             'payment_review': review,
             'payment_signed': True,
             'recovered_unsigned_cancel_available': True,
@@ -266,7 +268,8 @@ class AckSnapshotCharacterization(unittest.TestCase):
             'broadcast_allowed': True,
             'mainnet_allowed': False,
         })
-        self.assertNotIn('reservation_states', result)
+        # PM-011 / R2 landed: the verified state set is now part of the public dict.
+        self.assertEqual(result['reservation_states'], ('broadcast',))
         self.assertIs(result['fusion_snapshot'], item)
         self.assertIs(result['payment_review'], review)
 
@@ -289,7 +292,8 @@ class AckSnapshotCharacterization(unittest.TestCase):
         self.assertIsNone(idle_result['pending_confirm_txid'])
         self.assertEqual(idle_result['reservation_count'], 0)
         self.assertEqual(idle_result['available_atoms'], 0)
-        self.assertNotIn('reservation_states', idle_result)
+        # PM-011: present, and None when the read model did not verify states.
+        self.assertIsNone(idle_result['reservation_states'])
 
         empty = object.__new__(Bip39ReadOnlyBackend)
         empty._spend_session = None

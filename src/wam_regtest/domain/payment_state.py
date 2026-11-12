@@ -47,20 +47,14 @@ def mark_reservations_uncertain_before_submission(db, token, *, signed_rows_only
     db.execute(statement, (token,))
 
 
-def classify_payment(reservation_states, evidence_stages, pending_txid, uncertain):
-    """Reservation name for these facts. Evidence and the pending txid do not rename it.
+# Reservation states that still need the owner's attention: an unsigned draft,
+# a signed but unsubmitted payment, or a submission whose outcome is uncertain.
+# A token whose rows are all 'broadcast' was submitted; after a verified confirm
+# those rows remain (no terminal state, audit F-04) but need no action (W-TX-03).
+ATTENTION_STATES = frozenset((DRAFT, SIGNED, UNCERTAIN))
 
-    An explicit uncertain latch outranks the row, as confirm ambiguity does.
-    Several reservation states are 'mixed', the word signed-intent status
-    already uses. No rows is None. A pending txid left set, or cleared after
-    confirm, does not create a 'confirmed' reservation.
-    """
-    if uncertain is True:
-        return UNCERTAIN
-    states = tuple(reservation_states)
-    if not states:
-        return None
-    unique = set(states)
-    if len(unique) != 1:
-        return 'mixed'
-    return next(iter(unique))
+
+def reservations_need_attention(reservation_states):
+    """True if any reservation is draft, signed or uncertain (unknown states count too)."""
+    states = set(reservation_states)
+    return bool(states & ATTENTION_STATES) or bool(states - RESERVATION_STATES)
