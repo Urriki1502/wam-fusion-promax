@@ -81,10 +81,16 @@ class HistoryPage(QWidget):
         header=self.table.horizontalHeader()
         for column in range(self.table.columnCount()):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch if column==1 else QHeaderView.ResizeMode.ResizeToContents)
-    def _fit_columns(self):
+    def _measure_full_width(self):
+        # Qt reports no content width for a HIDDEN column, so the full width
+        # is measured once per render with every column shown, then cached;
+        # measuring while hidden made the columns flip back and forth.
+        for column in self._NARROW_HIDDEN:self.table.setColumnHidden(column,False)
         header=self.table.horizontalHeader()
-        full=sum(max(header.sectionSizeHint(c),self.table.sizeHintForColumn(c)) for c in range(self.table.columnCount()))
-        narrow=full>self.table.viewport().width()
+        self._full_width=sum(max(header.sectionSizeHint(c),self.table.sizeHintForColumn(c)) for c in range(self.table.columnCount()))
+    def _fit_columns(self):
+        if getattr(self,'_full_width',None) is None:self._measure_full_width()
+        narrow=self._full_width>self.table.viewport().width()
         for column in self._NARROW_HIDDEN:
             if self.table.isColumnHidden(column)!=narrow:self.table.setColumnHidden(column,narrow)
     def eventFilter(self,watched,event):
@@ -121,7 +127,7 @@ class HistoryPage(QWidget):
                 if j>=2:item.setTextAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
                 self.table.setItem(i,j,item)
             self.table.setRowHeight(i,48)
-        self.empty.setVisible(not self.rows);self.apply_filter();self._fit_columns()
+        self.empty.setVisible(not self.rows);self.apply_filter();self._measure_full_width();self._fit_columns()
     def set_theme(self,mode):
         self.mode=mode;c=fusion_palette(mode)
         for i,row in enumerate(self.rows):
