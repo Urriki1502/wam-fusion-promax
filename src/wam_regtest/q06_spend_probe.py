@@ -566,6 +566,12 @@ def qualify(core, source):
             if not good:
                 data['timestamp_utc'] = datetime.now(timezone.utc).isoformat()
                 data['profile_retained'] = str(root)
+                # Fixed stage/category tokens only (F-05): classifies a refusal
+                # such as WALLET_UNLOCK_REFUSED without any exception text.
+                from .application import diagnostics
+                data['internal_diagnostics'] = [
+                    {'stage': r.stage, 'category': r.category, 'open_stage': r.open_stage}
+                    for r in diagnostics.records()]
                 (root.parent / 'failure-public.json').write_text(json.dumps(data,indent=2)+'\n')
             phrase = None
 

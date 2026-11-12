@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 from . import custody
+from .application import diagnostics
 from .bip39_seed_vault import (
     Bip39SeedCustodyError, _exact_namespace, _folder, _owner_binding,
     _owned_password, _record, open_owned_seed_container,
@@ -336,10 +337,10 @@ def advance_owned_candidate(owner, seed_folder, scanner, source, password, *,
             return _publish_advanced_candidate(
                 owner,seed_folder,scanner,source,password,keys,directory,seed_id,receipt,tip,
                 keychain,anchor_override=anchor_override)
-    except Exception:
+    except Exception as error:
         # Emit only fixed stage identifiers, never raw errors or secrets.
-        if os.environ.get("CI") == "true":
-            print("Q06_NPLUS1_DENIED_STAGE=" + phase, flush=True)
+        diagnostics.record('SCANNER_ADVANCE', error, open_stage=phase)
+        diagnostics.ci_marker("Q06_NPLUS1_DENIED_STAGE=" + phase)
         raise SeededNativeCheckpointError("Q06_SCANNER_ADVANCE_DENIED") from None
     finally:
         if old_scanner is not None:

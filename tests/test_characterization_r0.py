@@ -66,6 +66,8 @@ RUNTIME_SNAPSHOT = frozenset({
     'supervisor_client', 'supervisor_identity', 'supervisor_journal',
     'supervisor_protocol', 'supervisor_store', 'telemetry', 'vault',
     'wallet_executor', 'wallet_read', 'wallet_recovery', 'wallet_session',
+    # PM-003: first application-layer subpackage module (dotted names).
+    'application', 'application.diagnostics',
     'windows_checkpoint_anchor', 'windows_core_files', 'windows_core_transport',
     'windows_private_storage', 'windows_release_preflight', 'wsp_import',
     'wsp_live',
@@ -203,13 +205,12 @@ def _runtime_import_edges():
     """(module, function-or-empty, imported) for non-runtime wam_regtest imports."""
     policy = _packaging()
     runtime = set(policy.RUNTIME)
-    package = ROOT / 'src' / 'wam_regtest'
     module_level = set()
     function_level = set()
-    for path in sorted(package.glob('*.py')):
-        if path.stem not in runtime:
+    for module in sorted(policy.wallet_module_names(ROOT)):
+        if module not in runtime:
             continue
-        tree = ast.parse(path.read_text())
+        tree = ast.parse(policy.module_path(ROOT, module).read_text())
         parents = _parents(tree)
         for node in ast.walk(tree):
             imported = _wam_regtest_modules(node) if isinstance(
@@ -220,11 +221,11 @@ def _runtime_import_edges():
             for name in imported:
                 if name in runtime:
                     continue
-                edge = (path.stem, scope or '<module>', name)
+                edge = (module, scope or '<module>', name)
                 if scope is None:
                     module_level.add(edge)
                 else:
-                    function_level.add((path.stem, scope, name))
+                    function_level.add((module, scope, name))
     return module_level, function_level
 
 

@@ -15,7 +15,7 @@ class ProductionPackaging(unittest.TestCase):
    with self.subTest(args=args),patch.object(sys,'argv',['wallet',*args]),patch.dict('os.environ',{'CI':'true','WAM_QUALIFICATION':'1'}),patch.object(production_entry,'checked_resources') as check:
     self.assertEqual(production_entry.main(),64);check.assert_not_called()
  def test_positive_allowlist_excludes_every_probe_and_legacy_dispatch(self):
-  available={p.stem for p in (ROOT/'src/wam_regtest').glob('*.py')}
+  available=set(policy.wallet_module_names(ROOT))
   excluded=available-policy.RUNTIME
   for name in available:
    if name.endswith(('_probe','_scenario')):self.assertIn(name,excluded)

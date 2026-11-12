@@ -15,6 +15,7 @@ import stat
 import sys
 
 from . import custody
+from .application import diagnostics
 from .managed_wallet_checkpoint import _owned, _runtime
 from .managed_wallet_session import RuntimeGuard
 from .wallet_session import WalletSession, WalletSessionError, WalletCoreCli
@@ -455,7 +456,8 @@ class Q06OwnedSpendSession(WalletSession):
                 return {"status": "Q06_REGTEST_EXACT_SEND_CONFIRMED",
                         "height": after, "txid": txid,
                         "mainnet_allowed": False}
-            except Exception:
+            except Exception as error:
+                diagnostics.record('CONFIRM_PENDING', error)
                 self._q06_uncertain = self.faulted = True
                 raise Q06SpendSessionError("Q06_CONFIRM_UNCERTAIN_NO_RETRY") from None
 
@@ -646,11 +648,10 @@ def open_owned_spend_session(owner, seed_folder, source, password, *,
         session._recover_pending_broadcast()
         transferred = True
         return session
-    except Exception:
-        # CI-only fixed whitelist: no exception payloads, keys or paths.
-        if (sys.platform == 'darwin' and os.environ.get('GITHUB_ACTIONS') == 'true'
-                and os.environ.get('WAM_Q06_CI_SPEND_QUALIFY') == '1'):
-            print('MACOS_Q06_SPEND_OPEN_DENIED_STAGE=' + phase, flush=True)
+    except Exception as error:
+        # Fixed tokens only: no exception payloads, keys or paths (F-05).
+        diagnostics.record('SPEND_OPEN', error, open_stage=phase)
+        diagnostics.q06_spend_marker('MACOS_Q06_SPEND_OPEN_DENIED_STAGE=' + phase)
         denied = Q06SpendSessionError("Q06_SPEND_OPEN_DENIED")
         denied.open_stage = phase  # fixed public stage token only
         raise denied from None

@@ -13,6 +13,7 @@ import secrets
 import sqlite3
 
 from . import custody
+from .application import diagnostics
 from .bip39_native_checkpoint import (
     _directory,_native,_scanner_anchor_record,_checkpoint_filename,_checkpoint_names,
     _read_authenticated_candidate,_owned_tip,_require_confirmed_descendant,
@@ -219,10 +220,8 @@ def reconcile_shared(owner,seed_folder,source,password,*,authorized=False,keycha
                             retained_runtime_count=len(runtimes),automatic_broadcast=False,
                             signing_authorized=False,reservations_preserved=True)
     except Exception as error:
-        if os.environ.get('WAM_RECONCILIATION_DIAGNOSTICS')=='1':
-            args=error.args
-            code=args[0] if len(args)==1 and type(args[0]) is str and re.fullmatch('[A-Z0-9_]{1,96}',args[0]) else 'INTERNAL_DENIED'
-            print('Q06_RECONCILIATION_DENIED_STAGE='+phase+';CATEGORY='+code,flush=True)
+        diagnostics.record('SHARED_RECONCILIATION', error, open_stage=phase)
+        diagnostics.reconciliation_marker(phase, error)
         raise ReconciliationError('Q06_SHARED_RECONCILIATION_DENIED') from None
     finally:
         if scanner is not None:scanner.close()

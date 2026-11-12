@@ -23,7 +23,7 @@ def _load(name, path):
 
 
 policy = _load('phase42_packaging_policy', ROOT / 'scripts/production_packaging.py')
-SOURCE = {p.stem for p in (ROOT / 'src/wam_regtest').glob('*.py')}
+SOURCE = set(policy.wallet_module_names(ROOT))
 
 
 def _runtime(platform='macos'):
@@ -122,7 +122,7 @@ class ResidualCiOnlyConfirm(unittest.TestCase):
     def test_no_shipped_gui_emits_ci_confirm(self):
         users = set()
         for name in _runtime('macos') - {'__init__'}:
-            tree = ast.parse((ROOT / 'src/wam_regtest' / (name + '.py')).read_text())
+            tree = ast.parse(policy.module_path(ROOT, name).read_text())
             if any(isinstance(n, ast.Constant) and n.value == 'ci_confirm' for n in ast.walk(tree)):
                 users.add(name)
         # Dispatcher and finite executor action list only; no GUI/entry emitter.

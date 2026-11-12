@@ -22,6 +22,7 @@ network_policy official_core_v013 operational_gui payjoin_safety private_directo
 production_entry q05_platforms regtest_funding release rpc_contention rpc_credentials rpc_scope
 shared_regtest shared_regtest_gui supervisor_client supervisor_identity supervisor_journal
 supervisor_protocol supervisor_store telemetry vault wallet_executor wallet_read wallet_recovery
+application application.diagnostics
 wallet_session windows_checkpoint_anchor windows_core_files windows_core_transport
 windows_private_storage windows_release_preflight
 wsp_import wsp_live
@@ -41,6 +42,34 @@ QT_MODULES = frozenset(('bip39_backup_page bip39_fusion_gui bip39_locale bip39_o
                         'managed_gui operational_gui').split())
 ENTRY = {'macos': 'production_entry', 'windows': 'windows_production_entry',
          'linux-desktop': 'linux_production_entry'}
+
+
+def wallet_module_names(root):
+    """Dotted wam_regtest module names under <root>/src/wam_regtest.
+
+    The package itself is '__init__'; a subpackage is its dotted path
+    ('application') and its modules are 'application.diagnostics'. Flat
+    modules keep their plain stem, exactly as before subpackages existed.
+    """
+    package = Path(root) / 'src' / 'wam_regtest'
+    names = set()
+    for path in package.rglob('*.py'):
+        parts = path.relative_to(package).with_suffix('').parts
+        if '__pycache__' in parts:
+            continue
+        if parts[-1] == '__init__':
+            parts = parts[:-1]
+        names.add('.'.join(parts) if parts else '__init__')
+    return frozenset(names)
+
+
+def module_path(root, name):
+    """Source file of a dotted wam_regtest module name from wallet_module_names()."""
+    package = Path(root) / 'src' / 'wam_regtest'
+    if name == '__init__':
+        return package / '__init__.py'
+    candidate = package.joinpath(*name.split('.'))
+    return candidate / '__init__.py' if candidate.is_dir() else candidate.with_suffix('.py')
 
 
 def runtime_modules(platform='macos'):
@@ -119,7 +148,7 @@ def audit_loose_files(app):
             allowed[(wsp/relative).resolve()] = digest
     source = Path(__file__).resolve().parents[1]
     wallet_modules = {p.stem for package in WALLET_PACKAGES
-                      for p in (source / 'src' / package).glob('*.py')}
+                      for p in (source / 'src' / package).rglob('*.py')}
     wallet_modules |= {p.stem for p in (source / 'wsp-upstream/src/wam_sp').glob('*.py')}
     for p in app.rglob('*'):
         if p.is_dir():
@@ -144,7 +173,7 @@ def audit_loose_files(app):
 
 def arguments(root, platform='macos'):
     runtime, entry = runtime_modules(platform), ENTRY[platform]
-    available = {p.stem for p in (Path(root)/'src/wam_regtest').glob('*.py')}
+    available = wallet_module_names(root)
     if not runtime <= available:
         raise ValueError('PRODUCTION_ALLOWLIST_MEMBER_MISSING')
     args = []

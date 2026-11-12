@@ -26,13 +26,13 @@ def _load(name, path):
 
 
 policy = _load('phase5_packaging_policy', ROOT / 'scripts/production_packaging.py')
-AVAILABLE = {p.stem for p in SRC.glob('*.py')}
+AVAILABLE = set(policy.wallet_module_names(ROOT))
 PLATFORMS = ('macos', 'windows', 'linux-desktop')
 HOSTILE = {'CI': 'true', 'GITHUB_ACTIONS': 'true', 'WAM_Q06_CI_SPEND_QUALIFY': '1', 'WAM_QUALIFICATION': '1'}
 
 
 def _scan(name):
-    tree = ast.parse((SRC / (name + '.py')).read_text())
+    tree = ast.parse(policy.module_path(ROOT, name).read_text())
     parents = {c: n for n in ast.walk(tree) for c in ast.iter_child_nodes(n)}
     module, lazy, qt = set(), set(), False
     for node in ast.walk(tree):
@@ -140,7 +140,7 @@ class PlatformAllowlists(unittest.TestCase):
         for platform in PLATFORMS:
             users = {n for n in policy.runtime_modules(platform) - {'__init__'}
                      if any(isinstance(x, ast.Constant) and x.value == 'ci_confirm'
-                            for x in ast.walk(ast.parse((SRC / (n + '.py')).read_text())))}
+                            for x in ast.walk(ast.parse(policy.module_path(ROOT, n).read_text())))}
             with self.subTest(platform=platform):
                 self.assertEqual(users, {'bip39_owner_backend', 'wallet_executor'})
 

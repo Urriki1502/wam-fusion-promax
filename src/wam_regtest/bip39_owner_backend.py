@@ -13,6 +13,7 @@ import stat
 import sys
 import time
 
+from .application import diagnostics
 from .wallet_executor import ManagedWalletBackend, WalletExecutorError
 
 
@@ -573,16 +574,15 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
             self._core(), self._seed_folder, self.source,
             bytes(self._secret), authorized=True, keychain=self.keychain)
         try:
-            if (sys.platform == 'darwin' and os.environ.get('GITHUB_ACTIONS') == 'true'
-                    and os.environ.get('WAM_Q06_CI_SPEND_QUALIFY') == '1'):
-                print('MACOS_Q06_SPEND_OPEN_SESSION_PASS', flush=True)
+            diagnostics.q06_spend_marker('MACOS_Q06_SPEND_OPEN_SESSION_PASS')
             state = session.snapshot()
             if (state.signer_allowed is not True
                     or state.broadcast_allowed is not True
                     or state.mainnet_allowed is not False
                     or state.receive_code != self._public["receive_code"]):
                 raise Q06ReadOnlyError("Q06_GUI_SPEND_SCOPE_DENIED")
-        except Exception:
+        except Exception as error:
+            diagnostics.record('ACTIVATION_SNAPSHOT', error)
             # If a snapshot became uncertain, preserve its runtime and anchors;
             # the failed session is not silently replaced by read-only scanning.
             try:
@@ -591,9 +591,7 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                 pass
             raise Q06ReadOnlyError("Q06_GUI_SPEND_ACTIVATION_DENIED") from None
         self._spend_session = session
-        if (sys.platform == 'darwin' and os.environ.get('GITHUB_ACTIONS') == 'true'
-                and os.environ.get('WAM_Q06_CI_SPEND_QUALIFY') == '1'):
-            print('MACOS_Q06_SPEND_INITIAL_SNAPSHOT_PASS', flush=True)
+        diagnostics.q06_spend_marker('MACOS_Q06_SPEND_INITIAL_SNAPSHOT_PASS')
         return self._session_snapshot()
 
     def _session_snapshot(self, history_offset=0):
@@ -898,7 +896,8 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                 try:
                     verified = self._activate_q06()
                     return dict(opened, **verified)
-                except Exception:
+                except Exception as error:
+                    diagnostics.record('UNLOCK_ACTIVATION', error)
                     self._resume_spend = False
                     self._lock_q06()
                     raise Q06ReadOnlyError('Q06_GUI_UNLOCK_RECONCILIATION_DENIED') from None
