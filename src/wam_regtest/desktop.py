@@ -6,10 +6,12 @@ A Qt worker runs live WSP Scanner.sync off the GUI thread.
 """
 from __future__ import annotations
 
+import gc
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
-from PySide6.QtCore import QThread, QTimer, Signal, Qt
+from PySide6.QtCore import QEvent, QThread, QTimer, Signal, Qt
 from PySide6.QtGui import QFont, QFontDatabase, QPainter, QColor, QPen, QPixmap, QIcon
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel,
@@ -26,11 +28,84 @@ from .bip39_locale import t
 
 
 _QT_APPLICATION = None
+# CPython's cyclic collector runs on whichever thread allocated. In a GUI
+# process that thread may be WAM-wallet-owner or a QThread, and a pass can
+# destroy PySide wrappers off the Qt thread (W-GC-THREAD). While a
+# QApplication exists, automatic collection is disabled and this timer is the
+# only collector. Headless processes never call qt_application(), so they keep
+# the normal collector. 1.5s is inside the 1–2s bound; generation thresholds
+# still decide whether a tick does any work.
+_MAIN_THREAD_GC_INTERVAL_MS = 1500
+_GC_TIMER = None
+_GC_PRIOR_ENABLED = None
+_GC_COLLECTING = False
+
+
+def _due_gc_generation():
+    counts = gc.get_count()
+    thresholds = gc.get_threshold()
+    due = None
+    for generation, (count, threshold) in enumerate(zip(counts, thresholds)):
+        if threshold > 0 and count >= threshold:
+            due = generation
+    return due
+
+
+def _collect_cyclic_garbage(*, force=False):
+    """Collect cyclic garbage on the Qt main thread. No-op on any other thread."""
+    global _GC_COLLECTING
+    if threading.current_thread() is not threading.main_thread() or _GC_COLLECTING:
+        return
+    generation = None
+    if not force:
+        generation = _due_gc_generation()
+        if generation is None:
+            return
+    _GC_COLLECTING = True
+    try:
+        if force:
+            gc.collect()
+        else:
+            gc.collect(generation)
+    finally:
+        _GC_COLLECTING = False
+
+
+def _on_main_thread_gc_timer():
+    _collect_cyclic_garbage(force=False)
+
+
+def _ensure_main_thread_gc(app):
+    global _GC_TIMER, _GC_PRIOR_ENABLED
+    if _GC_TIMER is not None:
+        return
+    # The timer has to be created on the GUI thread or its slot would run
+    # elsewhere. Refuse to disarm the collector until that is true.
+    if threading.current_thread() is not threading.main_thread():
+        return
+    # Remember the caller's state so shutdown can put a headless continuation
+    # back, and so a process that had already disabled GC stays disabled.
+    if _GC_PRIOR_ENABLED is None:
+        _GC_PRIOR_ENABLED = gc.isenabled()
+    gc.disable()
+    timer = QTimer(app)
+    timer.setObjectName("wam-main-thread-gc")
+    timer.setInterval(_MAIN_THREAD_GC_INTERVAL_MS)
+    timer.timeout.connect(_on_main_thread_gc_timer)
+    timer.start()
+    _GC_TIMER = timer
+
+
+def main_thread_gc_timer():
+    """The main-thread cyclic collector, or None before the GUI exists."""
+    return _GC_TIMER
 
 
 def qt_application():
     # Qt allows one QApplication lifetime per process. Keep it alive across
     # baseline and operational probes; destroying/recreating it can crash.
+    # Production entries, the qualification app and source GUI runs all obtain
+    # the QApplication here, so this is the one process-level GC gate.
     global _QT_APPLICATION
     if _QT_APPLICATION is None:
         _QT_APPLICATION = QApplication.instance() or QApplication([])
@@ -40,16 +115,36 @@ def qt_application():
         if family:_QT_APPLICATION.setFont(QFont(family,11))
         _QT_APPLICATION.setWindowIcon(QIcon(str(brand_image())))
         _QT_APPLICATION.setApplicationDisplayName("WAM Privacy Wallet REGTEST")
+    _ensure_main_thread_gc(_QT_APPLICATION)
     return _QT_APPLICATION
 
 
 def shutdown_qt():
-    global _QT_APPLICATION
-    if _QT_APPLICATION is not None:
-        _QT_APPLICATION.closeAllWindows()
-        _QT_APPLICATION.processEvents()
-        _QT_APPLICATION.shutdown()
-        _QT_APPLICATION = None
+    global _QT_APPLICATION, _GC_TIMER, _GC_PRIOR_ENABLED
+    app = _QT_APPLICATION
+    if app is None:
+        return
+    app.closeAllWindows()
+    app.processEvents()
+    # Collect while QApplication is still alive and this is the GUI thread,
+    # so Shiboken runs QObject destructors here. Then restore automatic GC
+    # only after those objects are gone.
+    if threading.current_thread() is threading.main_thread():
+        timer = _GC_TIMER
+        _GC_TIMER = None
+        if timer is not None:
+            timer.stop()
+        _collect_cyclic_garbage(force=True)
+        app.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
+        app.processEvents()
+    app.shutdown()
+    _QT_APPLICATION = None
+    _GC_TIMER = None
+    if threading.current_thread() is threading.main_thread():
+        prior = _GC_PRIOR_ENABLED
+        _GC_PRIOR_ENABLED = None
+        if prior:
+            gc.enable()
 
 
 def _wallet_icons(tone: str) -> tuple[QIcon, ...]:
