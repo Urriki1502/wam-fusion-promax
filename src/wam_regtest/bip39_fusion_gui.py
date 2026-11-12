@@ -101,7 +101,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self._legacy_layout_holder = legacy
         legacy.hide()
         self.setObjectName("WalletRoot")
-        self.setWindowTitle("WAM Fusion Wallet — REGTEST" + (" (V1-NET)" if shared_profile else ""))
+        self.setWindowTitle(t('wallet.window_title') + (" (V1-NET)" if shared_profile else ""))
         self.setWindowIcon(QIcon(str(brand_image())))
         self.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont))
         self.resize(1260, 810)
@@ -127,20 +127,20 @@ class Bip39FusionWindow(Bip39TrialWindow):
         logo.setPixmap(mark)
         logo.setFixedHeight(62)
         brand.addWidget(logo)
-        title = label("WAM Fusion Wallet", "BrandTitle")
+        title = label(t('wallet.brand'), "BrandTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         brand.addWidget(title)
         side.addLayout(brand)
-        side.addWidget(label("SHARED REGTEST" if shared_profile else "REGTEST", "FusionBadge"),
+        side.addWidget(label(t('wallet.shared_badge') if shared_profile else "REGTEST", "FusionBadge"),
                        0, Qt.AlignmentFlag.AlignHCenter)
         self.navigation = QListWidget()
         self.navigation.setIconSize(QSize(18, 18))
         self.navigation.setSpacing(2)
         self.navigation.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.navigation.setAccessibleName("WAM Fusion wallet navigation")
+        self.navigation.setAccessibleName(t('wallet.navigation_accessible'))
         self.navigation.addItems(tuple(title for title, _icon in fusion_nav_pages()))
         side.addWidget(self.navigation, 1)
-        notice = label('WAM Fusion  ·  Qt  ·  WAM Core (REGTEST)\nNo real funds or mainnet keys.', 'FusionMuted')
+        notice = label(t('wallet.sidebar_notice'), 'FusionMuted')
         notice.setMinimumWidth(0)
         side.addWidget(notice)
         shell.addWidget(sidebar)
@@ -156,25 +156,25 @@ class Bip39FusionWindow(Bip39TrialWindow):
         top = QHBoxLayout(topbar)
         top.setContentsMargins(0, 0, 0, 18)
         top.setSpacing(12)
-        self.page_title = label("Overview", "PageTitle")
+        self.page_title = label(t('fusion.overview'), "PageTitle")
         self.page_title.hide()
         top.addWidget(self.page_title)
         top.addStretch()
-        self.connection_pill = label("Snapshot not verified", "FusionBadge")
+        self.connection_pill = label(t('wallet.snapshot_unverified'), "FusionBadge")
         top.addWidget(self.connection_pill)
-        self.sync.setText("Refresh")
+        self.sync.setText(t('fusion.refresh'))
         self.sync.setObjectName("FusionSecondary")
-        self.sync.setToolTip("Verify the latest state with your owned WAM Core")
-        self.sync.setAccessibleName("Refresh verified blockchain state")
+        self.sync.setToolTip(t('wallet.refresh_tooltip'))
+        self.sync.setAccessibleName(t('wallet.refresh_accessible'))
         top.addWidget(self.sync)
         divider = QFrame()
         divider.setFrameShape(QFrame.Shape.VLine)
         divider.setFixedWidth(1)
         divider.setStyleSheet("color: palette(mid);")
         top.addWidget(divider)
-        top.addWidget(label("Theme", "FusionMuted"))
+        top.addWidget(label(t('wallet.theme'), "FusionMuted"))
         self.header_theme = ThemeSlider(compact=True)
-        self.header_theme.setAccessibleName("Compact appearance selector")
+        self.header_theme.setAccessibleName(t('wallet.theme_accessible'))
         top.addWidget(self.header_theme)
         content.addWidget(topbar)
 
@@ -203,105 +203,105 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.stack.addWidget(self.history_page)
 
         send_page, send_layout = page(
-            "Send",
-            "Prepare, review, approve signature and broadcast as separate actions.",
-            "TRANSACTIONS / SEND",
+            t('fusion.send'),
+            t('wallet.send_subtitle'),
+            t('wallet.send_kicker'),
         )
         self.payment_steps = PaymentSteps()
         send_layout.addWidget(self.payment_steps)
-        form, fl = panel("Prepare payment", "BIP352 · owned Core · native checkpoint")
+        form, fl = panel(t('wallet.prepare_title'), t('wallet.prepare_subtitle'))
         self.recipient_input = QLineEdit()
         self.recipient_input.setMaxLength(256)
-        self.recipient_input.setPlaceholderText("wamrtsp1… full recipient code")
+        self.recipient_input.setPlaceholderText(t('wallet.recipient_hint'))
         self.amount_input = QLineEdit()
         self.amount_input.setMaxLength(32)
         self.amount_input.setPlaceholderText("0.00000000")
         self.fee_input = QLineEdit("0.00010000")
         self.fee_input.setMaxLength(32)
-        fl.addWidget(label("RECIPIENT / BIP352", "FusionKicker"))
+        fl.addWidget(label(t('wallet.recipient_caption'), "FusionKicker"))
         fl.addWidget(self.recipient_input)
         amounts = QHBoxLayout()
-        for name, widget in (("AMOUNT / WAM", self.amount_input),
-                             ("FEE / WAM", self.fee_input)):
+        for name, widget in ((t('wallet.amount_caption'), self.amount_input),
+                             (t('wallet.fee_caption'), self.fee_input)):
             group = QVBoxLayout()
             group.addWidget(label(name, "FusionKicker"))
             group.addWidget(widget)
             amounts.addLayout(group, 1)
         fl.addLayout(amounts)
-        self.send.setText("Review payment")
+        self.send.setText(t('wallet.review_payment'))
         self.send.setObjectName("FusionPrimary")
         self.send.setProperty("fusion_icon", "send")
         fl.addWidget(self.send)
         review, rl = panel(
-            "Review, sign and broadcast",
-            "Signing reserves inputs. Broadcast is a separate explicit approval.",
+            t('wallet.review_title'),
+            t('wallet.review_subtitle'),
         )
         self.review_summary = _WrappingStatusLabel()
         self.review_summary.setWordWrap(True)
-        self.review_summary.setText("No prepared payment. Recipient, amount, fee and change appear here after Review.")
+        self.review_summary.setText(t('wallet.no_prepared_payment'))
         self.review_summary.setMinimumWidth(0)
         rl.addWidget(self.review_summary)
-        self.activate.setText("Enable sending")
+        self.activate.setText(t('wallet.enable_sending'))
         self.activate.setObjectName("FusionSecondary")
         self.activate.setProperty("fusion_icon", "security")
-        self.broadcast.setText("Approve broadcast")
+        self.broadcast.setText(t('pages.approve_broadcast'))
         self.broadcast.setObjectName("FusionSecondary")
         self.broadcast.setProperty("fusion_icon", "send")
-        self.cancel.setText("Cancel unsigned draft")
+        self.cancel.setText(t('owner.cancel_draft'))
         self.cancel.setObjectName("FusionSecondary")
         rl.addWidget(self.activate)
         rl.addWidget(self.broadcast)
         rl.addWidget(self.cancel)
-        self.send_result = label("No broadcast result yet. An uncertain outcome is never hidden or retried.")
+        self.send_result = label(t('wallet.no_broadcast_result'))
         self.send_result.setMinimumWidth(0)
         rl.addWidget(self.send_result)
-        rl.addWidget(label("Unknown broadcast status never triggers an automatic retry.", "FusionGold"))
+        rl.addWidget(label(t('wallet.no_automatic_retry'), "FusionGold"))
         send_layout.addWidget(ResponsiveRow(form, review, weights=[3, 2]))
         send_layout.addStretch()
         self.stack.addWidget(send_page)
 
         security_page, security_layout = page(
-            "Security",
-            "Wallet protection, backup status and advanced custody controls stay separate.",
-            "CUSTODY / SECURITY",
+            t('fusion.security'),
+            t('wallet.security_subtitle'),
+            t('wallet.security_kicker'),
         )
-        wallet_card, wl = panel("Wallet protection", "Lock and unlock reflect authenticated backend custody only.")
-        self.security_state = label("Locked / awaiting verified wallet", "FusionCardValue")
+        wallet_card, wl = panel(t('wallet.protection_title'), t('wallet.protection_subtitle'))
+        self.security_state = label(t('wallet.awaiting_wallet'), "FusionCardValue")
         wl.addWidget(self.security_state)
-        self.lock.setText("Lock wallet")
+        self.lock.setText(t('wallet.lock'))
         self.lock.setObjectName("FusionSecondary")
         self.lock.setProperty("fusion_icon", "lock")
         self.lock.hide()
-        self.unlock.setText("Unlock wallet")
+        self.unlock.setText(t('owner.unlock'))
         self.unlock.setObjectName("FusionSecondary")
         self.unlock.hide()
-        self.custody_switch = StateSwitch('Locked')
-        self.custody_switch.setAccessibleName('Wallet Lock / Unlock switch')
-        self.custody_switch.setToolTip('Unlock requires the original wallet password and verified custody.')
+        self.custody_switch = StateSwitch(t('fusion.locked'))
+        self.custody_switch.setAccessibleName(t('fusion.wallet_lock_unlock_switch'))
+        self.custody_switch.setToolTip(t('wallet.unlock_tooltip'))
         self.custody_switch.clicked.connect(self._switch_custody)
         wl.addWidget(self.custody_switch)
         # The base developer layout parks lock/unlock/quit in a utility bar;
         # the normal Fusion workspace owns the Security-page placement instead.
         self._legacy_layout_holder.layout().removeWidget(self.unlock)
-        self.quit.setText("Stop owned Core and quit")
+        self.quit.setText(t('owner.quit'))
         self.quit.setObjectName("FusionDestructive")
         wl.addWidget(self.quit)
         wl.addWidget(label(
-            "12 words are shown only at creation; never send seed words to a support agent."
+            t('wallet.seed_support_warning')
         ))
         recovery_card, rl = panel(
-            "Independent recovery",
-            "Read-only re-scan on THIS original blockchain; new empty chain has no past transactions.",
+            t('wallet.recovery_title'),
+            t('wallet.recovery_subtitle'),
         )
         rl.addWidget(self.recovery)
         rl.addWidget(label(
-            "Signed and uncertain native reservations are never imported or discarded.",
+            t('wallet.reservations_retained'),
             "FusionGold",
         ))
-        backup_card, bl = panel("Backup status", "12-word creation and three-word verification remain required.")
-        bl.addWidget(label("Recovery words are shown only at creation. Never send them to a support agent."))
-        self.backup_review = action('Review backup requirements', 'backup')
-        self.backup_review.setAccessibleName('Review backup requirements')
+        backup_card, bl = panel(t('wallet.backup_status'), t('wallet.backup_requirement'))
+        bl.addWidget(label(t('wallet.recovery_support_warning')))
+        self.backup_review = action(t('wallet.review_backup'), 'backup')
+        self.backup_review.setAccessibleName(t('wallet.review_backup'))
         self.backup_review.clicked.connect(self._quick_backup)
         bl.addWidget(self.backup_review)
         security_layout.addWidget(ResponsiveRow(wallet_card, recovery_card))
@@ -313,18 +313,18 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.stack.addWidget(self.network_page)
 
         settings_page, settings_layout = page(
-            "Settings",
-            "Appearance, ordinary preferences and separate developer diagnostics.",
-            "YOUR WALLET / PREFERENCES",
+            t('fusion.settings'),
+            t('wallet.settings_subtitle'),
+            t('wallet.settings_kicker'),
         )
         appearance, appearance_layout = panel(
-            "Appearance",
-            "Automatic follows macOS appearance. Light and Dark apply immediately.")
+            t('wallet.appearance'),
+            t('wallet.appearance_body'))
         self.settings_theme = ThemeSlider(compact=False)
         appearance_layout.addWidget(self.settings_theme, 0, Qt.AlignmentFlag.AlignLeft)
         self.appearance_group = self.header_theme.group
         self.appearance_buttons = self.header_theme.buttons
-        self.reduce_motion = QCheckBox("Reduce interface motion")
+        self.reduce_motion = QCheckBox(t('wallet.reduce_motion'))
         stored = ui_settings()
         self.reduce_motion.setChecked(
             os.environ.get("QT_REDUCE_MOTION") == "1"
@@ -358,33 +358,33 @@ class Bip39FusionWindow(Bip39TrialWindow):
         settings_layout.addWidget(language_card)
 
         about, about_layout = panel(
-            "WAM Fusion · REGTEST",
-            "Local-first BIP352 silent payments. No remote account or cloud custody.")
-        about_layout.addWidget(label(core_compat.DISPLAY_NAME + " · WSP-1 · BIP39 12 words"))
+            t('wallet.about_title'),
+            t('wallet.about_body'))
+        about_layout.addWidget(label(core_compat.DISPLAY_NAME + t('wallet.protocol_summary')))
         about_layout.addWidget(label(
-            "This preview is not a mainnet wallet. All test transactions stay on the owned REGTEST chain."))
+            t('wallet.preview_notice')))
         settings_layout.addWidget(about)
         self.network_state = self.network_page.connection_value
         if shared_profile is not None:
-            self.reconcile_button = action('Reconcile retained shared-chain state', 'security')
+            self.reconcile_button = action(t('wallet.reconcile_retained'), 'security')
             self.reconcile_button.clicked.connect(self._reconcile_shared)
             self.network_page.controls_host.addWidget(self.reconcile_button)
             self._last_reconciliation = None
-            for title, command in (('Verify peer and chain', ('network_status',)),
-                                   ('Disconnect Core P2P', ('network_active', False)),
-                                   ('Reconnect Core P2P', ('network_active', True))):
+            for title, command in ((t('wallet.verify_peer_chain'), ('network_status',)),
+                                   (t('wallet.disconnect_p2p'), ('network_active', False)),
+                                   (t('wallet.reconnect_p2p'), ('network_active', True))):
                 button = action(title, 'sync')
                 button.clicked.connect(lambda _checked=False, command=command: self._command(*command))
                 self.network_page.controls_host.addWidget(button)
 
         advanced_card, advanced_layout = panel(
-            "Advanced controls",
-            "For technical acceptance and test-chain diagnostics only.")
+            t('wallet.advanced_title'),
+            t('wallet.advanced_body'))
         self.advanced_toggle = _AdvancedControlsToggle()
         self.advanced_toggle.setObjectName("FusionAdvanced")
         self.advanced_toggle.setCheckable(True)
-        self.advanced_toggle.setText("Show developer controls  ▾")
-        self.advanced_toggle.setAccessibleName("Expand REGTEST developer controls")
+        self.advanced_toggle.setText(t('wallet.show_developer'))
+        self.advanced_toggle.setAccessibleName(t('wallet.expand_developer'))
         self.advanced_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
         # Native macOS minimumSizeHint omits part of the stylesheet padding.
         # Minimum vertical policy keeps the complete styled sizeHint at any DPI.
@@ -396,14 +396,14 @@ class Bip39FusionWindow(Bip39TrialWindow):
         advanced_body.setContentsMargins(0, 6, 0, 0)
         advanced_body.setSpacing(13)
         advanced_body.addWidget(label(
-            "Test-only funding and confirmation change this isolated blockchain.",
+            t('wallet.test_chain_warning'),
             "FusionGold"))
         advanced_body.addWidget(self.fund)
         advanced_body.addWidget(self.confirm)
         advanced_body.addWidget(self.inspect)
         advanced_body.addWidget(self.intents)
         advanced_body.addWidget(self.resume)
-        advanced_body.addWidget(label("OWNED CORE / SESSION", "FusionKicker"))
+        advanced_body.addWidget(label(t('wallet.session_kicker'), "FusionKicker"))
         advanced_body.addWidget(self.account)
         advanced_body.addWidget(self.balance)
         advanced_body.addWidget(self.tip)
@@ -415,7 +415,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
             policy.setVerticalPolicy(QSizePolicy.Policy.Minimum)
             policy.setHeightForWidth(True)
             text.setSizePolicy(policy)
-        advanced_body.addWidget(label("LAST BROADCAST TRANSACTION", "FusionKicker"))
+        advanced_body.addWidget(label(t('wallet.last_broadcast_kicker'), "FusionKicker"))
         advanced_body.addWidget(self.last_txid)
         advanced_layout.addWidget(self.advanced_container)
         self.advanced_container.hide()
@@ -561,8 +561,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
 
     def _toggle_advanced(self, expanded):
         self.advanced_toggle.setText(
-            "Hide developer controls  ▴" if expanded
-            else "Show developer controls  ▾")
+            t('wallet.hide_developer') if expanded
+            else t('wallet.show_developer'))
         self.advanced_container.setVisible(expanded)
         if not expanded:
             return
@@ -571,12 +571,9 @@ class Bip39FusionWindow(Bip39TrialWindow):
 
     def _quick_backup(self):
         dialog = WalletConsent(
-            'Backup this REGTEST wallet',
-            'Recovery words are shown only at wallet creation. This action does not '
-            'display the seed. The three-word creation acknowledgment checks that you wrote '
-            'the phrase down. Independent Recovery verifies all 12 words and rescans this '
-            'same verified chain; it does not restore spending authority or prove clean-device recovery.',
-            self, accept_text='Verify recovery words')
+            t('wallet.backup_title'),
+            t('wallet.backup_explanation'),
+            self, accept_text=t('wallet.verify_words'))
         try:
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 self.recovery.click()
@@ -614,7 +611,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         shared = self.shared_profile is not None
         view = {
             'shared': shared,
-            'mode': 'Shared REGTEST' if shared else 'Isolated REGTEST',
+            'mode': t('pages.shared_regtest') if shared else t('pages.isolated_regtest'),
         }
         net = getattr(self, '_last_network', None)
         if isinstance(net, dict):
@@ -624,11 +621,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
                 view['connected'] = net['connected']
         lines = [view['mode']]
         if 'peer_count' in view:
-            lines.append(str(view['peer_count']) + ' peer(s)')
+            lines.append(str(view['peer_count']) + t('wallet.peer_suffix'))
         elif not shared:
-            lines.append('Zero-peer isolated profile')
+            lines.append(t('pages.zero_peer_isolated_profile'))
         if snap is not None:
-            lines.append('Height ' + str(snap.height))
+            lines.append(t('wallet.height_prefix') + str(snap.height))
         view['summary'] = '\n'.join(lines)
         return view
 
@@ -663,11 +660,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
             if hasattr(self, 'custody_switch'):
                 unlocked = extra['custody_unlocked']
                 for switch in (self.custody_switch, self.overview.custody_switch):
-                    switch.setToolTip('Click to lock this wallet.' if unlocked else
-                                      'Click to unlock with the original wallet password.')
+                    switch.setToolTip(t('wallet.lock_tooltip') if unlocked else
+                                      t('wallet.unlock_password_tooltip'))
                     switch.blockSignals(True)
                     switch.setChecked(unlocked)
-                    switch.setText('Unlocked' if unlocked else 'Locked')
+                    switch.setText(t('fusion.unlocked') if unlocked else t('fusion.locked'))
                     switch.setEnabled(extra['custody_switch'])
                     switch.blockSignals(False)
                 self.overview.security_card.apply(*classify(
@@ -684,19 +681,19 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self.overview.open_security.setEnabled(extra['open_security'])
             if hasattr(self, "security_state"):
                 self.security_state.setText(
-                    "Faulted · original reservations preserved"
+                    t('wallet.security_faulted')
                     if self.executor.state.faulted else
-                    "Locked · use Unlock wallet to reauthenticate this original REGTEST wallet"
+                    t('wallet.security_locked')
                     if self.executor.state.locked else
-                    "Original Core reauthentication required · Send unavailable"
+                    t('wallet.security_reauth')
                     if self.executor.state.reauthentication_required else
-                    "Core verification required · Send unavailable"
+                    t('wallet.security_core_unverified')
                     if self.executor.state.core_alive is not True else
-                    "Custody verified · peer disconnected · payment state preserved"
+                    t('wallet.security_disconnected')
                     if self.shared_profile is not None and self._spend_enabled and not self._shared_connected else
-                    "Verified native custody · Send enabled" if self._spend_enabled else
-                    "Seed open · Send awaits checkpoint" if self._ready else
-                    "Locked · use Unlock wallet to reauthenticate this original REGTEST wallet"
+                    t('wallet.security_verified') if self._spend_enabled else
+                    t('wallet.security_checkpoint') if self._ready else
+                    t('wallet.security_locked')
                 )
             if hasattr(self, "payment_steps"):
                 self.payment_steps.set_stage(
@@ -708,7 +705,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
 
     def _present_backup_ack(self, result):
         self.navigation.setEnabled(False)
-        self.page_title.setText('Wallet backup')
+        self.page_title.setText(t('wallet.backup_heading'))
         self.page_title.show()
         self.connection_pill.setText(t("regtest_preview"))
         if result.get("backup_status") == "required" and result.get("mnemonic_once"):
@@ -726,7 +723,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self._command('lock')
 
     def _passphrase(self, message):
-        dialog = WalletConsent('Unlock original wallet', message, self, password=True)
+        dialog = WalletConsent(t('wallet.unlock_title'), message, self, password=True)
         try:
             if dialog.exec() == QDialog.DialogCode.Accepted and dialog.password_input.text():
                 return dialog.password_input.text().encode('utf-8')
@@ -738,10 +735,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
     def _confirm_activation(self):
         if not self._ready or self._spend_enabled or self.executor.busy:
             return
-        dialog = WalletConsent('Enable REGTEST sending',
-            'Verify this original Core, native custody and anchored checkpoint before enabling '
-            'signing. Signed and uncertain inputs stay reserved. Each payment still needs '
-            'separate Sign and Broadcast approval.', self)
+        dialog = WalletConsent(t('wallet.enable_title'),
+            t('wallet.enable_consent'), self)
         try:
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 self._command('activate')
@@ -751,11 +746,9 @@ class Bip39FusionWindow(Bip39TrialWindow):
     def _reconcile_shared(self):
         if self.shared_profile is None or self.executor.busy or self._worker is not None or self._delivering_result:
             return
-        dialog=WalletConsent('Reconcile original Shared REGTEST wallet',
-            'Authenticate this original profile and reconstruct observation from its latest native checkpoint. '
-            'A competing branch requires greater verified Core work. Signed/unknown reservations and old '
-            'runtime evidence stay retained. No payment is retried. Sending requires a separate approval afterwards.',
-            self,password=True,accept_text='Reconcile')
+        dialog=WalletConsent(t('wallet.reconcile_title'),
+            t('wallet.reconcile_consent'),
+            self,password=True,accept_text=t('wallet.reconcile'))
         try:
             if dialog.exec()==QDialog.DialogCode.Accepted:
                 self._command('reconcile_reorg',dialog.password_input.text().encode('utf-8'))
@@ -766,9 +759,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
         txid = self._pending_confirm_txid
         if not self._spend_enabled or txid is None:
             return
-        dialog = WalletConsent('Confirm this REGTEST payment',
-            'Mine exactly one test block on this original owned Core to confirm '
-            'the submitted transaction. An uncertain outcome must not be retried.', self)
+        dialog = WalletConsent(t('wallet.confirm_title'),
+            t('wallet.confirm_consent'), self)
         try:
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 self._command('confirm', txid)
@@ -778,10 +770,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
     def _confirm_funding(self):
         if not self._ready or self._spend_enabled or self._test_funded:
             return
-        dialog = WalletConsent('Fund disposable REGTEST wallet',
-            'On a fresh isolated test chain only: mine mature public fixture funds, '
-            'receive one BIP352 payment and confirm it. This changes the test chain. '
-            'Never retry an uncertain result.', self)
+        dialog = WalletConsent(t('wallet.fund_title'),
+            t('wallet.fund_consent'), self)
         try:
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 self._command('mine')
@@ -794,14 +784,14 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self.backup_page.set_challenge(challenge)
         except Exception as error:
             self.backup_page.show_verification_error('verify_unavailable')
-            self.status.setText('Backup verification unavailable: ' +
+            self.status.setText(t('wallet.backup_verify_unavailable') +
                                 str(operation_error('backup_challenge', error)))
 
     def _on_backup_challenge_cancel(self):
         try:
             self.executor.request('backup_challenge_cancel', timeout=30)
         except Exception as error:
-            self.status.setText('Backup verification unavailable: ' +
+            self.status.setText(t('wallet.backup_verify_unavailable') +
                                 str(operation_error('backup_challenge_cancel', error)))
 
     def _on_backup_verify(self, identifier, answers):
@@ -809,7 +799,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
             ok = self.executor.request("backup_verify", identifier, answers, timeout=30)
         except Exception as error:
             self.status.setText(
-                "Backup verification unavailable: " + str(operation_error("backup_verify", error)))
+                t('wallet.backup_verify_unavailable') + str(operation_error("backup_verify", error)))
             # The backend refused before judging the words: never report this
             # as a wrong-word result (V19: correct words shown as "do not match").
             self.backup_page.show_verification_error('verify_unavailable')
@@ -833,7 +823,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self.executor.request("backup_defer", timeout=30)
         except Exception as error:
             self.status.setText(
-                "Backup deferral unavailable: " + str(operation_error("backup_defer", error)))
+                t('wallet.backup_defer_unavailable') + str(operation_error("backup_defer", error)))
         self._backup_flow_completed(False)
 
     def _on_backup_continue(self):
@@ -855,7 +845,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.navigation.setEnabled(True)
         self.stack.setCurrentIndex(0)
         self.navigation.setCurrentRow(0)
-        self.page_title.setText("Overview")
+        self.page_title.setText(t('fusion.overview'))
         self.page_title.hide()
         if success:
             self.connection_pill.setText(classify(
@@ -888,7 +878,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
             if not code.startswith("wamrtsp1") or len(code) > 256:
                 raise ValueError("Q06_FUSION_RECIPIENT_DENIED")
         except (ValueError, ArithmeticError):
-            self.status.setText('Enter a complete REGTEST silent-payment recipient and valid amount/fee.')
+            self.status.setText(t('wallet.invalid_payment'))
             return
         self._command("prepare", code, atoms, fee)
 
@@ -959,7 +949,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.history_page.render_snapshot(None)
         self._render_network(None)
         if hasattr(self, 'review_summary'):
-            self.review_summary.setText('No prepared payment. Recipient, amount, fee and change appear here after Review.')
+            self.review_summary.setText(t('wallet.no_prepared_payment'))
 
     def _on_ready(self, action, result):
         if action=='reconcile_reorg':
@@ -969,7 +959,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self._last_review=None
             self._clear_visuals()
             super()._on_ready('open',result)
-            self.status.setText('Original Shared profile reconciled. Evidence and reservations retained. Approve Enable sending to verify custody again.')
+            self.status.setText(t('wallet.reconciled'))
             self._set_actions()
             return
         if isinstance(result,dict) and 'shared_network' in result:
@@ -978,10 +968,10 @@ class Bip39FusionWindow(Bip39TrialWindow):
         if action in ('network_status','network_active'):
             self._shared_connected = result['connected']
             self._last_network = result
-            self.network_state.setText(('Connected' if result['connected'] else 'Disconnected')
-                +f" · {result['peer_count']} peer(s) · height {result['height']}\nTip: {result['tip']}")
-            self.status.setText('Shared chain verified; refresh wallet to reconcile history.'
-                                if result['connected'] else 'Peer disconnected. Signed and pending payments remain preserved.')
+            self.network_state.setText((t('wallet.connected') if result['connected'] else t('wallet.disconnected'))
+                +t('wallet.network_details').format(peer_count=result['peer_count'], height=result['height'], tip=result['tip']))
+            self.status.setText(t('wallet.shared_verified')
+                                if result['connected'] else t('wallet.peer_disconnected'))
             self._set_actions()
             return
         if action == "prepare":
@@ -993,17 +983,16 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self._signed_ready = False
             self._broadcast_complete = False
             self.review_summary.setText(
-                f'Recipient  {result.code}\nAmount  {format_wam(result.atoms)} WAM\n'
-                f'Fee  {format_wam(result.fee)} WAM\nChange  {format_wam(result.change_atoms)} WAM')
+                t('wallet.review_details').format(code=result.code, amount=format_wam(result.atoms), fee=format_wam(result.fee), change=format_wam(result.change_atoms)))
             self.payment_steps.set_stage(1)
             dialog = PaymentApproval(result, "sign", self)
             commitment = result.commitment
             def decide(code):
                 accepted = code == QDialog.DialogCode.Accepted
                 self.status.setText(
-                    "Transaction approved; signing owned REGTEST inputs"
+                    t('wallet.sign_approved')
                     if accepted else
-                    "Transaction not approved; canceling unsigned draft"
+                    t('wallet.sign_declined')
                 )
                 if accepted and commitment == self._approved_commitment:
                     pending = ("sign", commitment)
@@ -1091,7 +1080,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         super()._on_denied(code)
         if code == 'SHARED_CONFIRMED_PEER_REQUIRED':
             self._shared_connected=False
-            self.status.setText('Peer disconnected. Reconnect and verify the chain; signed and pending payments remain preserved.')
+            self.status.setText(t('wallet.peer_reconnect_warning'))
             self._set_actions()
         if (self.executor.state.faulted or self.executor.state.core_alive is not True
                 or code in ('WALLET_CORE_AUTHENTICATION_DENIED',
@@ -1105,11 +1094,10 @@ class Bip39FusionWindow(Bip39TrialWindow):
                     or self._pending_confirm_txid is not None
                     or self._recovered_unsigned_cancel):
                 self.review_summary.setText(
-                    'Payment state retained. Verify the original Core and custody '
-                    'before continuing. Do not automatically sign or broadcast again.')
+                    t('wallet.payment_retained'))
             self.connection_pill.setText(classify(
                 'snapshot', snap=None, locked=True, faulted=self.executor.state.faulted,
                 core_alive=self.executor.state.core_alive)[1])
         elif self._last_verified is not None:
-            self.overview.live_badge.setText("Last verified · refresh required")
+            self.overview.live_badge.setText(t('wallet.refresh_required'))
         self._set_actions()

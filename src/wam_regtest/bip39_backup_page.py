@@ -162,7 +162,7 @@ class Bip39BackupPage(QWidget):
         self._step_progress = QProgressBar()
         self._step_progress.setRange(0, 2)
         self._step_progress.setValue(2)
-        self._step_progress.setToolTip('Step 2 of 2: verify your backup to finish.')
+        self._step_progress.setToolTip(t('backup.verify_step_tooltip'))
         self._step_progress.setTextVisible(False)
         vl.addWidget(self._step_progress)
         vl.addWidget(label(t("confirm_title"), "PageTitle"))
@@ -312,7 +312,7 @@ class Bip39BackupPage(QWidget):
         self._challenge_positions = list(positions)
         for index, position in enumerate(self._challenge_positions):
             card, title, edit = self._verify_cards[index]
-            title.setText(f"WORD #{position}")
+            title.setText(t('recovery_word_position').format(position=position))
             edit.clear()
             self._verify_inputs.append(edit)
 

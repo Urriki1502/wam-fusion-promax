@@ -82,7 +82,7 @@ class Bip39RecoveryVerifyDialog(QDialog):
             field_layout = QVBoxLayout(field_box)
             field_layout.setContentsMargins(12, 10, 12, 10)
             field_layout.setSpacing(6)
-            position_label = QLabel(f"WORD {index + 1:02d}")
+            position_label = QLabel(t('owner.word_position').format(position=index + 1))
             position_label.setObjectName("FusionMuted")
             position_label.setStyleSheet("font-size:11px;font-weight:600;letter-spacing:0.4px;")
             field = QLineEdit()
@@ -90,7 +90,7 @@ class Bip39RecoveryVerifyDialog(QDialog):
             field.setMaxLength(16)
             field.setPlaceholderText(t("word_label"))
             field.setEchoMode(QLineEdit.EchoMode.Password)
-            field.setAccessibleName(f"Recovery word {index + 1}")
+            field.setAccessibleName(t('owner.recovery_word').format(position=index + 1))
             field.textChanged.connect(self._refresh_state)
             field.returnPressed.connect(lambda i=index: self._on_field_returned(i))
             field_layout.addWidget(position_label)
@@ -280,52 +280,50 @@ class Bip39TrialWindow(QWidget):
         self._backup_flow_active = False
         self._backup_verified = False
         self._backup_result = None
-        self.setWindowTitle("WAM Fusion · BIP39 12-word REGTEST trial")
+        self.setWindowTitle(t('owner.trial_title'))
         self.resize(750, 475)
         box = QVBoxLayout(self)
-        title = QLabel("WAM Fusion — BIP39 12-word · REGTEST")
+        title = QLabel(t('owner.trial_heading'))
         title.setStyleSheet("font-size: 19px; font-weight: bold;")
         box.addWidget(title)
-        box.addWidget(QLabel("REGTEST wallet. Send is available only after native checkpoint"
-                              " verification and explicit transaction review. No mainnet funds."))
-        self.status = QLabel("Native Core not opened")
+        box.addWidget(QLabel(t('owner.trial_notice')))
+        self.status = QLabel(t('owner.core_not_opened'))
         box.addWidget(self.status)
-        box.addWidget(QLabel("Your BIP352 receive code (REGTEST):"))
+        box.addWidget(QLabel(t('owner.receive_caption')))
         self.receive = QLineEdit()
         self.receive.setReadOnly(True)
-        self.receive.setPlaceholderText("Unlock this Q06 wallet to view your real derived receive code")
+        self.receive.setPlaceholderText(t('owner.receive_locked'))
         box.addWidget(self.receive)
-        box.addWidget(QLabel("Last broadcast TXID (copy before closing):"))
+        box.addWidget(QLabel(t('owner.last_txid')))
         self.last_txid=QLineEdit()
         self.last_txid.setReadOnly(True)
         self.last_txid.setPlaceholderText(
-            "No transaction broadcast in this GUI session. "
-            "Copy the TXID before closing; it is not auto-replayed.")
+            t('owner.no_session_broadcast'))
         box.addWidget(self.last_txid)
-        self.account = QLabel("Account: locked")
-        self.balance = QLabel("Balance: unverified")
-        self.tip = QLabel("Chain: unverified")
+        self.account = QLabel(t('owner.account_locked'))
+        self.balance = QLabel(t('owner.balance_unverified'))
+        self.tip = QLabel(t('owner.chain_unverified'))
         for item in (self.account,self.balance,self.tip):box.addWidget(item)
-        box.addWidget(QLabel("Verified recent REGTEST history (up to 10):"))
+        box.addWidget(QLabel(t('owner.history_caption')))
         self.history = QTextEdit()
         self.history.setReadOnly(True)
-        self.history.setPlaceholderText("Select Sync real Core to scan the owned node")
+        self.history.setPlaceholderText(t('owner.history_hint'))
         box.addWidget(self.history)
         bar=QHBoxLayout()
-        self.sync=QPushButton("Sync real Core")
-        self.fund=QPushButton("Fund 1 test receive on fresh REGTEST")
-        self.activate=QPushButton("Activate verified REGTEST Send")
-        self.send=QPushButton("Prepare Send")
-        self.broadcast=QPushButton("Broadcast signed transaction")
-        self.confirm=QPushButton("Confirm 1 REGTEST block")
-        self.recovery=QPushButton("Verify 12-word recovery on this chain")
-        self.inspect=QPushButton("Inspect past TXID (read-only)")
-        self.intents=QPushButton("Review signed payments (read-only)")
-        self.resume=QPushButton("Submit reviewed signed payment")
-        self.cancel=QPushButton("Cancel unsigned draft")
-        self.lock=QPushButton("Lock Q06")
-        self.unlock=QPushButton("Unlock wallet")
-        self.quit=QPushButton("Stop owned Core and quit")
+        self.sync=QPushButton(t('owner.sync_core'))
+        self.fund=QPushButton(t('owner.fund_receive'))
+        self.activate=QPushButton(t('owner.activate_send'))
+        self.send=QPushButton(t('owner.prepare_send'))
+        self.broadcast=QPushButton(t('owner.broadcast_signed'))
+        self.confirm=QPushButton(t('owner.confirm_block'))
+        self.recovery=QPushButton(t('owner.verify_recovery'))
+        self.inspect=QPushButton(t('owner.inspect_txid'))
+        self.intents=QPushButton(t('owner.review_signed'))
+        self.resume=QPushButton(t('owner.submit_signed'))
+        self.cancel=QPushButton(t('owner.cancel_draft'))
+        self.lock=QPushButton(t('owner.lock_q06'))
+        self.unlock=QPushButton(t('owner.unlock'))
+        self.quit=QPushButton(t('owner.quit'))
         bar.addWidget(self.sync);bar.addWidget(self.fund);bar.addWidget(self.activate)
         box.addLayout(bar)
         payment=QHBoxLayout()
@@ -369,9 +367,8 @@ class Bip39TrialWindow(QWidget):
         self._recovery_dialog=None
         self._recovered_unsigned_cancel=False
         self._resumable_intent=None
-        self.resume.setToolTip("Submits the EXACT previously signed transaction after your approval. "
-                               "It is never re-signed, retried automatically or released.")
-        self.cancel.setToolTip("Cancel requires an authenticated unsigned draft. Signed or uncertain reservations cannot be released.")
+        self.resume.setToolTip(t('owner.resume_tooltip'))
+        self.cancel.setToolTip(t('owner.cancel_tooltip'))
         self._set_actions()
 
     def _action_inputs(self):
@@ -413,7 +410,7 @@ class Bip39TrialWindow(QWidget):
         worker.ready.connect(self._receive_result, Qt.ConnectionType.QueuedConnection)
         worker.denied.connect(self._receive_denial, Qt.ConnectionType.QueuedConnection)
         worker.pending.connect(lambda _: self.status.setText(
-            'Original operation still running. Waiting for its result; do not retry.'),
+            t('owner.operation_pending')),
             Qt.ConnectionType.QueuedConnection)
         worker.finished.connect(self._finished)
         worker.finished.connect(worker.deleteLater)
@@ -423,7 +420,7 @@ class Bip39TrialWindow(QWidget):
 
     def _passphrase(self, label):
         password, ok = QInputDialog.getText(
-            self, "WAM Fusion · REGTEST wallet", label, QLineEdit.EchoMode.Password)
+            self, t('owner.password_title'), label, QLineEdit.EchoMode.Password)
         return password.encode("utf-8") if ok and password else None
 
     def _unlock_prompt(self):
@@ -434,10 +431,10 @@ class Bip39TrialWindow(QWidget):
         if self._worker is not None or self.executor.busy or self._quit_requested:
             return
         password = self._passphrase(
-            "Wallet password to unlock this original WAM REGTEST BIP39 profile")
+            t('owner.password_prompt'))
         if password is None:
             return
-        self.status.setText("Unlocking original owned WAM REGTEST wallet…")
+        self.status.setText(t('owner.unlocking'))
         self._command("unlock", password, False)
 
     def _remember_profile(self, folder):
@@ -452,35 +449,28 @@ class Bip39TrialWindow(QWidget):
             pass
 
     def start(self, password, mode, phrase):
-        self.status.setText("Verifying original Core, native custody and BIP39 profile…")
+        self.status.setText(t('owner.verifying_profile'))
         self._command("open", password, mode, phrase)
 
     def _confirm_funding(self):
         if not self._ready or self._worker is not None or self.executor.busy:
             return
         answer=QMessageBox.question(
-            self, "One-time disposable WAM REGTEST receive",
-            "This runs the existing Q05 PUBLIC fixture on your NEW isolated "
-            "WAM REGTEST Core: generate 101 local blocks, send a public test "
-            "BIP352 payment to YOUR Q06 12-word address, then confirm it.\\n"
-            "This is irreversible on the test chain. Never use mainnet or "
-            "personal keys. Run only once on a fresh height-0 Core?",
+            self, t('owner.fund_title'),
+            t('owner.fund_consent'),
             QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
         if answer==QMessageBox.StandardButton.Yes:
-            self.status.setText("Funding test-only receive on owned Core; do not retry if uncertain…")
+            self.status.setText(t('owner.funding'))
             self._command("mine")
 
     def _confirm_activation(self):
         if not self._ready or self._spend_enabled:
             return
         choice=QMessageBox.question(
-            self,"Native BIP39 REGTEST signing",
-            "Activate the existing Q05 transaction engine on the authenticated "
-            "BIP39 scanner journal of this original WAM REGTEST Core? "
-            "Uncertain reservations will stay locked. "
-            "Never use real/mainnet seed words.",
+            self,t('owner.activation_title'),
+            t('owner.activation_consent'),
             QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         if choice==QMessageBox.StandardButton.Yes:
@@ -490,28 +480,28 @@ class Bip39TrialWindow(QWidget):
         if not self._spend_enabled or self._approved_commitment is not None:
             return
         code,ok=QInputDialog.getText(
-            self,"Prepare WAM REGTEST Send","Recipient BIP352 REGTEST receive code:")
+            self,t('owner.prepare_title'),t('owner.recipient_prompt'))
         if not ok:
             return
         amount,ok=QInputDialog.getText(
-            self,"Prepare WAM REGTEST Send",
-            "Amount in integer atoms (1 WAM = 100,000,000 atoms):")
+            self,t('owner.prepare_title'),
+            t('owner.amount_prompt'))
         if not ok:
             return
         fee,ok=QInputDialog.getText(
-            self,"Prepare WAM REGTEST Send",
-            "Transaction fee in integer atoms (1–1,000,000):")
+            self,t('owner.prepare_title'),
+            t('owner.fee_prompt'))
         if not ok:
             return
         if (not code.startswith("wamrtsp1") or len(amount)>19 or len(fee)>7
                 or not amount.isascii() or not amount.isdecimal()
                 or not fee.isascii() or not fee.isdecimal()):
-            QMessageBox.warning(self,"Invalid Send input","Use a REGTEST address and integer atom amounts.")
+            QMessageBox.warning(self,t('owner.invalid_input_title'),t('owner.invalid_input'))
             return
         atoms_value,fee_value=int(amount),int(fee)
         if not (330<=atoms_value<=22_000_000*100_000_000
                 and 1<=fee_value<=1_000_000):
-            QMessageBox.warning(self,"Invalid Send input","Amount or fee outside WSP policy.")
+            QMessageBox.warning(self,t('owner.invalid_input_title'),t('owner.policy_amount'))
             return
         self._command("prepare",code,atoms_value,fee_value)
 
@@ -519,10 +509,8 @@ class Bip39TrialWindow(QWidget):
         if not self._signed_ready or self._approved_commitment is None:
             return
         choice=QMessageBox.question(
-            self,"Broadcast signed REGTEST transaction",
-            "The previously reviewed PSBT is signed. Broadcast it to the "
-            "original owned WAM REGTEST Core now? Ambiguous results must "
-            "keep their reservation locked.",
+            self,t('owner.broadcast_title'),
+            t('owner.broadcast_consent'),
             QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         if choice==QMessageBox.StandardButton.Yes:
@@ -533,12 +521,8 @@ class Bip39TrialWindow(QWidget):
         if not self._spend_enabled or txid is None:
             return
         choice=QMessageBox.question(
-            self,"Confirm one REGTEST block",
-            "Mine exactly ONE block on this original, owned, disposable REGTEST "
-            "Core to confirm the just-broadcast transaction?\\n"
-            "TXID: {}\\n"
-            "This changes the test chain. Never use mainnet funds or seed words. "
-            "If the result is uncertain, do NOT retry.".format(txid),
+            self,t('owner.confirm_title'),
+            t('owner.confirm_consent').format(txid=txid),
             QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         if choice==QMessageBox.StandardButton.Yes:
@@ -555,7 +539,7 @@ class Bip39TrialWindow(QWidget):
 
     def _on_recovery_verify_requested(self, phrase):
         self._recovery_dialog = None
-        self.status.setText("Independently rescanning original REGTEST chain…")
+        self.status.setText(t('owner.rescanning'))
         self._command("recovery_verify", phrase)
 
     def _on_recovery_verify_cancelled(self):
@@ -566,12 +550,8 @@ class Bip39TrialWindow(QWidget):
         if item is None or not self._spend_enabled or self.executor.state.faulted:
             return
         answer=QMessageBox.question(
-            self,"Submit previously signed REGTEST payment",
-            "Submit this EXACT previously signed transaction?\n\n"
-            "TXID: {}\nRecipient: {}\nAmount: {:,} atoms\nFee: {:,} atoms\nState: {}\n\n"
-            "It is not re-signed and nothing is retried automatically. If the "
-            "result is uncertain, reservations stay locked. Mainnet is never used.".format(
-                item["txid"],item["recipient"],item["atoms"],item["fee"],item["state"]),
+            self,t('owner.resume_title'),
+            t('owner.resume_consent').format(txid=item['txid'], recipient=item['recipient'], atoms=item['atoms'], fee=item['fee'], state=item['state']),
             QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         if answer==QMessageBox.StandardButton.Yes and self._resumable_intent is item:
@@ -581,10 +561,8 @@ class Bip39TrialWindow(QWidget):
         if not self._spend_enabled or self.executor.state.faulted:
             return
         txid,ok=QInputDialog.getText(
-            self,"Read-only previous transaction inspection",
-            "Enter a previously broadcast REGTEST transaction ID (64 lowercase hex). "
-            "This checks complete authenticated local history: no retry, mining, "
-            "broadcast, reservation release or claim if not yet found.")
+            self,t('owner.inspect_title'),
+            t('owner.inspect_prompt'))
         if ok:
             self._command("inspect_confirmed",txid)
 
@@ -601,9 +579,9 @@ class Bip39TrialWindow(QWidget):
             # promote to ready via _backup_flow_completed.
             self._ready=False
             self.receive.clear()
-            self.account.setText("Account: locked")
-            self.balance.setText("Balance: unverified")
-            self.tip.setText("Chain: unverified")
+            self.account.setText(t('owner.account_locked'))
+            self.balance.setText(t('owner.balance_unverified'))
+            self.tip.setText(t('owner.chain_unverified'))
             backup_status = result.get("backup_status", "verified")
             seed_folder = result.get("seed_folder")
             if backup_status in ("required", "deferred"):
@@ -613,8 +591,7 @@ class Bip39TrialWindow(QWidget):
                             "acknowledge_create_pending", seed_folder, timeout=30)
                     except Exception as error:
                         self.status.setText(
-                            "Backup acknowledgement state unavailable — "
-                            "wallet preserved locked: " + operation_error(
+                            t('owner.backup_state_unavailable') + operation_error(
                                 "acknowledge_create_pending", error))
                         self._backup_unacked=True
                         self._set_actions()
@@ -626,17 +603,17 @@ class Bip39TrialWindow(QWidget):
                 return
             self._ready=True
             self.receive.setText(result["receive_code"])
-            self.account.setText("BIP39 account: "+result["account_id"])
-            self.balance.setText("Balance: not yet synced against Core")
-            self.tip.setText("Chain: not yet verified")
-            self.status.setText("BIP39 native seed opened. Activate Send after checkpoint verification.")
+            self.account.setText(t('owner.account_prefix')+result["account_id"])
+            self.balance.setText(t('owner.balance_unsynced'))
+            self.tip.setText(t('owner.chain_unchecked'))
+            self.status.setText(t('owner.seed_opened'))
             self._pending_action = None if result.get('checkpoint_present') else ("snapshot",)
             if result.get('checkpoint_present'):
-                self.status.setText('Original checkpoint retained. Enable sending to authenticate and reconcile it.')
+                self.status.setText(t('owner.checkpoint_retained'))
             self._remember_profile(result.get("seed_folder"))
         elif action=="mine":
             self._test_funded=True
-            self.status.setText("Public REGTEST receive confirmed at block {} — click Sync real Core".format(result["height"]))
+            self.status.setText(t('owner.receive_confirmed').format(height=result['height']))
         elif action in ("snapshot","activate"):
             if result.get("signer_allowed") is True:
                 self._spend_enabled=True
@@ -657,90 +634,74 @@ class Bip39TrialWindow(QWidget):
                 if hasattr(self, '_last_review'):
                     self._last_review = review
             self.receive.setText(result["receive_code"])
-            self.balance.setText("Confirmed: {:,} atoms · available: {:,} atoms".format(
-                result["confirmed_atoms"],result["available_atoms"]))
-            self.tip.setText("Owned REGTEST Core: height {} · tip {}".format(
-                result["height"],result["tip"]))
+            self.balance.setText(t('owner.balance_verified').format(confirmed_atoms=result['confirmed_atoms'], available_atoms=result['available_atoms']))
+            self.tip.setText(t('owner.chain_verified').format(height=result['height'], tip=result['tip']))
             self._test_funded = result["height"] > 0
             rows=result["history"]
             self.history.setPlainText(
-                "\n".join("{}  height={}  atoms={}".format(
-                    row["txid"],row["height"],row["atoms"]) for row in rows)
-                if rows else "No confirmed BIP352 transactions found on this disposable Core")
+                "\n".join(t('owner.history_row').format(txid=row['txid'], height=row['height'], atoms=row['atoms']) for row in rows)
+                if rows else t('owner.no_history'))
             if self._recovered_unsigned_cancel:
                 self.status.setText(
-                    "An unsigned draft remains from this original wallet. Use Cancel unsigned draft "
-                    "explicitly before reviewing a new payment. Signed/uncertain locks are never released.")
+                    t('owner.draft_retained'))
             elif self._spend_enabled and self._pending_confirm_txid is not None:
                 self.status.setText(
-                    "Broadcast TXID {} is awaiting its first REGTEST confirmation. "
-                    "Use Confirm 1 REGTEST block; do not send this payment again.".format(
-                        self._pending_confirm_txid))
+                    t('owner.awaiting_confirmation').format(txid=self._pending_confirm_txid))
             elif (self._spend_enabled and self._pending_confirm_txid is None
                     and reservation_warning(result)):
                 self.status.setText(
-                    "Anchored transaction reservations exist; check previous TXID "
-                    "against verified history. Never auto-rebroadcast or release locks.")
+                    t('owner.reservations_warning'))
             else:
                 self.status.setText(
-                    "Verified BIP39 REGTEST Send session; review every transaction"
+                    t('owner.send_verified')
                     if self._spend_enabled else
-                    "Verified WAM Core and WSP scan; Send remains disabled")
+                    t('owner.scan_verified'))
         elif action=="prepare":
             self._approved_commitment=result.commitment
             self._signed_ready=False
             choice=QMessageBox.question(
-                self,"Exact REGTEST transaction approval",
-                "Recipient: {}\nAmount: {:,} atoms\nFee: {:,} atoms\n"
-                "Change: {:,} atoms\nInputs: {}\nPSBT SHA256: {}\n\n"
-                "SIGN and irreversibly reserve these coins?".format(
-                    result.code,result.atoms,result.fee,result.change_atoms,
-                    result.input_count,result.commitment),
+                self,t('owner.approval_title'),
+                t('owner.approval_details').format(code=result.code, atoms=result.atoms, fee=result.fee, change_atoms=result.change_atoms, input_count=result.input_count, commitment=result.commitment),
                 QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
             self._pending_action=(
                 ("sign",result.commitment)
                 if choice==QMessageBox.StandardButton.Yes else ("cancel",))
-            self.status.setText("Exact-transaction approval received; securing reservation")
+            self.status.setText(t('owner.approval_received'))
         elif action=="sign":
             if result.commitment!=self._approved_commitment:
                 self._signed_ready=False
-                self.status.setText("Signed commitment mismatch — broadcast disabled")
+                self.status.setText(t('owner.commitment_mismatch'))
             else:
                 self._signed_ready=True
-                self.status.setText("PSBT signed; broadcast requires separate explicit approval")
+                self.status.setText(t('owner.signed_ready'))
         elif action=="broadcast":
             self._approved_commitment=None
             self._signed_ready=False
             self._pending_confirm_txid=result
             self.last_txid.setText(result)
             self.status.setText(
-                "Broadcast submitted. Record the TXID before closing: {}. "
-                "Confirm 1 REGTEST block to verify on-chain.".format(result))
+                t('owner.broadcast_submitted').format(txid=result))
             self._pending_action=("snapshot",)
         elif action=="confirm":
             if result.get("txid")!=self._pending_confirm_txid:
-                self.status.setText("Confirmation identity mismatch — stop for review")
+                self.status.setText(t('owner.confirmation_mismatch'))
             else:
                 self._pending_confirm_txid=None
-                self.status.setText("REGTEST transaction confirmed on original Core")
+                self.status.setText(t('owner.confirmed'))
                 self._pending_action=("snapshot",)
         elif action=="recovery_verify":
             self.status.setText(
-                "Same-chain BIP39 rescan PASS: {} confirmed history records, "
-                "{:,} atoms. Separate device/chain restoration remains unverified.".format(
-                    result["history_count"],result["confirmed_atoms"]))
+                t('owner.recovery_result').format(history_count=result['history_count'], confirmed_atoms=result['confirmed_atoms']))
         elif action=="inspect_confirmed":
             if result["status"]=="Q06_CONFIRMED_IN_VERIFIED_HISTORY":
-                self.status.setText("TXID is in complete verified confirmed history.")
+                self.status.setText(t('owner.txid_confirmed'))
             elif result.get("in_mempool") is True:
                 self.status.setText(
-                    "TXID is pending in this Core mempool and not yet confirmed. "
-                    "Do NOT retry, remine or release coin reservations.")
+                    t('owner.txid_pending'))
             else:
                 self.status.setText(
-                    "TXID NOT in complete verified confirmed history; status uncertain. "
-                    "Do NOT retry, remine or release coin reservations.")
+                    t('owner.txid_unknown'))
         elif action=="intent_status":
             intents=result["intents"]
             resumable=[i for i in intents if i["classification"] in
@@ -749,19 +710,18 @@ class Bip39TrialWindow(QWidget):
             counts={}
             for item in intents:
                 counts[item["classification"]]=counts.get(item["classification"],0)+1
-            summary="; ".join("{} x{}".format(k,v) for k,v in sorted(counts.items())) or "none"
+            summary="; ".join(t('owner.intent_count').format(classification=k, count=v) for k,v in sorted(counts.items())) or t('owner.no_intents')
             self.status.setText(
-                "Signed payment review (read-only): {}. ".format(summary)
-                +("One exact signed payment can be submitted after your approval."
+                t('owner.intent_summary').format(summary=summary)
+                +(t('owner.intent_resumable')
                   if self._resumable_intent is not None else
-                  "Nothing is submitted or released automatically; locked reservations stay protected."))
+                  t('owner.intent_protected')))
         elif action=="resume_intent":
             self._resumable_intent=None
             self._pending_confirm_txid=result["txid"]
             self.last_txid.setText(result["txid"])
             self.status.setText(
-                "Previously signed payment submitted (not re-signed). Record the TXID: {}. "
-                "Confirm 1 REGTEST block to verify on-chain.".format(result["txid"]))
+                t('owner.resumed').format(txid=result['txid']))
             self._pending_action=("snapshot",)
         elif action=="cancel":
             self._recovered_unsigned_cancel=False
@@ -769,7 +729,7 @@ class Bip39TrialWindow(QWidget):
                 self._pending_action=('snapshot',)  # Read only, never a write retry.
             self._approved_commitment=None
             self._signed_ready=False
-            self.status.setText("Unsigned draft cancelled")
+            self.status.setText(t('owner.draft_cancelled'))
         elif action=="lock":
             self._backup_unacked=False
             self._backup_flow_active=False
@@ -783,12 +743,11 @@ class Bip39TrialWindow(QWidget):
             self._pending_confirm_txid=None
             self.last_txid.clear()
             self.receive.clear()
-            self.account.setText("Account: locked")
-            self.balance.setText("Balance: unverified")
-            self.tip.setText("Chain: unverified")
+            self.account.setText(t('owner.account_locked'))
+            self.balance.setText(t('owner.balance_unverified'))
+            self.tip.setText(t('owner.chain_unverified'))
             self.history.clear()
-            self.status.setText("Q06 wallet locked. Use Unlock wallet to reauthenticate "
-                                "in this session; Stop owned Core and quit to close.")
+            self.status.setText(t('owner.locked_status'))
         elif action=="unlock":
             # In-session reauthentication of the SAME original owned REGTEST
             # BIP39 profile. Only a genuinely verified acknowledgement promotes
@@ -799,11 +758,11 @@ class Bip39TrialWindow(QWidget):
                 self._unlock_allowed = True
                 self._ready = True
                 self.receive.setText(result["receive_code"])
-                self.account.setText("BIP39 account: " + result["account_id"])
-                self.balance.setText("Balance: not yet synced against Core")
-                self.tip.setText("Chain: not yet verified")
+                self.account.setText(t('owner.account_prefix') + result["account_id"])
+                self.balance.setText(t('owner.balance_unsynced'))
+                self.tip.setText(t('owner.chain_unchecked'))
                 self.status.setText(
-                    "BIP39 native seed unlocked. Activate Send after checkpoint verification.")
+                    t('owner.seed_unlocked'))
                 # Seed authentication alone cannot scan over an existing
                 # native checkpoint. Match the normal Open route: retain
                 # explicit Enable sending/reconciliation consent first.
@@ -825,8 +784,7 @@ class Bip39TrialWindow(QWidget):
                 self._backup_result = None
                 self._unlock_allowed = False
                 self.status.setText(
-                    "Wallet unlock refused — backup acknowledgement state is "
-                    "not verified. Custody is preserved and the wallet stays locked.")
+                    t('owner.unlock_backup_refused'))
         elif action=="quit":
             self._ready=False
             self._closed=True
@@ -848,21 +806,18 @@ class Bip39TrialWindow(QWidget):
             self._backup_unacked = True
             self._unlock_allowed = False
             self.status.setText(
-                "Backup not acknowledged — the created wallet stops "
-                "locked and custody is preserved. Reopen with your "
-                "password after recording your 12 words; they are "
-                "never displayed again.")
+                t('owner.backup_unacknowledged'))
             self._set_actions()
             self._check_quit()
             return
         self._ready = True
         self._unlock_allowed = True
         self.receive.setText(result["receive_code"])
-        self.account.setText("BIP39 account: " + result["account_id"])
-        self.balance.setText("Balance: not yet synced against Core")
-        self.tip.setText("Chain: not yet verified")
+        self.account.setText(t('owner.account_prefix') + result["account_id"])
+        self.balance.setText(t('owner.balance_unsynced'))
+        self.tip.setText(t('owner.chain_unchecked'))
         self.status.setText(
-            "BIP39 native seed opened. Activate Send after checkpoint verification.")
+            t('owner.seed_opened'))
         self._set_actions()
         if self._quit_requested:
             self._check_quit()
@@ -906,9 +861,9 @@ class Bip39TrialWindow(QWidget):
             self._signed_ready=False
             self._approved_commitment=None
         self.status.setText(
-            "Wallet faulted — stop spending; original state preserved for review."
+            t('owner.faulted')
             if self.executor.state.faulted else
-            "Operation refused safely: " + error_text(code))
+            t('owner.refused_prefix') + error_text(code))
         self._set_actions()
 
     def _receive_result(self, action, result):
@@ -952,7 +907,7 @@ class Bip39TrialWindow(QWidget):
     def request_quit(self):
         self._quit_requested=True
         self._defer_active_backup()
-        self.status.setText("Stopping only this original owned REGTEST Core…")
+        self.status.setText(t('owner.stopping'))
         self._check_quit()
 
     def closeEvent(self,event):
@@ -978,19 +933,19 @@ def _onboarding_password(parent, mode):
     """Recoverable input validation before any executor request creates custody."""
     while True:
         password, ok = QInputDialog.getText(
-            parent, "Q06 BIP39 wallet (REGTEST only)",
-            "Disposable encrypted-seed password (12–1024 UTF-8 bytes)",
+            parent, t('owner.onboarding_title'),
+            t('owner.new_password'),
             QLineEdit.EchoMode.Password)
         if not ok:
             return "", False
         if not 12 <= len(password.encode("utf-8")) <= 1024:
             password = ""
-            QMessageBox.warning(parent, "Q06 password",
-                                "Use a disposable password of 12–1024 UTF-8 bytes.")
+            QMessageBox.warning(parent, t('owner.password_warning_title'),
+                                t('owner.password_length'))
             continue
         if mode in ("create", "restore"):
             confirmation, confirmed = QInputDialog.getText(
-                parent, "Confirm wallet password", "Enter the same password again.",
+                parent, t('owner.confirm_password_title'), t('owner.confirm_password_prompt'),
                 QLineEdit.EchoMode.Password)
             if not confirmed:
                 password = confirmation = ""
@@ -999,8 +954,8 @@ def _onboarding_password(parent, mode):
             confirmation = ""
             if not matches:
                 password = ""
-                QMessageBox.warning(parent, "Q06 password",
-                                    "Passwords do not match. Please try again.")
+                QMessageBox.warning(parent, t('owner.password_warning_title'),
+                                    t('owner.password_mismatch'))
                 continue
         return password, True
 
@@ -1024,9 +979,8 @@ def launch_bip39_trial(root,core,source,*,mode,authorized=False,shared_profile=N
     phrase=""
     if ok and mode=="restore":
         phrase,ok=QInputDialog.getMultiLineText(
-            window,"Restore BIP39 12 words into a NEW REGTEST profile",
-            "Enter exactly your 12 disposable REGTEST words. "
-            "Restoring on a new isolated chain does not recreate old transactions.")
+            window,t('owner.restore_title'),
+            t('owner.restore_prompt'))
     if ok:
         window.start(password.encode("utf-8"),mode,phrase)
     else:
