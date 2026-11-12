@@ -1,11 +1,13 @@
-"""Minimal Vietnamese/English localization for the Q06 BIP39 backup UI.
+"""UI language adapter over the presentation catalog.
 
-Uses PySide6's system locale when available; falls back to English. This is a
-compatibility adapter over the pure presentation catalog.
+System default follows the Qt locale: vi, ja and zh prefixes select those
+catalogs, and every other prefix is English. An explicit ui_language value in
+QSettings("WAM Privacy Wallet", "REGTEST") wins. This does not select the
+BIP39 wordlist language.
 """
-from PySide6.QtCore import QLocale
+from PySide6.QtCore import QLocale, QSettings
 
-from .presentation.strings import CATALOG, text
+from .presentation.strings import CATALOG, resolve_language, text
 
 # Compatibility views of the original Q06 table, not a second copy catalog.
 _LEGACY_KEYS = ('app_name',
@@ -58,9 +60,16 @@ _STRINGS = {lang: {key: entries[key] for key in _LEGACY_KEYS if key in entries}
             for lang, entries in CATALOG.items()}
 
 
+def stored_language(settings=None):
+    """Persisted UI language. A missing value means the system locale."""
+    if settings is None:
+        settings = QSettings("WAM Privacy Wallet", "REGTEST")
+    value = settings.value("ui_language", "system")
+    return value if type(value) is str and value else "system"
+
+
 def _lang():
-    name = QLocale.system().name().lower()
-    return "vi" if name.startswith("vi") else "en"
+    return resolve_language(stored_language(), QLocale.system().name())
 
 
 def t(key):

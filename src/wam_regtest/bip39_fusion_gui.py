@@ -12,7 +12,7 @@ from PySide6.QtGui import QFontDatabase, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QFrame, QLabel, QLineEdit,
     QListWidget, QMessageBox, QDialog, QToolButton,
-    QCheckBox, QApplication, QSizePolicy,
+    QCheckBox, QComboBox, QApplication, QSizePolicy,
 )
 
 from .bip39_owner_gui import Bip39TrialWindow
@@ -332,6 +332,30 @@ class Bip39FusionWindow(Bip39TrialWindow):
         appearance_layout.addWidget(self.reduce_motion)
         settings_layout.addWidget(appearance)
 
+        language_card, language_layout = panel(
+            t("settings.language"),
+            t("settings.language_next_window"))
+        self.language = QComboBox()
+        self.language.setObjectName("FusionLanguage")
+        self.language.setAccessibleName(t("settings.language"))
+        for caption, code in (
+                (t("settings.language_system"), "system"),
+                ("English", "en"),
+                ("Tiếng Việt", "vi"),
+                ("日本語", "ja"),
+                ("简体中文", "zh-Hans")):
+            self.language.addItem(caption, code)
+        language_choice = QSettings("WAM Privacy Wallet", "REGTEST").value("ui_language", "system")
+        if language_choice not in ("system", "en", "vi", "ja", "zh-Hans"):
+            language_choice = "system"
+        self.language.blockSignals(True)
+        language_index = self.language.findData(language_choice)
+        self.language.setCurrentIndex(language_index if language_index >= 0 else 0)
+        self.language.blockSignals(False)
+        self.language.currentIndexChanged.connect(self._language_chosen)
+        language_layout.addWidget(self.language)
+        settings_layout.addWidget(language_card)
+
         about, about_layout = panel(
             "WAM Fusion · REGTEST",
             "Local-first BIP352 silent payments. No remote account or cloud custody.")
@@ -448,6 +472,14 @@ class Bip39FusionWindow(Bip39TrialWindow):
             QApplication.styleHints().colorSchemeChanged.connect(
                 self._native_theme_changed)
         self._set_actions()
+
+    def _language_chosen(self, index):
+        value = self.language.itemData(index)
+        if type(value) is not str:
+            return
+        settings = QSettings("WAM Privacy Wallet", "REGTEST")
+        settings.setValue("ui_language", value)
+        settings.sync()
 
     def _set_reduce_motion(self, checked):
         self.setProperty("fusion_reduce_motion", bool(checked))

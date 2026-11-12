@@ -29,6 +29,8 @@ supervisor_protocol supervisor_store telemetry vault wallet_executor wallet_read
 foundation foundation.diagnostics
 infrastructure infrastructure.core_compat
 presentation presentation.action_state presentation.strings
+presentation.locales presentation.locales.en presentation.locales.vi
+presentation.locales.ja presentation.locales.zh_hans
 wallet_session windows_checkpoint_anchor windows_core_files windows_core_transport
 windows_private_storage windows_release_preflight
 wsp_import wsp_live

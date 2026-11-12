@@ -73,6 +73,8 @@ RUNTIME_SNAPSHOT = frozenset({
     'domain', 'domain.backup_ack', 'domain.errors', 'domain.payment_evidence',
     'domain.payment_state',
     'presentation', 'presentation.action_state', 'presentation.strings',
+    'presentation.locales', 'presentation.locales.en', 'presentation.locales.vi',
+    'presentation.locales.ja', 'presentation.locales.zh_hans',
     'infrastructure', 'infrastructure.core_compat',
     'windows_checkpoint_anchor', 'windows_core_files', 'windows_core_transport',
     'windows_private_storage', 'windows_release_preflight', 'wsp_import',

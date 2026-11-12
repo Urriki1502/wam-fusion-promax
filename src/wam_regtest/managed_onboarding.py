@@ -81,24 +81,24 @@ def welcome_dialog():
     root.addWidget(label(ui_text('welcome.wam_fusion'), "FusionKicker"))
     root.addWidget(label(ui_text('welcome.welcome_to_your_wallet'), "PageTitle"))
     root.addWidget(label(
-        ui_text('welcome.choose_how_to_begin_your_keys_stay_on_this_device_no_account_or_c')
+        ui_text('welcome.begin')
     ))
     root.addWidget(label(ui_text('welcome.regtest_preview_no_real_funds'), "FusionBadge"))
     dialog.shared_mode = QCheckBox(ui_text('welcome.shared_regtest_manual_core_p2p'))
-    dialog.shared_mode.setToolTip(ui_text('welcome.explicit_separate_profile_rpc_stays_on_this_computer_no_automatic'))
+    dialog.shared_mode.setToolTip(ui_text('welcome.shared_tooltip'))
     root.addWidget(dialog.shared_mode)
 
     choices, layout = panel(
         ui_text('welcome.your_wallet'),
-        ui_text('welcome.one_wallet_experience_bip39_12_word_recovery'),
+        ui_text('welcome.experience'),
     )
     for key, title, detail, icon_name, primary in (
         ("create", ui_text('welcome.create_a_new_wallet'),
-         ui_text('welcome.generate_a_new_12_word_recovery_phrase'), "overview", True),
+         ui_text('welcome.create_detail'), "overview", True),
         ("open", ui_text('welcome.open_existing_wallet'),
-         ui_text('welcome.unlock_a_wallet_on_this_device'), "unlock", False),
+         ui_text('welcome.open_detail'), "unlock", False),
         ("restore", ui_text('welcome.restore_from_12_words'),
-         ui_text('welcome.start_a_new_profile_from_your_existing_recovery_phrase'), "backup", False),
+         ui_text('welcome.restore_detail'), "backup", False),
     ):
         button = action(title, icon_name, primary)
         button.setAccessibleName(title)
@@ -121,7 +121,7 @@ def welcome_dialog():
     older.setObjectName("FusionInset")
     older_layout = QVBoxLayout(older)
     older_layout.addWidget(label(
-        ui_text('welcome.for_existing_q05_test_profiles_only_legacy_files_are_never_conver')
+        ui_text('welcome.legacy_notice')
     ))
     for key, title in (
         ("legacy_open", ui_text('welcome.open_legacy_wallet')),
@@ -211,7 +211,7 @@ def launch(core, source):
         shared_profile = None
         if shared:
             if not q06:
-                QMessageBox.warning(None, ui_text('welcome.shared_regtest'), ui_text('welcome.shared_mode_requires_a_bip39_wallet_profile'))
+                QMessageBox.warning(None, ui_text('welcome.shared_regtest'), ui_text('welcome.shared_needs_bip39'))
                 continue
             from .shared_regtest_gui import configure
             shared_profile = configure()
@@ -219,9 +219,9 @@ def launch(core, source):
                 continue
         selected = QFileDialog.getExistingDirectory(
             None,
-            (ui_text('welcome.choose_a_parent_folder_for_the_new_regtest_wallet_profile')
+            (ui_text('welcome.choose_new_folder')
              if create else
-             ui_text('welcome.choose_the_exact_existing_regtest_wallet_profile')),
+             ui_text('welcome.choose_existing_folder')),
         )
         if not selected:
             continue
@@ -230,7 +230,7 @@ def launch(core, source):
         except ValueError:
             QMessageBox.warning(
                 None, ui_text('welcome.wallet_folder_not_accepted'),
-                ui_text('welcome.choose_an_existing_wallet_profile_or_a_safe_parent_folder_for_a_n'),
+                ui_text('welcome.folder_rejected'),
             )
             continue
         if q06:

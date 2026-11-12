@@ -8,6 +8,30 @@ from unittest.mock import patch
 
 from wam_regtest.presentation.strings import CATALOG, text
 
+# PM-015 replaced truncated sentence slugs. Fixture bytes stay the PM-014
+# English sentences; named placeholders canonicalise back to value_N.
+KEY_RENAMES = json.loads((Path(__file__).resolve().parent / 'pm015_key_renames.json').read_text())['renames']
+STABLE_PLACEHOLDERS = {'position', 'entered', 'step', 'total'}
+SETTINGS_KEYS = {'settings.language', 'settings.language_system', 'settings.language_next_window'}
+
+
+def canonical_placeholders(value):
+    index = 0
+
+    def repl(match):
+        nonlocal index
+        name = match.group(1)
+        if name in STABLE_PLACEHOLDERS or re.fullmatch(r'value_\d+', name):
+            return match.group(0)
+        index += 1
+        return '{value_%d}' % index
+
+    return re.sub(r'\{([A-Za-z_][A-Za-z0-9_]*)\}', repl, value)
+
+
+def pm014_key(key):
+    return KEY_RENAMES.get(key, key)
+
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = json.loads((ROOT / 'tests/pm014_english_literals.json').read_text())
 MODULES = ('bip39_locale', 'gui_errors', 'managed_onboarding', 'fusion_ui', 'fusion_pages')
@@ -58,8 +82,19 @@ def english_source_fingerprint(source, catalog):
             if isinstance(node.func, ast.Name) and node.func.id == 'fusion_nav_pages':
                 return ast.Name(id='FUSION_NAV_PAGES', ctx=ast.Load())
             if isinstance(node.func, ast.Name) and node.func.id == 'ui_text':
-                return ast.Constant(catalog[node.args[0].value])
-            return self.generic_visit(node)
+                return ast.Constant(canonical_placeholders(catalog[node.args[0].value]))
+            node = self.generic_visit(node)
+            if (isinstance(node.func, ast.Attribute) and node.func.attr == 'format'
+                    and isinstance(node.func.value, ast.Constant)
+                    and isinstance(node.func.value.value, str)
+                    and '{value_' in node.func.value.value):
+                number = 0
+                for keyword in node.keywords:
+                    if keyword.arg in STABLE_PLACEHOLDERS or re.fullmatch(r'value_\d+', keyword.arg or ''):
+                        continue
+                    number += 1
+                    keyword.arg = 'value_%d' % number
+            return node
 
         def visit_JoinedStr(self, node):
             template, values = '', []
@@ -89,16 +124,17 @@ class CatalogTests(unittest.TestCase):
     def test_english_bytes_and_existing_vietnamese(self):
         for lang, entries in FIXTURE['legacy'].items():
             for key, literal in entries.items():
-                self.assertEqual(CATALOG[lang][key].encode(), literal.encode(), key)
+                self.assertEqual(canonical_placeholders(CATALOG[lang][pm014_key(key)]).encode(), literal.encode(), key)
         for entries in FIXTURE['moved'].values():
             for key, literal in entries.items():
-                self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
+                self.assertEqual(canonical_placeholders(text(pm014_key(key), 'en')).encode(), literal.encode(), key)
         for code, literal in FIXTURE['errors'].items():
             self.assertEqual(text('errors.' + code, 'en').encode(), literal.encode())
-        expected = set(FIXTURE['legacy']['en']) | {'errors.' + c for c in FIXTURE['errors']}
+        expected = {pm014_key(key) for key in FIXTURE['legacy']['en']}
+        expected.update('errors.' + code for code in FIXTURE['errors'])
         for entries in FIXTURE['moved'].values():
-            expected.update(entries)
-        self.assertEqual(set(CATALOG['en']), expected)
+            expected.update(pm014_key(key) for key in entries)
+        self.assertEqual(set(CATALOG['en']) - SETTINGS_KEYS, expected)
 
     def test_public_error_mapping_and_codes_unchanged(self):
         from wam_regtest.gui_errors import _MESSAGES, error_text, public_code
@@ -111,22 +147,25 @@ class CatalogTests(unittest.TestCase):
     def test_fallbacks_and_compatibility_language_resolution(self):
         from wam_regtest import bip39_locale
         for key, english in CATALOG['en'].items():
-            self.assertEqual(text(key, 'ja'), english)
+            self.assertEqual(text(key, 'de'), english)
             self.assertEqual(text(key), english)
-            self.assertEqual(text(key, 'vi'), CATALOG['vi'].get(key, english))
+            for language in ('vi', 'ja', 'zh-Hans'):
+                self.assertEqual(text(key, language), CATALOG[language][key])
         self.assertEqual(text('missing.key', 'vi'), 'missing.key')
-        for language in ('en', 'vi'):
+        for language in ('en', 'vi', 'ja', 'zh-Hans'):
             with patch.object(bip39_locale, '_lang', return_value=language):
                 for key in CATALOG['en']:
                     self.assertEqual(bip39_locale.t(key), text(key, language))
 
-    def test_system_locale_resolution_is_unchanged(self):
+    def test_system_locale_resolution_follows_prefix(self):
         from types import SimpleNamespace
         from wam_regtest import bip39_locale
         for name, language in (('vi_VN', 'vi'), ('VI_vn', 'vi'), ('en_US', 'en'),
-                               ('ja_JP', 'en'), ('zh_CN', 'en')):
-            with patch.object(bip39_locale.QLocale, 'system',
-                              return_value=SimpleNamespace(name=lambda: name)):
+                               ('ja_JP', 'ja'), ('zh_CN', 'zh-Hans'), ('zh_TW', 'zh-Hans'),
+                               ('C', 'en'), ('fr_FR', 'en')):
+            with patch.object(bip39_locale, 'stored_language', return_value='system'), \
+                    patch.object(bip39_locale.QLocale, 'system',
+                                 return_value=SimpleNamespace(name=lambda n=name: n)):
                 self.assertEqual(bip39_locale._lang(), language)
                 self.assertEqual(bip39_locale.t('backup_title'), text('backup_title', language))
 
@@ -143,8 +182,10 @@ class CatalogTests(unittest.TestCase):
                     key = node.args[0].value
                     self.assertIn(key, CATALOG['en'])
                     used.add(key)
+        inverse = {new: old for old, new in KEY_RENAMES.items()}
+        used_pm014 = {inverse.get(key, key) for key in used}
         for entries in FIXTURE['moved'].values():
-            self.assertLessEqual(set(entries), used)
+            self.assertLessEqual(set(entries), used_pm014)
 
     def test_catalog_contains_copy_only(self):
         for language, entries in CATALOG.items():
@@ -164,8 +205,26 @@ class CatalogTests(unittest.TestCase):
 
     def test_pure_presentation_import_boundary(self):
         directory = ROOT / 'src/wam_regtest/presentation'
-        for path in directory.glob('*.py'):
-            for node in ast.walk(ast.parse(path.read_text())):
+        locale_modules = {
+            'wam_regtest.presentation.locales.en',
+            'wam_regtest.presentation.locales.vi',
+            'wam_regtest.presentation.locales.ja',
+            'wam_regtest.presentation.locales.zh_hans',
+        }
+        for path in directory.rglob('*.py'):
+            rel = path.relative_to(directory).as_posix()
+            imports = [node for node in ast.walk(ast.parse(path.read_text()))
+                       if isinstance(node, (ast.Import, ast.ImportFrom))]
+            if rel.startswith('locales/'):
+                self.assertEqual(imports, [], rel)
+                continue
+            if rel == 'strings.py':
+                for node in imports:
+                    self.assertIsInstance(node, ast.ImportFrom, rel)
+                    self.assertEqual(node.level, 0, rel)
+                    self.assertIn(node.module, locale_modules, rel)
+                continue
+            for node in imports:
                 if isinstance(node, ast.ImportFrom):
                     module = node.module or ''
                     self.assertFalse(module.startswith('PySide6'))

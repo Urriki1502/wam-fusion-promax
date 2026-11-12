@@ -210,7 +210,7 @@ class ThemeSlider(QFrame):
     def __init__(self, *, compact=False):
         super().__init__()
         self.setObjectName('FusionSegmented')
-        self.setAccessibleName(ui_text('fusion.appearance_automatic_light_or_dark'))
+        self.setAccessibleName(ui_text('fusion.appearance_choices'))
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._index = 0
         self._compact = compact
@@ -765,7 +765,7 @@ class ChainActivity(QWidget):
         self._hover = -1
         self.setMinimumHeight(196)
         self.setMouseTracking(True)
-        self.setAccessibleName(ui_text('fusion.confirmed_on_chain_credit_and_debit_activity'))
+        self.setAccessibleName(ui_text('fusion.credit_debit_activity'))
 
     def render_snapshot(self, snapshot):
         self._activity = activity_by_block(snapshot)
@@ -787,7 +787,7 @@ class ChainActivity(QWidget):
         if index >= 0:
             h, credit, debit = self._activity[index]
             QToolTip.showText(event.globalPosition().toPoint(),
-                              ui_text('fusion.confirmed_block_value_1_credits_value_2_wam_debits_value_3_wam').format(value_1=h, value_2=format_wam(credit), value_3=format_wam(debit)), self)
+                              ui_text('fusion.block_credit_debit').format(height=h, credit=format_wam(credit), debit=format_wam(debit)), self)
         else:
             QToolTip.hideText()
 
@@ -804,7 +804,7 @@ class ChainActivity(QWidget):
         if not self._activity:
             p.setPen(QColor(c['chart_empty']))
             p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
-                       ui_text('fusion.no_confirmed_activity_sync_the_verified_chain_to_see_credits_and'))
+                       ui_text('fusion.no_chart_activity'))
             p.end()
             return
         left, top, right, bottom = 66., 20., self.width() - 16., self.height() - 37.
@@ -939,7 +939,7 @@ class BalanceHistoryChart(QWidget):
         if index >= 0:
             _x, _y, height, atoms = mapped[index]
             QToolTip.showText(event.globalPosition().toPoint(),
-                              ui_text('fusion.verified_block_value_1_confirmed_value_2_wam').format(value_1=height, value_2=format_wam(atoms)), self)
+                              ui_text('fusion.verified_block_amount').format(height=height, amount=format_wam(atoms)), self)
         else:
             QToolTip.hideText()
 
@@ -956,7 +956,7 @@ class BalanceHistoryChart(QWidget):
             p.setPen(QColor(c['chart_empty']))
             p.drawText(self.rect().adjusted(10, 10, -10, -10),
                        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap,
-                       ui_text('fusion.balance_history_is_not_yet_available'))
+                       ui_text('fusion.balance_history_unavailable'))
             p.end()
             return
         mapped = self._mapped(self.width(), self.height())
@@ -970,7 +970,7 @@ class BalanceHistoryChart(QWidget):
             p.setPen(QColor(c['muted']))
             p.drawText(self.rect().adjusted(8, 8, -8, -8),
                        Qt.AlignmentFlag.AlignCenter,
-                       ui_text('fusion.confirmed_value_1_wam_at_block_value_2').format(value_1=format_wam(atoms), value_2=height))
+                       ui_text('fusion.amount_at_block').format(amount=format_wam(atoms), height=height))
             p.end()
             return
         path = QPainterPath()
@@ -1028,7 +1028,7 @@ class FusionOverview(QScrollArea):
         home = QLabel(); home.setProperty('fusion_icon_label', 'home'); home.setFixedSize(24, 24)
         title_row.addWidget(home); title_row.addWidget(label(ui_text('fusion.overview'), 'PageTitle')); title_row.addStretch()
         titles.addLayout(title_row)
-        titles.addWidget(label(ui_text('fusion.your_wam_wallet_at_a_glance')))
+        titles.addWidget(label(ui_text('fusion.glance')))
         head.addLayout(titles, 1)
         self.live_badge = label(ui_text('fusion.awaiting_verification'), 'FusionBadge')
         self.live_badge.hide()
@@ -1068,7 +1068,7 @@ class FusionOverview(QScrollArea):
         hero.addWidget(self.fund_details)
         row = QHBoxLayout(); row.setSpacing(10)
         self.go_send = action(ui_text('fusion.send'), 'send', True); self.go_send.setEnabled(False)
-        self.go_send.setToolTip(ui_text('fusion.send_stays_disabled_until_verified_custody_and_chain_checks_allow'))
+        self.go_send.setToolTip(ui_text('fusion.send_disabled'))
         self.go_receive = action(ui_text('fusion.receive'), 'receive')
         row.addWidget(self.go_send); row.addWidget(self.go_receive); row.addStretch()
         hero.addLayout(row)
@@ -1117,7 +1117,7 @@ class FusionOverview(QScrollArea):
         self.activity_table.cellClicked.connect(self._select_tx)
         self._txids = []
         alayout.addWidget(self.activity_table)
-        self.empty = label(ui_text('fusion.no_confirmed_transactions_yet_verified_activity_will_appear_here'))
+        self.empty = label(ui_text('fusion.no_activity_yet'))
         alayout.addWidget(self.empty)
 
         whole.addWidget(self.hero)
@@ -1126,15 +1126,15 @@ class FusionOverview(QScrollArea):
 
         self._compat = QWidget(); self._compat.hide()
         compat = QVBoxLayout(self._compat)
-        self.network_summary = label(ui_text('fusion.shown_after_a_verified_core_snapshot'))
+        self.network_summary = label(ui_text('fusion.after_snapshot'))
         self.health_value = label(ui_text('fusion.not_verified'), 'FusionCardValue')
-        self.health_details = label(ui_text('fusion.core_chain_custody_and_network_are_reported_only_from_verified_ba'))
+        self.health_details = label(ui_text('fusion.verified_sources_only'))
         self.evidence_text = label(ui_text('fusion.no_verified_blockchain_snapshot'))
         self.manual_sync = action(ui_text('fusion.refresh'), 'sync')
         self.open_security = action(ui_text('fusion.security'), 'security')
         self.open_security.setEnabled(False)
         self.wallet_profile = label(ui_text('fusion.regtest_profile'))
-        self.environment_core = label(ui_text('fusion.wam_core_identity_is_shown_after_verification'))
+        self.environment_core = label(ui_text('fusion.core_identity_pending'))
         self.environment_stack = label(ui_text('fusion.wsp_1_bip39_12_words'))
         self.custody_switch = StateSwitch(ui_text('fusion.locked'))
         self.custody_switch.setAccessibleName(ui_text('fusion.wallet_lock_unlock_switch'))
@@ -1211,7 +1211,7 @@ class FusionOverview(QScrollArea):
         if snap is None or locked:
             self._confirmed_atoms = None
             self._apply_balance_text()
-            self.utxo_details.setText(ui_text('fusion.unlock_and_verify_the_chain_to_display_wallet_values'))
+            self.utxo_details.setText(ui_text('fusion.unlock_to_show_values'))
             self.fund_details.hide()
             self.balance_chart.render_points(())
             self.live_badge.setText(ui_text('fusion.locked') if locked else ui_text('fusion.not_verified'))
@@ -1223,17 +1223,17 @@ class FusionOverview(QScrollArea):
             self.empty.show()
             self.go_receive.setEnabled(False)
             self.health_value.setText(ui_text('fusion.faulted') if faulted else (ui_text('fusion.locked') if locked else ui_text('fusion.not_verified')))
-            self.health_details.setText(ui_text('fusion.wallet_values_stay_hidden_until_this_original_regtest_profile_is'))
-            self.network_summary.setText(network.get('summary', ui_text('fusion.network_status_is_shown_only_after_a_verified_core_snapshot')))
+            self.health_details.setText(ui_text('fusion.values_hidden'))
+            self.network_summary.setText(network.get('summary', ui_text('fusion.network_after_snapshot')))
             self.wallet_profile.setText(ui_text('fusion.regtest_profile'))
-            self.environment_core.setText(ui_text('fusion.wam_core_identity_is_shown_after_verification'))
+            self.environment_core.setText(ui_text('fusion.core_identity_pending'))
             return
         activity_by_block(snap)
         self.balance_chart.render_points(confirmed_balance_history(snap))
         self._confirmed_atoms = snap.confirmed_atoms
         self._apply_balance_text()
         self.utxo_details.setText(
-            ui_text('fusion.value_1_confirmed_utxo_s_verified_block_value_2').format(value_1=snap.confirmed_utxos, value_2=snap.height)
+            ui_text('fusion.utxo_summary').format(count=snap.confirmed_utxos, height=snap.height)
             + (ui_text('fusion.regtest_shared') if network.get('shared') else ui_text('fusion.regtest_isolated')))
         funds = []
         if type(available_atoms) is int and available_atoms >= 0:
@@ -1248,11 +1248,11 @@ class FusionOverview(QScrollArea):
         self.evidence_text.setText(ui_text('fusion.verified_tip') + snap.tip[:14] + ui_text('fusion.no_real_funds'))
         self.evidence_text.setToolTip(ui_text('fusion.core_sha_256') + snap.core_sha256 + ui_text('fusion.verified_tip_2') + snap.tip)
         self.network_summary.setText(network.get('summary') or (
-            ui_text('fusion.mode_value_1_height_value_2').format(value_1=ui_text('fusion.shared_regtest') if network.get('shared') else ui_text('fusion.isolated_regtest'), value_2=snap.height)))
+            ui_text('fusion.mode_height').format(mode=ui_text('fusion.shared_regtest') if network.get('shared') else ui_text('fusion.isolated_regtest'), height=snap.height)))
         self.health_value.setText(ui_text('fusion.operating_normally') if not faulted else ui_text('fusion.faulted'))
         self.health_details.setText(
-            ui_text('fusion.confirmed_balance_custody_and_chain_height_come_from_this_verifie')
-            if not faulted else ui_text('fusion.original_reservations_are_preserved_do_not_retry_uncertain_paymen'))
+            ui_text('fusion.snapshot_sources')
+            if not faulted else ui_text('fusion.keep_reservations'))
         self.wallet_profile.setText(ui_text('fusion.operational_regtest_wallet') if operational else ui_text('fusion.read_only_regtest_wallet'))
         self.environment_core.setText(core_compat.DISPLAY_NAME + ui_text('fusion.sha_256') + snap.core_sha256[:12] + '…')
         self.environment_core.setToolTip(ui_text('fusion.core_sha_256') + snap.core_sha256)
@@ -1268,12 +1268,12 @@ class FusionOverview(QScrollArea):
             value = tx.credit_atoms - tx.debit_atoms
             direction = ui_text('fusion.received') if value > 0 else ui_text('fusion.sent') if value < 0 else ui_text('fusion.activity_2')
             amount = ('+' if value > 0 else '-' if value < 0 else '') + format_wam(abs(value)) + ' WAM'
-            status = ui_text('fusion.confirmed_value_1_block_value_2').format(value_1=tx.confirmations, value_2=tx.block_height)
+            status = ui_text('fusion.confirmed_count_block').format(confirmations=tx.confirmations, height=tx.block_height)
             activity_text = direction + '\n' + tx.txid[:12] + '…'
             for j, text in enumerate((activity_text, amount, status)):
                 item = QTableWidgetItem(text)
                 item.setForeground(QColor(fusion_palette(mode)['text']))
-                item.setToolTip(tx.txid + ui_text('fusion.click_to_view_exact_transaction_details'))
+                item.setToolTip(tx.txid + ui_text('fusion.view_transaction'))
                 if j == 0:
                     item.setData(Qt.ItemDataRole.UserRole, value)
                     item.setIcon(vector_icon('receive' if value > 0 else 'send',
