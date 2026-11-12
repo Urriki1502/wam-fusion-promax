@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (
 
 from .bip39_owner_gui import Bip39TrialWindow
 from .presentation.action_state import SharedInputs, apply_shared_profile, available_actions, fusion_actions
+from .domain.payment_state import reserved_rows_needing_attention
+
 from .bip39_locale import t
 from .desktop import resolve_theme
 from .gui_errors import operation_error
@@ -33,6 +35,20 @@ from .wallet_read import WalletReadSnapshot, format_wam
 from .amounts import parse_amount, _parse_atoms
 from .branding import brand_image
 from .infrastructure import core_compat
+
+
+def displayed_reserved_inputs(result):
+    """Reserved-input count for the overview (W-TX-03b).
+
+    With verified per-state counts, a confirmed payment's leftover 'broadcast'
+    rows are not shown as coins that "stay unavailable". Without them (older
+    result shapes) the previous raw count is shown unchanged.
+    """
+    counts = result.get("reservation_state_counts")
+    if counts is None:
+        return result.get("reservation_count")
+    return reserved_rows_needing_attention(counts)
+
 
 
 class _WrappingStatusLabel(QLabel):
@@ -876,7 +892,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self.overview.render_snapshot(
                 snap, operational=True, network=self._network_view(snap),
                 available_atoms=result.get("available_atoms"),
-                reservation_count=result.get("reservation_count"),
+                reservation_count=displayed_reserved_inputs(result),
                 core_alive=self.executor.state.core_alive,
                 busy=False)
             self.connection_pill.setText(classify(

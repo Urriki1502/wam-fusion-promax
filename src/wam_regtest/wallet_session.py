@@ -348,6 +348,14 @@ class WalletSession:
                             reservation_fingerprint(wallet.db.execute(
                                 'SELECT txid,vout,token,state,created '
                                 'FROM reservations ORDER BY txid,vout')))
+                        # Same transaction as the fingerprint (W-TX-03b): rows per state.
+                        state_counts=tuple(sorted(
+                            (row[0],row[1]) for row in wallet.db.execute(
+                                'SELECT state,count(*) FROM reservations GROUP BY state')))
+                        if (any(type(s) is not str or type(n) is not int or n<1 for s,n in state_counts)
+                                or sum(n for _,n in state_counts)!=reservation_count
+                                or tuple(s for s,_ in state_counts)!=tuple(reservation_states)):
+                            raise ManagedWalletError('MANAGED_WALLET_RESERVATION_INCONSISTENT')
                     except (ManagedWalletError,sqlite3.Error):
                         raise WalletSessionError('WALLET_RESERVATION_INCONSISTENT') from None
             except _SessionHistoryDenied as error:
@@ -368,6 +376,7 @@ class WalletSession:
                 reservation_count=reservation_count,
                 reservation_sha256=reservation_sha256,
                 reservation_states=tuple(reservation_states),
+                reservation_state_counts=state_counts,
             )
 
     def prepare(self, code, atoms, fee):

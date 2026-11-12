@@ -35,6 +35,7 @@ _S1_BOOL = (
     "status_awaiting_confirmation", "reservation_held", "tx_in_verified_history",
     "balance_arithmetic_exact", "send_page_confirmed", "second_reopen_no_pending",
     "second_reopen_no_spurious",
+    "no_stale_reservation_display_after_confirm", "no_stale_reservation_display_after_reopen",
 )
 _S1_INT = (
     "funded_atoms", "payment_atoms", "fee_atoms", "change_atoms",
@@ -581,6 +582,19 @@ def scenario_unconfirmed_restart(app, adapter, core, source, report):
         if not on_send:
             raise ValueError("Q06_FIX_S1_SEND_PAGE_DENIED")
         _stage("S1_CONFIRM_PASS")
+        # W-TX-03 / W-TX-03b: a confirmed payment's leftover 'broadcast' rows
+        # must not be shown as a reservation warning or as unavailable inputs.
+        from wam_regtest.bip39_owner_gui import reservation_warning
+        from wam_regtest.bip39_fusion_gui import displayed_reserved_inputs
+        stale_after_confirm = (after.get("reservation_states") != ("broadcast",)
+                               or reservation_warning(after)
+                               or displayed_reserved_inputs(after) != 0
+                               or "anchored transaction reservations exist"
+                               in window.status.text().lower())
+        _note(report, "s1", no_stale_reservation_display_after_confirm=not stale_after_confirm)
+        if stale_after_confirm:
+            raise ValueError("Q06_FIX_S1_STALE_RESERVATION_DISPLAY")
+        _stage("S1_NO_STALE_RESERVATION_DISPLAY_PASS")
         confirmed_atoms = after["confirmed_atoms"]
         available_atoms = after["available_atoms"]
         reservations = after["reservation_count"]
@@ -615,6 +629,11 @@ def scenario_unconfirmed_restart(app, adapter, core, source, report):
               second_reopen_no_spurious=clean)
         if not clean:
             raise ValueError("Q06_FIX_S1_SECOND_REOPEN_DENIED")
+        rendered_stale = ("anchored transaction reservations exist" in status_text
+                          or "reserved input" in window.overview.fund_details.text().lower())
+        _note(report, "s1", no_stale_reservation_display_after_reopen=not rendered_stale)
+        if rendered_stale:
+            raise ValueError("Q06_FIX_S1_STALE_RESERVATION_DISPLAY_REOPEN")
         _stage("S1_SECOND_REOPEN_PASS")
         failed = False
     finally:

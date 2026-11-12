@@ -259,6 +259,8 @@ class AckSnapshotCharacterization(unittest.TestCase):
             'reservation_count': 2,
             # PM-011 (W-TX-03, intentional public-dict addition): verified state set.
             'reservation_states': ('broadcast',),
+            # PM-013 (W-TX-03b, intentional addition): per-state counts; None for this fake.
+            'reservation_state_counts': None,
             'payment_review': review,
             'payment_signed': True,
             'recovered_unsigned_cancel_available': True,

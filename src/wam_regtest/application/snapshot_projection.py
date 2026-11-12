@@ -29,6 +29,8 @@ def project_owned_spend_snapshot(item, session, *, profile, account_id, availabl
         # the previous count-only rule); never invent an empty set.
         "reservation_states": (None if item.reservation_states is None
                                else tuple(item.reservation_states)),
+        # PM-013 (W-TX-03b): rows per state from the same verified read, or None.
+        "reservation_state_counts": getattr(item, 'reservation_state_counts', None),
         "payment_review": session.payment_review,
         "payment_signed": session.payment_signed,
         "recovered_unsigned_cancel_available": session.recovered_unsigned_cancel_available(),

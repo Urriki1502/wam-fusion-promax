@@ -54,6 +54,11 @@ def mark_reservations_uncertain_before_submission(db, token, *, signed_rows_only
 ATTENTION_STATES = frozenset((DRAFT, SIGNED, UNCERTAIN))
 
 
+def reserved_rows_needing_attention(reservation_state_counts):
+    """Rows that still lock coins for the owner (W-TX-03b): every row not 'broadcast'."""
+    return sum(rows for state, rows in reservation_state_counts if state != BROADCAST)
+
+
 def reservations_need_attention(reservation_states):
     """True if any reservation is draft, signed or uncertain (unknown states count too)."""
     states = set(reservation_states)

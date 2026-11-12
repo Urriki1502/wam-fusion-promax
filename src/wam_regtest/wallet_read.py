@@ -58,6 +58,8 @@ class WalletReadSnapshot:
     reservation_count: int | None = None
     reservation_sha256: str | None = None
     reservation_states: tuple[str, ...] | None = None
+    # PM-013 (W-TX-03b): ((state, rows), ...) from the same verified read; None when not read.
+    reservation_state_counts: tuple[tuple[str, int], ...] | None = None
 
 
 def read_real_wallet_snapshot(
