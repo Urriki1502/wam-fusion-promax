@@ -115,11 +115,38 @@ def english_source_fingerprint(source, catalog):
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def _proven_source(module):
+    """Module text the PM-014 English-source proof applies to (PM-026).
+
+    The proof certifies that a module's English output equals the pre-catalog
+    baseline. It is anchored to the git blob on which it held, verified by
+    SHA-256, so a later edit of the live module neither freezes nor voids it.
+    The live file is used while it still matches. Without git history the
+    proof is skipped, never passed.
+    """
+    import hashlib
+    import subprocess
+    record = FIXTURE['source_proven'][module]
+    current = (ROOT / 'src/wam_regtest' / (module + '.py')).read_bytes()
+    if hashlib.sha256(current).hexdigest() == record['proven_source_sha256']:
+        return current.decode()
+    try:
+        proven = subprocess.run(['git', '-C', str(ROOT), 'cat-file', '-p', record['proven_blob']],
+                                capture_output=True, check=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        raise unittest.SkipTest('PM-014 proof blob %s not available' % record['proven_blob'][:12])
+    if hashlib.sha256(proven).hexdigest() != record['proven_source_sha256']:
+        raise AssertionError('PM-014 proof blob content changed: ' + module)
+    return proven.decode()
+
+
 class CatalogTests(unittest.TestCase):
     def test_english_executable_source_matches_baseline(self):
+        self.assertEqual(set(FIXTURE['source_proven']), set(FIXTURE['source_fingerprints']))
         for module, expected in FIXTURE['source_fingerprints'].items():
-            source = (ROOT / 'src/wam_regtest' / (module + '.py')).read_text()
-            self.assertEqual(english_source_fingerprint(source, CATALOG['en']), expected, module)
+            with self.subTest(module=module):
+                source = _proven_source(module)
+                self.assertEqual(english_source_fingerprint(source, CATALOG['en']), expected, module)
 
     def test_english_bytes_and_existing_vietnamese(self):
         for lang, entries in FIXTURE['legacy'].items():

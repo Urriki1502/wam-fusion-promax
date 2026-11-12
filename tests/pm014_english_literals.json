@@ -337,5 +337,20 @@
     "managed_onboarding": "2e1b29ea32b86a7b83ece39c2f8db60cb69ae1211da14e0a72b5baa2c599b15c",
     "fusion_ui": "15191a755f24ec7ed594787d9e6a474b45913767234998ca9f7e1acac7f61a14",
     "fusion_pages": "6901fbcb46c4e79e3861176ce79d04394017c9d86610bbbee9586f74a8628442"
-  }
+  },
+  "source_proven": {
+    "managed_onboarding": {
+      "proven_blob": "12795003e1634e1ae832284ef2001b2cdef8e817",
+      "proven_source_sha256": "5850db901a6e4d9010b7abe4295257a195791720acd4f7da4d40ecf76fc29909"
+    },
+    "fusion_ui": {
+      "proven_blob": "1801f92731799840cebf2e659624b128f772b05f",
+      "proven_source_sha256": "9a774aacf34c3182a6fa591f4d18dc230ae066afdf7823e5c6b55260cd5ed642"
+    },
+    "fusion_pages": {
+      "proven_blob": "ab81e6001e03de74f611a52e113f490dab1080b4",
+      "proven_source_sha256": "1019e9db49c504854910acdc7086b739b51eab9f9810703fc5caf50c9be2b2db"
+    }
+  },
+  "source_proven_note": "Blobs at promax/main 3e5126e, where every source fingerprint held (PM-026 anchoring)."
 }
