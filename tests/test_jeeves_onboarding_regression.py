@@ -173,8 +173,10 @@ class WelcomeQuit(unittest.TestCase):
                 if dialog.isVisible():
                     seen['trigger_ignored'] = True
                     dialog.reject()
-            QTimer.singleShot(0, quit_while_waiting)
-            QTimer.singleShot(3000, fallback)
+            # Context object = the dialog: neither timer outlives it (a late
+            # fallback otherwise ran on a deleted dialog during later tests).
+            QTimer.singleShot(0, dialog, quit_while_waiting)
+            QTimer.singleShot(3000, dialog, fallback)
             return dialog
         with patch.object(onboarding, 'welcome_dialog', side_effect=welcome), \
                 patch('PySide6.QtWidgets.QFileDialog.getExistingDirectory') as folder, \
