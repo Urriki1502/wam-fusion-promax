@@ -80,11 +80,14 @@ class InteractionRecords(unittest.TestCase):
         self.assertIn('FOCUS_LOST', [f['kind'] for f in report['findings']])
 
     def test_table_trap_is_proven_by_revisiting_a_cell(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        # PM-032 fixed the real overview trap (R-10). To keep the detector
+        # proven, re-create it: tables keep Qt's default tab-key navigation.
+        from PySide6.QtWidgets import QTableWidget
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(QTableWidget, 'setTabKeyNavigation', lambda self, enabled: None):
             report = self._run(tmp)
         traps = [f for f in report['findings'] if f['kind'] == 'FOCUS_TRAP']
-        # The overview activity table cycles its own cells (R-10). The trap is
-        # only reported after Tab came back to an already visited cell.
+        # The trap is only reported after Tab came back to a visited cell.
         self.assertTrue(traps)
         self.assertGreater(traps[0]['cells_visited'], 1)
 
