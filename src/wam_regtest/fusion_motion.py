@@ -190,8 +190,8 @@ class StatusGlyph(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         c = fusion_palette(self._mode if self._mode in ('dark', 'light') else 'dark')
         tone = {
-            'verified': c['green'], 'pending': c['accent'], 'warning': c['warning_text'],
-            'error': c['red'], 'unknown': c['muted'],
+            'verified': c['success'], 'pending': c['pending'], 'warning': c['warning_text'],
+            'error': c['error'], 'unknown': c['muted'],
         }[self._state]
         rect = self.rect().adjusted(2, 2, -2, -2)
         if self._state == 'pending':

@@ -4,7 +4,7 @@ from .bip39_locale import t as ui_text
 from PySide6.QtCore import Qt, Signal, QRectF, QTimer
 from PySide6.QtGui import QColor,QPainter,QFont,QFontDatabase
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QLineEdit,QComboBox,QCheckBox,QTableWidget,QTableWidgetItem,QHeaderView,QApplication,QDialog,QDialogButtonBox,QFrame
-from .fusion_ui import label,panel,page,action,ResponsiveRow,AdaptiveButtonRow,keyboard_table,vector_icon,fusion_palette,activity_by_block,grow_with_wrapped_text
+from .fusion_ui import label,panel,page,action,ResponsiveRow,AdaptiveButtonRow,keyboard_table,vector_icon,fusion_palette,activity_by_block,grow_with_wrapped_text,direction_tone,QR
 from .wallet_read import format_wam
 
 
@@ -21,14 +21,14 @@ class PaymentQR(QWidget):
         qr=qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M,border=4,box_size=1)
         qr.add_data(code,optimize=0);qr.make(fit=True);self.matrix=qr.get_matrix();self.update()
     def paintEvent(self,event):
-        p=QPainter(self);p.setRenderHint(QPainter.RenderHint.Antialiasing);r=QRectF(self.rect()).adjusted(1,1,-1,-1);p.setPen(Qt.PenStyle.NoPen);p.setBrush(QColor('#FFFFFF'));p.drawRoundedRect(r,12,12)
+        p=QPainter(self);p.setRenderHint(QPainter.RenderHint.Antialiasing);r=QRectF(self.rect()).adjusted(1,1,-1,-1);p.setPen(Qt.PenStyle.NoPen);p.setBrush(QColor(QR['paper']));p.drawRoundedRect(r,12,12)
         if self.matrix:
             n=len(self.matrix);unit=max(1,int(min(self.width()-18,self.height()-18)/n));size=unit*n;left=(self.width()-size)//2;top=(self.height()-size)//2
-            p.setRenderHint(QPainter.RenderHint.Antialiasing,False);p.setBrush(QColor('#101010'))
+            p.setRenderHint(QPainter.RenderHint.Antialiasing,False);p.setBrush(QColor(QR['ink']))
             for y,row in enumerate(self.matrix):
                 for x,dark in enumerate(row):
                     if dark:p.drawRect(left+x*unit,top+y*unit,unit,unit)
-        else:p.setPen(QColor('#5D6C82'));p.drawText(self.rect(),Qt.AlignmentFlag.AlignCenter,ui_text('pages.address_unavailable'))
+        else:p.setPen(QColor(QR['caption']));p.drawText(self.rect(),Qt.AlignmentFlag.AlignCenter,ui_text('pages.address_unavailable'))
         p.end()
 
 
@@ -122,7 +122,7 @@ class HistoryPage(QWidget):
             values=(direction,row.txid[:12]+'…',str(row.block_height),str(row.confirmations),format_wam(row.credit_atoms),format_wam(row.debit_atoms))
             for j,value in enumerate(values):
                 item=QTableWidgetItem(value);item.setToolTip(row.txid);item.setData(Qt.ItemDataRole.UserRole,row.txid)
-                if j==0:item.setIcon(vector_icon('receive' if net>0 else 'send',c['green' if net>0 else 'blue']))
+                if j==0:item.setIcon(vector_icon('receive' if net>0 else 'send',direction_tone(c, net)))
                 if j in (1,4,5):item.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
                 if j>=2:item.setTextAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
                 self.table.setItem(i,j,item)
@@ -133,8 +133,8 @@ class HistoryPage(QWidget):
         for i,row in enumerate(self.rows):
             item=self.table.item(i,0)
             if item is not None:
-                positive=row.credit_atoms>row.debit_atoms
-                item.setIcon(vector_icon('receive' if positive else 'send',c['green' if positive else 'blue']))
+                net=row.credit_atoms-row.debit_atoms
+                item.setIcon(vector_icon('receive' if net>0 else 'send',direction_tone(c, net)))
     def apply_filter(self,*_):
         term=self.search.text().strip().lower();choice=self.filter.currentIndex();shown=0
         for i,row in enumerate(self.rows):
