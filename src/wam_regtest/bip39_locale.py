@@ -2,10 +2,11 @@
 
 An explicit ui_language value in the UI preference store wins, including
 'system'. When the key is missing, the native production store follows the
-Qt locale and every other process uses English. vi, ja, and ko prefixes
-select those catalogs. id and the legacy Indonesian in prefix select
-Indonesian. Simplified Chinese is selected only for zh, zh-Hans, zh-CN,
-zh-SG, and zh_Hans* names; Traditional and other Chinese locales use English.
+Qt locale and every other process uses English. The primary language
+subtag vi, ja, or ko selects that catalog. The primary subtag id, or the
+legacy Indonesian subtag in, selects Indonesian. Simplified Chinese is
+selected only for zh, zh-Hans, zh-CN, zh-SG, and zh_Hans* names; Traditional
+and other Chinese locales use English.
 This does not select the BIP39 wordlist language.
 """
 from PySide6.QtCore import QLocale

@@ -79,6 +79,10 @@ class LanguageCatalogTests(unittest.TestCase):
                      'zh_MO', 'zh-MO', 'zh_Hant_TW', 'zh-Hant-HK'):
             self.assertEqual(resolve_language('system', name), 'en', name)
         self.assertEqual(resolve_language('system', 'vi_VN'), 'vi')
+        for name, language in (
+                ('kok_IN', 'en'), ('inh_RU', 'en'), ('jam_JM', 'en'),
+                ('ko', 'ko'), ('in', 'id'), ('id_ID', 'id'), ('vi', 'vi')):
+            self.assertEqual(resolve_language('system', name), language, name)
         self.assertEqual(resolve_language('system', 'fr_FR'), 'en')
         self.assertEqual(resolve_language('system', 'C'), 'en')
         self.assertEqual(resolve_language(None, ''), 'en')

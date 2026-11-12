@@ -171,7 +171,7 @@ class CatalogTests(unittest.TestCase):
         from PySide6.QtCore import QSettings
         from wam_regtest import bip39_locale
         # PM-020: an isolated process resolves the system locale only when
-        # 'system' is stored. A missing key is English, so this prefix matrix
+        # 'system' is stored. A missing key is English, so this subtag matrix
         # stores that choice explicitly.
         with tempfile.TemporaryDirectory() as tmp:
             settings = QSettings(str(Path(tmp) / 'ui.ini'), QSettings.Format.IniFormat)
@@ -181,6 +181,8 @@ class CatalogTests(unittest.TestCase):
                                    ('zh_SG', 'zh-Hans'), ('zh', 'zh-Hans'), ('zh_TW', 'en'),
                                    ('zh_HK', 'en'), ('zh_MO', 'en'), ('zh_Hant', 'en'),
                                    ('ko_KR', 'ko'), ('ko', 'ko'), ('id_ID', 'id'), ('in_ID', 'id'),
+                                   ('in', 'id'), ('vi', 'vi'),
+                                   ('kok_IN', 'en'), ('inh_RU', 'en'), ('jam_JM', 'en'),
                                    ('C', 'en'), ('fr_FR', 'en')):
                 with patch.object(bip39_locale, 'ui_settings', return_value=settings), \
                         patch.object(bip39_locale.QLocale, 'system',

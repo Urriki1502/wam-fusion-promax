@@ -30,23 +30,26 @@ _SIMPLIFIED_CHINESE = frozenset({'zh', 'zh_hans', 'zh_cn', 'zh_sg'})
 def resolve_language(choice, system_name=''):
     """Explicit choice, then a supported system locale, then English.
 
+    The system name is lowercased and ``-`` becomes ``_``. Only the primary
+    language subtag, the first ``_``-separated token, is compared, and only
+    by exact equality. ``vi``, ``ja``, and ``ko`` select those catalogs.
+    ``id``, or the legacy Indonesian subtag ``in``, selects Indonesian.
     Simplified Chinese is selected for ``zh``, ``zh-Hans``, ``zh-CN``,
     ``zh-SG``, and any ``zh_Hans*`` name. Traditional and other Chinese
-    locales fall back to English. A system name starting with ``ko`` selects
-    Korean. A system name starting with ``id``, or with the legacy Indonesian
-    code ``in`` (for example ``in_ID``), selects Indonesian. An explicit
-    supported choice wins over the system name. Anything else is English.
+    locales fall back to English. An explicit supported choice wins over the
+    system name. Anything else is English.
     """
     if choice in SUPPORTED_LANGUAGES:
         return choice
     name = (system_name or '').lower().replace('-', '_')
-    if name.startswith('vi'):
+    primary = name.split('_', 1)[0]
+    if primary == 'vi':
         return 'vi'
-    if name.startswith('ja'):
+    if primary == 'ja':
         return 'ja'
-    if name.startswith('ko'):
+    if primary == 'ko':
         return 'ko'
-    if name.startswith('id') or name.startswith('in'):
+    if primary in ('id', 'in'):
         return 'id'
     if name in _SIMPLIFIED_CHINESE or name.startswith('zh_hans'):
         return 'zh-Hans'
