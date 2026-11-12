@@ -780,9 +780,10 @@ class ActionAvailability(unittest.TestCase):
         self.assertEqual(window.last_txid.text(), TXID_B)
 
     def test_reservation_warning_on_positive_count_without_pending_txid_pins_w_tx_03_as_current_behaviour(self):
-        """F-02 / W-TX-03 current behaviour. bip39_owner_gui.py:661-665 warns
-        whenever spend is enabled, reservation_count>0, and there is no pending
-        TXID. The count is not filtered by reservation state."""
+        """F-02 / W-TX-03. For a result WITHOUT reservation_states (older shapes),
+        the warning still follows the unfiltered count rule pinned here. Since
+        PM-011 the live owned-spend snapshot always carries reservation_states,
+        and leftover 'broadcast' rows no longer warn (test_pm011_reservation_warning)."""
         window = self.trial
         window._pending_confirm_txid = None
         window._spend_enabled = False

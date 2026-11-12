@@ -41,7 +41,9 @@ class ReservationWarning(unittest.TestCase):
         return self.window.status.text()
 
     def test_confirmed_payment_leftover_broadcast_rows_do_not_warn(self):
-        self.assertNotEqual(self._status(reservation_count=2, reservation_states=('broadcast',)), WARNING)
+        self.window._spend_enabled = True
+        self.assertEqual(self._status(reservation_count=2, reservation_states=('broadcast',)),
+                         'Verified BIP39 REGTEST Send session; review every transaction')
 
     def test_rows_needing_attention_still_warn(self):
         for states in (('draft',), ('signed',), ('uncertain',), ('broadcast', 'signed'),

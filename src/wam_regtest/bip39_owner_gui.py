@@ -21,6 +21,8 @@ from .bip39_locale import t
 from .presentation.action_state import ActionInputs, BASE_CONTROLS, available_actions
 from .domain.payment_state import reservations_need_attention
 
+from .fusion_ui import label, action
+
 
 def reservation_warning(result):
     """Warn about reservations only when one still needs the owner's attention.
@@ -33,7 +35,6 @@ def reservation_warning(result):
     if states is None:
         return result.get("reservation_count", 0) > 0
     return result.get("reservation_count", 0) > 0 and reservations_need_attention(states)
-from .fusion_ui import label, action
 
 
 class Bip39RecoveryVerifyDialog(QDialog):
