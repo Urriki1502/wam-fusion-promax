@@ -402,9 +402,14 @@ def panel(title=None, subtitle=None, *, inset=False):
 
 
 class _FocusFollower(QObject):
-    """Scroll a keyboard-focused descendant into view (V0 R-12).
+    """Scroll a newly focused descendant into view (V0 R-12).
 
-    Parented to its scroll area, so Qt disconnects it when the area goes."""
+    Applies to any focus change (keyboard, mouse click or programmatic): a
+    partly hidden control that receives focus is revealed once with a 16 px
+    margin; later manual scrolling is not fought. Parented to its scroll area,
+    so Qt disconnects it when the area is destroyed. focusChanged can still
+    fire DURING that teardown, so both objects are checked for validity first
+    (Codex PEER-092)."""
 
     def __init__(self, scroll):
         super().__init__(scroll)
@@ -414,9 +419,13 @@ class _FocusFollower(QObject):
             app.focusChanged.connect(self._follow)
 
     def _follow(self, _old, new):
-        inner = self._scroll.widget()
-        if new is not None and inner is not None and inner.isAncestorOf(new):
-            self._scroll.ensureWidgetVisible(new, 16, 16)
+        from shiboken6 import isValid
+        scroll = self._scroll
+        if new is None or not isValid(self) or not isValid(scroll) or not isValid(new):
+            return
+        inner = scroll.widget()
+        if inner is not None and isValid(inner) and inner.isAncestorOf(new):
+            scroll.ensureWidgetVisible(new, 16, 16)
 
 
 def keep_focus_visible(scroll, accessible_name=None):

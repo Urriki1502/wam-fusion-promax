@@ -55,6 +55,39 @@ class KeyboardFixes(unittest.TestCase):
         self.assertGreater(scroll.verticalScrollBar().value(), 0)
         self.assertTrue(0 <= top <= scroll.viewport().height() - button.height())
 
+    def test_destroying_a_page_with_a_focused_child_raises_nothing(self):
+        # Codex PEER-092: focusChanged fired during teardown and the follower
+        # touched the deleted scroll area. Exceptions inside Qt callbacks only
+        # reach sys.excepthook / stderr, so both are captured here.
+        import contextlib
+        import io
+        import sys
+        from PySide6.QtCore import QCoreApplication, QEvent
+        from PySide6.QtWidgets import QLineEdit
+        from wam_regtest.fusion_ui import page
+        for _ in range(3):
+            scroll, layout = page('Title', 'subtitle')
+            field = QLineEdit()
+            layout.addWidget(field)
+            scroll.show()
+            scroll.activateWindow()
+            self.app.processEvents()
+            field.setFocus()
+            self.app.processEvents()
+            caught, errors = [], io.StringIO()
+            previous = sys.excepthook
+            sys.excepthook = lambda *exc: caught.append(exc)
+            try:
+                with contextlib.redirect_stderr(errors):
+                    scroll.deleteLater()
+                    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
+                    self.app.processEvents()
+            finally:
+                sys.excepthook = previous
+            self.assertEqual(caught, [])
+            self.assertNotIn('already deleted', errors.getvalue())
+            self.assertNotIn('Traceback', errors.getvalue())
+
     def test_interaction_probe_finds_no_trap_and_completes_the_cycle(self):
         from wam_regtest.qualification.ui_interaction import render_interaction
         with tempfile.TemporaryDirectory() as tmp:
