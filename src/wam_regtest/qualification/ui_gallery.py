@@ -75,13 +75,20 @@ def _label_text_size(widget, width):
     from PySide6.QtGui import QTextDocument
     text = widget.text()
     if _renders_rich_text(widget):
+        from PySide6.QtGui import QTextOption
         doc = QTextDocument()
         doc.setDocumentMargin(0)
         doc.setDefaultFont(widget.font())
+        # QLabel word wrap breaks only at word boundaries; an unbreakable run
+        # stays on one (clipped) line. QTextDocument's default would also
+        # break inside words, so set QLabel's mode explicitly.
+        option = QTextOption()
+        option.setWrapMode(QTextOption.WrapMode.WordWrap if width is not None
+                           else QTextOption.WrapMode.NoWrap)
+        doc.setDefaultTextOption(option)
         doc.setHtml(text)
         if width is not None:
             doc.setTextWidth(max(1, width))
-            return int(doc.idealWidth() + 0.999), int(doc.size().height() + 0.999)
         return int(doc.idealWidth() + 0.999), int(doc.size().height() + 0.999)
     flags = int(Qt.TextFlag.TextWordWrap) if width is not None else 0
     bounds = widget.fontMetrics().boundingRect(
@@ -93,6 +100,7 @@ def _button_needs(button):
     """(needed, available) content width of a push button, check box or radio
     button, from the style's own content rectangle; None for other buttons.
     A preferred sizeHint wider than the button is not clipping by itself."""
+    from PySide6.QtCore import QRect, Qt
     from PySide6.QtWidgets import (QCheckBox, QPushButton, QRadioButton, QStyle,
                                    QStyleOptionButton)
     if isinstance(button, QPushButton):
@@ -106,7 +114,9 @@ def _button_needs(button):
     option = QStyleOptionButton()
     button.initStyleOption(option)
     content = button.style().subElementRect(element, option, button)
-    need = button.fontMetrics().horizontalAdvance(button.text().replace('&&', '\0').replace('&', '').replace('\0', '&'))
+    # Qt's own measurement: multiline-aware, '&' mnemonics as the button draws them.
+    need = button.fontMetrics().boundingRect(
+        QRect(0, 0, 100000, 100000), int(Qt.TextFlag.TextShowMnemonic), button.text()).width()
     if not button.icon().isNull():
         need += button.iconSize().width() + 4
     return need, content.width()

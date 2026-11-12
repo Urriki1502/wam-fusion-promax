@@ -129,6 +129,23 @@ class DetectorAccuracy(unittest.TestCase):
         self.assertEqual(self._kinds(QLabel('<b>Hello</b>'), 90, 40), [])
         self.assertIn('TEXT_CLIPPED_H', self._kinds(QLabel('<b>Hello wide world</b>'), 20, 40))
 
+    def test_rich_text_wraps_like_qlabel_word_wrap(self):
+        # Codex PEER-081: an unbreakable rich-text run stays on one clipped line.
+        from PySide6.QtWidgets import QLabel
+
+        def wrapped(text):
+            label = QLabel(text)
+            label.setWordWrap(True)
+            return label
+        self.assertIn('TEXT_OVERFLOW_H', self._kinds(wrapped('<b>' + 'W' * 30 + '</b>'), 90, 100))
+        self.assertNotIn('TEXT_CLIPPED_V', self._kinds(wrapped('<b>' + 'W' * 30 + '</b>'), 90, 20))
+        self.assertEqual(self._kinds(wrapped('<b>short words wrap fine here</b>'), 90, 200), [])
+
+    def test_multiline_button_text_is_measured_per_line(self):
+        from PySide6.QtWidgets import QPushButton
+        self.assertEqual(self._kinds(QPushButton('Hello\nworld'), 50, 50), [])
+        self.assertEqual(self._kinds(QPushButton('&Save'), 60, 30), [])
+
     def test_button_preferred_width_is_not_clipping(self):
         from PySide6.QtWidgets import QPushButton
         self.assertEqual(self._kinds(QPushButton('OK'), 50, 30), [])
