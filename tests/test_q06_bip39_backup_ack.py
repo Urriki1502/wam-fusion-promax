@@ -619,7 +619,11 @@ class LockUnlockSourceContract(unittest.TestCase):
         self.assertIn("EchoMode.Password", owner_source)
         self.assertIn('self._command("unlock", password, False)', owner_source)
         self.assertIn('self._unlock_allowed', owner_source)
-        self.assertIn("QSettings", owner_source)
+        # PM-016 (W-TEST-01): the remembered profile path goes through the one
+        # UI preference store, which is QSettings.
+        self.assertIn("ui_settings()", owner_source)
+        self.assertIn("QSettings", (Path(__file__).resolve().parents[1]
+                                    / "src" / "wam_regtest" / "ui_settings.py").read_text(encoding="utf8"))
         self.assertIn("last_bip39_profile", owner_source)
         self.assertIn("_remember_profile", owner_source)
         self.assertNotIn('root = Path(remembered)', owner_source)

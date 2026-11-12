@@ -37,6 +37,17 @@ class SuiteIsIsolated(unittest.TestCase):
             self.assertIn(REAL_STORE_HINT, store.fileName())
 
 
+class InterpreterSetupPreserved(unittest.TestCase):
+    def test_shadowed_sitecustomize_is_still_executed(self):
+        import sys
+        import sitecustomize
+        self.assertEqual(Path(sitecustomize.__file__).resolve(), (ROOT / 'tests/sitecustomize.py').resolve())
+        stdlib = Path(os.__file__).resolve().parent / 'sitecustomize.py'
+        if stdlib.is_file():
+            self.assertEqual(Path(sitecustomize.CHAINED).resolve(), stdlib)
+            self.assertIn('_wam_shadowed_sitecustomize', sys.modules)
+
+
 class OneStore(unittest.TestCase):
     def test_no_module_opens_the_ui_store_directly(self):
         offenders = []

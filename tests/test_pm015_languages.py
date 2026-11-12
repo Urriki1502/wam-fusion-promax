@@ -1,5 +1,6 @@
 """PM-015 language catalogs, persisted choice, and rebuilt Fusion windows."""
 import ast
+import os
 import re
 import tempfile
 import unittest
@@ -141,8 +142,8 @@ class FusionLanguageWindowTests(unittest.TestCase):
             confirmed_atoms=100_000_000, confirmed_utxos=1,
             history=(HistoryRow(TXID, 3, 2, 100_000_000, 0),),
             core_sha256='ef' * 32, history_complete=True, receive_count=1)
-        with patch.object(self.gui, 'QSettings', self.factory), \
-                patch.object(self.locale, 'QSettings', self.factory):
+        # PM-016: every UI preference goes through ui_settings(); point it at this test's INI.
+        with patch.dict(os.environ, {'WAM_UI_SETTINGS_PATH': self.path}):
             first = self.real_settings(self.path, self.real_settings.Format.IniFormat)
             first.setValue('ui_language', 'en')
             first.sync()
