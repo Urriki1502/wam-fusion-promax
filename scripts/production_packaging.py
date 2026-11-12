@@ -96,7 +96,7 @@ def runtime_modules(platform='macos'):
 # Developer/qualification/alternate argv that every production executable must
 # refuse with 64 before reading resources (all platforms, hostile CI env set).
 DEVELOPER_ARGV = tuple([a] for a in (
-    '--ci-q06-bip39-spend', '--ci-q06-fix-scenarios', '--ci-q05-managed-wallet', '--ci-real-core-gui', '--ci-ui-layout', '--ci-ui-gallery',
+    '--ci-q06-bip39-spend', '--ci-q06-fix-scenarios', '--ci-q05-managed-wallet', '--ci-real-core-gui', '--ci-ui-layout', '--ci-ui-gallery', '--ci-ui-interaction',
     '--ci-v1-net-shared-regtest', '--ci-q04-external-miner', '--ci-real-core-wallet-cocoa',
     '--ci-q06-bip39-readonly', '--ci-q06-owned-spend', '--ci-real-core-wallet',
     'q04-external-miner', 'linux-wallet', 'smoke', 'wallet', '-m', '-c', '--core-dir',

@@ -84,7 +84,7 @@ def main():
     from wam_regtest.macos_build_layout import frozen_environment
     clean=frozen_environment(os.environ)
     subprocess.run([str(binary),'--check-bundle'],env=clean,cwd=stage,timeout=45,check=True)
-    modes=['--ci-q06-bip39-spend','--ci-q06-fix-scenarios','--ci-q05-managed-wallet','--ci-real-core-gui','--ci-ui-layout','--ci-ui-gallery',
+    modes=['--ci-q06-bip39-spend','--ci-q06-fix-scenarios','--ci-q05-managed-wallet','--ci-real-core-gui','--ci-ui-layout','--ci-ui-gallery','--ci-ui-interaction',
         '--ci-v1-net-shared-regtest','--ci-q04-external-miner','--ci-real-core-wallet-cocoa',
         '--ci-q06-bip39-readonly','--ci-q06-owned-spend','q04-external-miner','linux-wallet','smoke',
         '-m','--core-dir','--check-bundle=1']

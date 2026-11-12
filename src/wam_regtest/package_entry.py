@@ -72,6 +72,11 @@ def main() -> int:
             # visual review. Starts no backend, Core or wallet operation.
             from wam_regtest.qualification.ui_gallery import run as gallery
             return gallery()
+        if sys.argv[1:] == ["--ci-ui-interaction"]:
+            # Presentation fixture only: keyboard focus, mouse navigation and
+            # action states to ./ui-interaction. No backend or wallet action.
+            from wam_regtest.qualification.ui_interaction import run as interaction
+            return interaction()
         from wam_regtest.qualification.real_core_smoke import smoke_real_core
         # Hidden CI mode: actual signed Core + genuine BIP352 + Qt screen.
         cocoa_mode = sys.argv[1:] == ["--ci-real-core-wallet-cocoa"]
