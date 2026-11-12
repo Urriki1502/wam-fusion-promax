@@ -12,7 +12,10 @@ from PySide6.QtWidgets import (
 )
 
 from .bip39_locale import t
-from .fusion_ui import label, panel, action, fusion_palette, ResponsiveRow
+from .fusion_ui import (
+    label, panel, action, fusion_palette, ResponsiveRow, TYPE, WEIGHT,
+    grow_with_wrapped_text,
+)
 
 
 class _WordCard(QFrame):
@@ -24,10 +27,12 @@ class _WordCard(QFrame):
         layout.setSpacing(4)
         number_label = QLabel(f"{number}")
         number_label.setObjectName("FusionMuted")
-        number_label.setStyleSheet("font-size:11px;font-weight:600;")
+        number_label.setStyleSheet(
+            "font-size:%dpx;font-weight:%d;" % (TYPE['caption'], WEIGHT['semibold']))
         word_label = QLabel(word)
         word_label.setObjectName("FusionCardValue")
-        word_label.setStyleSheet("font-size:17px;font-weight:600;")
+        word_label.setStyleSheet(
+            "font-size:%dpx;font-weight:%d;" % (TYPE['word'], WEIGHT['semibold']))
         # Recovery words are written down by hand. Never selectable/copyable:
         # X11 exports any mouse selection to PRIMARY for every client, and
         # Ctrl+C/context-menu copy would reach system clipboard history.
@@ -120,7 +125,7 @@ class Bip39BackupPage(QWidget):
 
         pl.addWidget(label(t("backup_title"), "PageTitle"))
         pl.addWidget(label(t("backup_subtitle")))
-        warning = label(t("backup_warning"), "Warning")
+        warning = grow_with_wrapped_text(label(t("backup_warning"), "Warning"))
         pl.addWidget(warning)
 
         grid_card, gcl = panel(t("phrase_grid_title"))

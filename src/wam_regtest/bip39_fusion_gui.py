@@ -26,6 +26,7 @@ from .fusion_ui import (
     FusionOverview, fusion_stylesheet, fusion_palette, page, panel,
     label, ResponsiveRow, vector_icon, nav_icon_for, FUSION_NAV_PAGES, fusion_nav_pages,
     StateSwitch, action, ThemeSlider, grow_with_wrapped_text,
+    SHELL, present_brand_title,
 )
 from .fusion_motion import fade_widget, PressFeedback, TransitionHost, STAGGER_MS, STANDARD_MS, motion_reduced
 from .fusion_status import classify
@@ -154,29 +155,30 @@ class Bip39FusionWindow(Bip39TrialWindow):
         # Native macOS-style workspace, not a second wallet manager.
         sidebar = QFrame()
         sidebar.setObjectName("FusionSidebar")
-        sidebar.setFixedWidth(232)
+        sidebar.setFixedWidth(SHELL['sidebar_width'])
         side = QVBoxLayout(sidebar)
-        side.setContentsMargins(18, 24, 18, 18)
-        side.setSpacing(14)
+        side.setContentsMargins(
+            SHELL['sidebar_pad_x'], SHELL['sidebar_pad_top'],
+            SHELL['sidebar_pad_x'], SHELL['sidebar_pad_bottom'])
+        side.setSpacing(SHELL['sidebar_gap'])
         brand = QVBoxLayout()
-        brand.setSpacing(8)
+        brand.setSpacing(SHELL['brand_gap'])
         logo = QLabel()
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         mark = QPixmap(str(brand_image())).scaled(
-            58, 58, Qt.AspectRatioMode.KeepAspectRatio,
+            SHELL['logo'], SHELL['logo'], Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation)
         logo.setPixmap(mark)
-        logo.setFixedHeight(62)
+        logo.setFixedHeight(SHELL['logo_box'])
         brand.addWidget(logo)
-        title = label(t('wallet.brand'), "BrandTitle")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        brand.addWidget(title)
+        self._brand_title = label(t('wallet.brand'), "BrandTitle")
+        brand.addWidget(self._brand_title)
         side.addLayout(brand)
         side.addWidget(label(t('wallet.shared_badge') if shared_profile else "REGTEST", "FusionBadge"),
                        0, Qt.AlignmentFlag.AlignHCenter)
         self.navigation = QListWidget()
-        self.navigation.setIconSize(QSize(18, 18))
-        self.navigation.setSpacing(2)
+        self.navigation.setIconSize(QSize(SHELL['nav_icon'], SHELL['nav_icon']))
+        self.navigation.setSpacing(SHELL['nav_gap'])
         self.navigation.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.navigation.setAccessibleName(t('wallet.navigation_accessible'))
         self.navigation.addItems(tuple(title for title, _icon in fusion_nav_pages()))
@@ -189,14 +191,16 @@ class Bip39FusionWindow(Bip39TrialWindow):
         main = QWidget()
         main.setObjectName("FusionTransparent")
         content = QVBoxLayout(main)
-        content.setContentsMargins(34, 19, 30, 17)
-        content.setSpacing(17)
+        content.setContentsMargins(
+            SHELL['content_left'], SHELL['content_top'],
+            SHELL['content_right'], SHELL['content_bottom'])
+        content.setSpacing(SHELL['content_gap'])
 
         topbar = QFrame()
         topbar.setObjectName("FusionTopbar")
         top = QHBoxLayout(topbar)
-        top.setContentsMargins(0, 0, 0, 18)
-        top.setSpacing(12)
+        top.setContentsMargins(0, 0, 0, SHELL['topbar_bottom'])
+        top.setSpacing(SHELL['topbar_gap'])
         self.page_title = label(t('fusion.overview'), "PageTitle")
         self.page_title.hide()
         top.addWidget(self.page_title)
@@ -209,9 +213,10 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.sync.setAccessibleName(t('wallet.refresh_accessible'))
         top.addWidget(self.sync)
         divider = QFrame()
-        divider.setFrameShape(QFrame.Shape.VLine)
-        divider.setFixedWidth(1)
-        divider.setStyleSheet("color: palette(mid);")
+        divider.setObjectName("FusionDivider")
+        divider.setFrameShape(QFrame.Shape.NoFrame)
+        divider.setFixedWidth(SHELL['divider'])
+        divider.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.MinimumExpanding)
         top.addWidget(divider)
         top.addWidget(label(t('wallet.theme'), "FusionMuted"))
         self.header_theme = ThemeSlider(compact=True)
@@ -559,6 +564,10 @@ class Bip39FusionWindow(Bip39TrialWindow):
             mode = "light" if selection == 1 else "dark"
         colors = fusion_palette(mode)
         self.setStyleSheet(fusion_stylesheet(mode))
+        present_brand_title(
+            self._brand_title, t('wallet.brand'),
+            SHELL['sidebar_width'] - 2 * SHELL['sidebar_pad_x'],
+            colors['brand'])
         self.overview.set_theme(mode)
         self.history_page.set_theme(mode)
         selected = self.navigation.currentRow()

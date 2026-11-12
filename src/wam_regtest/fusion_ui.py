@@ -19,8 +19,85 @@ from .fusion_motion import motion_reduced, slide_geometry, fade_widget, CHART_MS
 from .fusion_status import classify
 from .infrastructure import core_compat
 
-SPACING = (4, 8, 12, 16, 24, 32)
-TYPE = {'display': 48, 'heading': 26, 'section': 17, 'body': 14, 'caption': 12}
+# TOKEN_TABLE_START
+# One scale. Kickers and other reading text stay at 12px or larger so CJK
+# stays legible. display/heading/section/body/caption are the roles the
+# stylesheet and the shell layouts actually read.
+SPACING = {'xs': 4, 'sm': 8, 'md': 12, 'lg': 16, 'xl': 24, 'xxl': 32}
+TYPE = {
+    'display': 56, 'display_compact': 40, 'heading': 28, 'section': 16,
+    'brand': 18, 'denom': 24, 'number': 20, 'word': 17, 'body': 14,
+    'secondary': 13, 'caption': 12,
+}
+WEIGHT = {'semibold': 600, 'bold': 700}
+TRACKING = {'brand': 0.2, 'kicker': 0.4, 'balance': -1}
+RADIUS = {
+    'panel': 18, 'inset': 14, 'control': 12, 'nav': 11, 'badge': 10,
+    'segment': 9, 'progress': 8, 'check': 4, 'scroll': 3, 'hero': 20,
+}
+FOCUS = 2
+# Shell geometry. Steps that already match the spacing scale reference it.
+# The remaining values are the current shell metrics, named so the sidebar,
+# top bar, page header and cards do not carry raw pixel literals.
+SHELL = {
+    'sidebar_width': 232,
+    'sidebar_pad_x': 18,
+    'sidebar_pad_top': SPACING['xl'],
+    'sidebar_pad_bottom': 18,
+    'sidebar_gap': 14,
+    'brand_gap': SPACING['sm'],
+    'logo': 58,
+    'logo_box': 62,
+    'nav_icon': 18,
+    'nav_gap': 2,
+    'content_left': 34,
+    'content_top': 19,
+    'content_right': 30,
+    'content_bottom': 17,
+    'content_gap': 17,
+    'topbar_bottom': 18,
+    'topbar_gap': SPACING['md'],
+    'divider': 1,
+    'page_top': SPACING['xs'],
+    'page_side': SPACING['xs'],
+    'page_right': SPACING['md'],
+    'page_bottom': SPACING['lg'],
+    'page_gap': 20,
+    'panel_x': 22,
+    'panel_y': 20,
+    'panel_gap': SPACING['md'],
+    'card_x': SPACING['md'],
+    'card_y': 10,
+    'card_gap': SPACING['xs'],
+    'card_row': SPACING['sm'],
+    'badge_h': 28,
+    'warning_min': 64,
+}
+# accent is the focus colour. green is received and success. red is error
+# only. pending is the in-progress status. shadow had no reader and is gone.
+# sent is blue, the history direction, and is not red.
+_THEME_COLORS = {
+    'dark': dict(
+        bg='#0B0B0D', surface='#141416', panel='#1C1C20', text='#F7F4EC',
+        muted='#B7B1A4', border='#2F2A22', tint='#1F1C16', accent='#E0C36A',
+        onaccent='#1A1406', warning='#3A3018', warning_text='#F1C77D',
+        green='#3DDC97', blue='#7EB6FF', red='#FF8B8F', hero_bottom='#1A150C',
+        selection='#3A3018', grid='#3A342C', chart_empty='#8E8A80',
+        hover='#24221C', sidebar='#09090B', pending='#E5BE79',
+        brand='#E8C98A', segment='#1A1814'),
+    'light': dict(
+        bg='#F6F3EC', surface='#FFFFFF', panel='#F3EEE3', text='#1C1914',
+        muted='#6A6458', border='#E4DCC8', tint='#EFE6D4', accent='#7A5A12',
+        onaccent='#FFF8E8', warning='#FFF4D8', warning_text='#80561A',
+        green='#0F7A52', blue='#1666CC', red='#B8424C', hero_bottom='#F4EBD6',
+        selection='#F0E2BE', grid='#E4DCC8', chart_empty='#8E8A80',
+        hover='#E8DCC3', sidebar='#F4EFE4', pending='#91601D',
+        brand='#9B742E', segment='#E9E1CF'),
+}
+_DIMMER = 'rgba(12,12,14,0.38)'
+# QR modules stay paper and ink in both themes so a camera can read them.
+QR = {'paper': '#FFFFFF', 'ink': '#101010', 'caption': '#5D6C82'}
+# TOKEN_TABLE_END
 # Stable English compatibility view; widgets resolve their labels at construction.
 FUSION_NAV_PAGES = (
     (CATALOG['en']['fusion.overview'], 'overview'),
@@ -46,96 +123,111 @@ def fusion_nav_pages():
 
 
 def fusion_palette(mode):
-    if mode == 'dark':
-        return dict(
-            bg='#0B0B0D', surface='#141416', panel='#1C1C20', text='#F7F4EC',
-            muted='#B7B1A4', border='#2F2A22', tint='#1F1C16', accent='#E0C36A',
-            onaccent='#1A1406', warning='#3A3018', warning_text='#F1C77D',
-            green='#3DDC97', blue='#7EB6FF', red='#FF8B8F', hero_bottom='#1A150C',
-            selection='#3A3018', grid='#3A342C', chart_empty='#8E8A80',
-            hover='#24221C', sidebar='#09090B', success='#3DDC97',
-            pending='#E5BE79', error='#FF8B8F', focus='#E0C36A', shadow='#000000',
-            brand='#E8C98A', segment='#1A1814')
-    if mode == 'light':
-        return dict(
-            bg='#F6F3EC', surface='#FFFFFF', panel='#F3EEE3', text='#1C1914',
-            muted='#6A6458', border='#E4DCC8', tint='#EFE6D4', accent='#7A5A12',
-            onaccent='#FFF8E8', warning='#FFF4D8', warning_text='#80561A',
-            green='#0F7A52', blue='#1666CC', red='#B8424C', hero_bottom='#F4EBD6',
-            selection='#F0E2BE', grid='#E4DCC8', chart_empty='#8E8A80',
-            hover='#E8DCC3', sidebar='#F4EFE4', success='#0F7A52',
-            pending='#91601D', error='#B8424C', focus='#7A5A12', shadow='#E8E0D0',
-            brand='#9B742E', segment='#E9E1CF')
-    raise ValueError('FUSION_THEME_DENIED')
+    base = _THEME_COLORS.get(mode)
+    if base is None:
+        raise ValueError('FUSION_THEME_DENIED')
+    colors = dict(base)
+    # One stored colour per meaning. These names are aliases, not a second hex.
+    colors['focus'] = colors['accent']
+    colors['success'] = colors['green']
+    colors['error'] = colors['red']
+    colors['received'] = colors['green']
+    colors['sent'] = colors['blue']
+    colors['dimmer'] = _DIMMER
+    return colors
+
+
+def direction_tone(colors, net):
+    """Received and sent each use one colour. Red is reserved for errors."""
+    try:
+        net = int(net)
+    except (TypeError, ValueError):
+        net = 0
+    if net > 0:
+        return colors['received']
+    if net < 0:
+        return colors['sent']
+    return colors['muted']
 
 
 def fusion_stylesheet(mode):
     c = fusion_palette(mode)
+    t, w, r, s = TYPE, WEIGHT, RADIUS, SPACING
+    ring = FOCUS
     return f"""
     QMainWindow,QWidget#WalletRoot,QDialog,QMessageBox,QInputDialog {{
         background:{c['bg']};color:{c['text']};
     }}
-    QWidget {{font-size:14px;}}
+    QWidget {{font-size:{t['body']}px;}}
     QFrame#FusionSidebar {{background:{c['sidebar']};border-right:1px solid {c['border']};}}
     QFrame#FusionTopbar {{background:{c['bg']};border-bottom:1px solid {c['border']};}}
+    QFrame#FusionDivider {{background:{c['border']};border:0;}}
     QFrame#FusionPanel,QFrame#ContentCard,QFrame#HeaderCard,QDialog#FusionApproval,QDialog#FusionPanel {{
-        background:{c['surface']};border:1px solid {c['border']};border-radius:18px;
+        background:{c['surface']};border:1px solid {c['border']};border-radius:{r['panel']}px;
     }}
-    QFrame#FusionInset {{background:{c['panel']};border:1px solid {c['border']};border-radius:14px;}}
+    QFrame#FusionInset {{background:{c['panel']};border:1px solid {c['border']};border-radius:{r['inset']}px;}}
     QFrame#FusionHero {{background:transparent;}}
-    QFrame#FusionSegmented {{background:{c['segment']};border:1px solid {c['border']};border-radius:12px;}}
-    QToolButton#FusionSegment {{background:transparent;color:{c['muted']};border:0;border-radius:9px;padding:8px 12px;font-weight:600;}}
+    QFrame#FusionSegmented {{background:{c['segment']};border:1px solid {c['border']};border-radius:{r['control']}px;}}
+    QToolButton#FusionSegment {{background:transparent;color:{c['muted']};border:0;border-radius:{r['segment']}px;padding:{s['sm']}px {s['md']}px;font-weight:{w['semibold']};}}
     QToolButton#FusionSegment:checked {{background:transparent;color:{c['onaccent']};}}
     QToolButton#FusionSegment:hover:!checked {{color:{c['text']};}}
-    QToolButton#FusionAdvanced {{background:transparent;color:{c['accent']};border:0;text-align:left;padding:10px;font-weight:600;}}
+    QToolButton#FusionAdvanced {{background:transparent;color:{c['accent']};border:0;text-align:left;padding:10px;font-weight:{w['semibold']};}}
     QToolButton#FusionQuick {{
         background:{c['surface']};color:{c['text']};border:1px solid {c['border']};
-        border-radius:14px;padding:12px 14px;font-weight:600;text-align:left;
+        border-radius:{r['inset']}px;padding:{s['md']}px 14px;font-weight:{w['semibold']};text-align:left;
     }}
     QToolButton#FusionQuick:hover:enabled {{border:1px solid {c['accent']};background:{c['hover']};}}
     QToolButton#FusionQuick:disabled {{color:{c['muted']};}}
-    QFrame#FusionThemeThumb {{background:{c['accent']};border:0;border-radius:10px;}}
-    QFrame#FusionDimmer {{background:rgba(12,12,14,0.38);border:0;}}
+    QFrame#FusionThemeThumb {{background:{c['accent']};border:0;border-radius:{r['badge']}px;}}
+    QFrame#FusionDimmer {{background:{c['dimmer']};border:0;}}
     QFrame#FusionFlyout {{
-        background:{c['surface']};border:1px solid {c['border']};border-radius:18px;
+        background:{c['surface']};border:1px solid {c['border']};border-radius:{r['panel']}px;
     }}
     QWidget#FusionInner,QScrollArea#FusionScroll,QWidget#FusionTransparent,QWidget#FusionHeroCopy {{background:transparent;border:0;}}
     QLabel {{color:{c['text']};background:transparent;border:0;}}
-    QLabel#BrandTitle {{font-size:18px;font-weight:700;letter-spacing:0.2px;color:{c['brand']};}}
-    QLabel#PageTitle {{font-size:28px;font-weight:700;}}
-    QLabel#FusionBalance,QLabel#BalanceValue {{font-size:56px;font-weight:700;color:{c['text']};letter-spacing:-1px;}}
-    QLabel#FusionDenom {{font-size:24px;font-weight:700;color:{c['brand']};}}
-    QLabel#FusionKicker {{font-size:11px;font-weight:600;color:{c['muted']};letter-spacing:0.8px;}}
-    QLabel#FusionCardTitle {{font-size:16px;font-weight:600;}}
-    QLabel#FusionCardValue {{font-size:20px;font-weight:600;}}
-    QLabel#FusionMuted,QLabel#SecondaryLabel,QLabel#StatusText,QLabel#FusionEmpty {{color:{c['muted']};font-size:13px;}}
-    QLabel#FusionVerified {{color:{c['green']};font-weight:600;}}
+    QLabel#BrandTitle {{font-size:{t['brand']}px;font-weight:{w['bold']};letter-spacing:{TRACKING['brand']}px;color:{c['brand']};}}
+    QLabel#PageTitle {{font-size:{t['heading']}px;font-weight:{w['bold']};}}
+    QLabel#FusionBalance,QLabel#BalanceValue {{font-size:{t['display']}px;font-weight:{w['bold']};color:{c['text']};letter-spacing:{TRACKING['balance']}px;}}
+    QLabel#FusionDenom {{font-size:{t['denom']}px;font-weight:{w['bold']};color:{c['brand']};}}
+    QLabel#FusionKicker {{font-size:{t['caption']}px;font-weight:{w['semibold']};color:{c['muted']};letter-spacing:{TRACKING['kicker']}px;}}
+    QLabel#FusionCardTitle {{font-size:{t['section']}px;font-weight:{w['semibold']};}}
+    QLabel#FusionCardValue {{font-size:{t['number']}px;font-weight:{w['semibold']};}}
+    QLabel#FusionMuted,QLabel#SecondaryLabel,QLabel#StatusText,QLabel#FusionEmpty {{color:{c['muted']};font-size:{t['secondary']}px;}}
+    QLabel#FusionVerified {{color:{c['success']};font-weight:{w['semibold']};}}
     QLabel#FusionInfo {{color:{c['blue']};}}
-    QLabel#FusionGold {{color:{c['warning_text']};font-weight:600;}}
-    QLabel#FusionBadge {{color:{c['onaccent']};background:{c['accent']};border:0;border-radius:10px;padding:5px 10px;font-size:11px;font-weight:700;}}
-    QLabel#Warning {{color:{c['warning_text']};background:{c['warning']};border-radius:9px;padding:10px;min-height:64px;font-size:11px;}}
+    QLabel#FusionGold {{color:{c['warning_text']};font-weight:{w['semibold']};}}
+    QLabel#FusionBadge {{color:{c['onaccent']};background:{c['accent']};border:0;border-radius:{r['badge']}px;padding:5px 10px;font-size:{t['caption']}px;font-weight:{w['bold']};}}
+    QLabel#Warning {{color:{c['warning_text']};background:{c['warning']};border-radius:{r['segment']}px;padding:10px;min-height:{SHELL['warning_min']}px;font-size:{t['caption']}px;}}
     QLabel#ReceiveCode,QPlainTextEdit#ReceiveCode {{
-        font-size:14px;background:{c['panel']};border:1px solid {c['border']};border-radius:12px;padding:16px;
+        font-size:{t['body']}px;background:{c['panel']};border:1px solid {c['border']};border-radius:{r['control']}px;padding:{s['lg']}px;
     }}
-    QListWidget {{background:transparent;color:{c['muted']};border:0;padding:2px;font-size:14px;outline:0;}}
-    QListWidget::item {{padding:9px 12px;border-radius:11px;margin:2px 0;}}
-    QListWidget::item:selected {{background:{c['accent']};color:{c['onaccent']};font-weight:700;}}
+    QListWidget {{background:transparent;color:{c['muted']};border:0;padding:2px;font-size:{t['body']}px;outline:0;}}
+    QListWidget::item {{padding:9px {s['md']}px;border-radius:{r['nav']}px;margin:2px 0;}}
+    QListWidget::item:selected {{background:{c['accent']};color:{c['onaccent']};font-weight:{w['bold']};}}
     QListWidget::item:hover:!selected {{background:{c['hover']};color:{c['text']};}}
+    QListWidget:focus {{border:{ring}px solid {c['focus']};padding:0;}}
     QLineEdit,QTextEdit,QPlainTextEdit {{
         background:{c['panel']};color:{c['text']};selection-background-color:{c['selection']};
-        border:1px solid {c['border']};border-radius:12px;padding:12px;
+        border:1px solid {c['border']};border-radius:{r['control']}px;padding:{s['md']}px;
     }}
-    QLineEdit:focus,QPushButton:focus,QComboBox:focus,QToolButton:focus {{border:2px solid {c['focus']};}}
+    QLineEdit:focus,QTextEdit:focus,QPlainTextEdit:focus {{border:{ring}px solid {c['focus']};padding:11px;}}
+    QPushButton:focus,QComboBox:focus {{border:{ring}px solid {c['focus']};padding:11px 16px;}}
+    QToolButton:focus {{border:{ring}px solid {c['focus']};}}
+    QPlainTextEdit#ReceiveCode:focus {{border:{ring}px solid {c['focus']};padding:15px;}}
+    QToolButton#FusionSegment:focus {{border:{ring}px solid {c['focus']};padding:6px 10px;}}
+    QToolButton#FusionQuick:focus {{border:{ring}px solid {c['focus']};padding:10px 12px;}}
+    QToolButton#FusionAdvanced:focus {{border:{ring}px solid {c['focus']};padding:8px;}}
     QLineEdit:disabled {{color:{c['muted']};background:{c['bg']};}}
     QPushButton,QComboBox {{
         background:{c['tint']};color:{c['text']};border:1px solid {c['border']};
-        border-radius:12px;padding:12px 17px;font-weight:600;
+        border-radius:{r['control']}px;padding:{s['md']}px 17px;font-weight:{w['semibold']};
     }}
     QPushButton#PrimaryButton,QPushButton#FusionPrimary {{
         background:{c['accent']};color:{c['onaccent']};border:1px solid {c['accent']};
     }}
+    QPushButton#FusionPrimary:focus,QPushButton#PrimaryButton:focus {{border:{ring}px solid {c['onaccent']};padding:11px 16px;}}
     QPushButton#FusionSecondary {{background:{c['tint']};color:{c['text']};border:1px solid {c['border']};}}
-    QPushButton#FusionDestructive {{background:{c['surface']};color:{c['red']};border:1px solid {c['border']};}}
+    QPushButton#FusionDestructive {{background:{c['surface']};color:{c['error']};border:1px solid {c['border']};}}
     QPushButton:hover:enabled,QComboBox:hover {{background:{c['hover']};border:1px solid {c['focus']};}}
     QPushButton#FusionPrimary:hover:enabled,QPushButton#PrimaryButton:hover:enabled {{
         background:{c['brand']};border:1px solid {c['onaccent']};
@@ -150,26 +242,30 @@ def fusion_stylesheet(mode):
         background:{c['surface']};color:{c['text']};selection-background-color:{c['selection']};
         border:1px solid {c['border']};
     }}
-    QCheckBox {{color:{c['text']};spacing:8px;}}
-    QCheckBox::indicator {{width:17px;height:17px;border:1px solid {c['muted']};border-radius:4px;background:{c['panel']};}}
+    QCheckBox {{color:{c['text']};spacing:{s['sm']}px;}}
+    QCheckBox::indicator {{width:17px;height:17px;border:1px solid {c['muted']};border-radius:{r['check']}px;background:{c['panel']};}}
     QCheckBox::indicator:checked {{background:{c['accent']};border:1px solid {c['accent']};}}
+    QCheckBox::indicator:focus {{border:{ring}px solid {c['focus']};}}
+    QCheckBox::indicator:checked:focus {{background:{c['accent']};border:{ring}px solid {c['onaccent']};}}
     QTableWidget,QTableWidget#FusionActivityTable {{
         background:{c['surface']};alternate-background-color:{c['surface']};color:{c['text']};
         border:0;gridline-color:{c['border']};selection-background-color:{c['selection']};selection-color:{c['text']};
     }}
+    QTableWidget:focus,QTableWidget#FusionActivityTable:focus {{border:{ring}px solid {c['focus']};}}
     QTableWidget::item {{padding:10px;border-bottom:1px solid {c['border']};}}
     QTableWidget::item:selected {{background:{c['selection']};color:{c['text']};}}
+    QTableWidget::item:focus {{border:{ring}px solid {c['focus']};}}
     QHeaderView::section {{
         background:{c['surface']};color:{c['muted']};border:0;border-bottom:1px solid {c['border']};
-        padding:10px;font-size:12px;font-weight:600;
+        padding:10px;font-size:{t['caption']}px;font-weight:{w['semibold']};
     }}
-    QProgressBar:horizontal {{background:{c['panel']};border:1px solid {c['border']};border-radius:8px;min-height:6px;max-height:6px;}}
-    QProgressBar::chunk {{background:{c['accent']};border-radius:4px;}}
+    QProgressBar:horizontal {{background:{c['panel']};border:1px solid {c['border']};border-radius:{r['progress']}px;min-height:6px;max-height:6px;}}
+    QProgressBar::chunk {{background:{c['accent']};border-radius:{r['check']}px;}}
     QScrollBar:vertical {{background:transparent;width:7px;}}
-    QScrollBar::handle:vertical {{background:{c['border']};border-radius:3px;min-height:30px;}}
+    QScrollBar::handle:vertical {{background:{c['border']};border-radius:{r['scroll']}px;min-height:30px;}}
     QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical {{height:0;}}
     QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical {{background:transparent;}}
-    QToolTip {{background:{c['surface']};color:{c['text']};border:1px solid {c['border']};padding:8px;}}
+    QToolTip {{background:{c['surface']};color:{c['text']};border:1px solid {c['border']};padding:{s['sm']}px;}}
     """
 
 
@@ -190,7 +286,7 @@ class StateSwitch(QCheckBox):
         colors = fusion_palette(mode if mode in ('dark', 'light') else 'dark')
         track = QRectF(2, (self.height() - 24) / 2, 46, 24)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(colors['green'] if self.isChecked() else colors['border']))
+        painter.setBrush(QColor(colors['success'] if self.isChecked() else colors['border']))
         painter.drawRoundedRect(track, 12, 12)
         painter.setBrush(QColor(colors['onaccent'] if self.isChecked() else colors['text']))
         painter.drawEllipse(QRectF(28 if self.isChecked() else 6, track.y() + 4, 16, 16))
@@ -198,9 +294,11 @@ class StateSwitch(QCheckBox):
         painter.drawText(QRectF(58, 0, self.width() - 58, self.height()),
                          Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self.text())
         if self.hasFocus():
+            # Sit the ring outside the track so it is read against the
+            # surface behind the switch, not against the green fill.
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.setPen(QPen(QColor(colors['focus']), 1))
-            painter.drawRoundedRect(track.adjusted(-1, -1, 1, 1), 13, 13)
+            painter.setPen(QPen(QColor(colors['focus']), FOCUS))
+            painter.drawRoundedRect(track.adjusted(-3, -3, 3, 3), 15, 15)
 
 
 class ThemeSlider(QFrame):
@@ -375,24 +473,92 @@ def label(text='', role='FusionMuted', selectable=False):
         obj.setWordWrap(True)
     if role in ('FusionBalance', 'BalanceValue'):
         obj.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        obj.setMinimumHeight(56)
+        obj.setMinimumHeight(TYPE['display'])
         obj.setWordWrap(True)
     if role == 'FusionDenom':
         obj.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Minimum)
     if role == 'FusionBadge':
-        obj.setFixedHeight(28)
+        obj.setFixedHeight(SHELL['badge_h'])
         obj.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
     if selectable:
         obj.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
     return obj
 
 
+def present_brand_title(widget, text, width, color):
+    """Fit the sidebar brand inside the sidebar column.
+
+    One line when the catalog string fits. Otherwise break on spaces so a
+    CJK word is not left as a single character (R-9). The catalog string is
+    not changed; a newline here is only the line break.
+    """
+    widget.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+    widget.setWordWrap(False)
+    widget.setStyleSheet('')
+    size = TYPE['brand']
+    display = text
+    metrics = None
+    while size >= TYPE['caption']:
+        font = QFont(widget.font())
+        font.setPixelSize(size)
+        font.setWeight(QFont.Weight.Bold)
+        font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, TRACKING['brand'])
+        metrics = QFontMetrics(font)
+        if metrics.horizontalAdvance(text) <= width:
+            display = text
+            break
+        broken = _brand_lines(text, metrics, width)
+        if broken is not None:
+            display = broken
+            break
+        size -= 1
+    else:
+        size = TYPE['caption']
+        display = text
+        font = QFont(widget.font())
+        font.setPixelSize(size)
+        font.setWeight(QFont.Weight.Bold)
+        metrics = QFontMetrics(font)
+    widget.setText(display)
+    if size != TYPE['brand']:
+        widget.setStyleSheet(
+            'font-size:%dpx;font-weight:%d;letter-spacing:%spx;color:%s;'
+            'background:transparent;border:0;'
+            % (size, WEIGHT['bold'], TRACKING['brand'], color))
+    lines = display.count('\n') + 1
+    policy = widget.sizePolicy()
+    if lines > 1:
+        policy.setVerticalPolicy(QSizePolicy.Policy.Minimum)
+        widget.setMinimumHeight(metrics.lineSpacing() * lines + SPACING['xs'])
+    else:
+        policy.setVerticalPolicy(QSizePolicy.Policy.Maximum)
+        widget.setMinimumHeight(0)
+    widget.setSizePolicy(policy)
+
+
+def _brand_lines(text, metrics, width):
+    words = text.split(' ')
+    if len(words) < 2:
+        return None
+    best = None
+    for index in range(1, len(words)):
+        head = ' '.join(words[:index])
+        tail = ' '.join(words[index:])
+        head_w = metrics.horizontalAdvance(head)
+        tail_w = metrics.horizontalAdvance(tail)
+        if head_w <= width and tail_w <= width:
+            score = (max(head_w, tail_w), abs(head_w - tail_w))
+            if best is None or score < best[0]:
+                best = (score, head + '\n' + tail)
+    return None if best is None else best[1]
+
+
 def panel(title=None, subtitle=None, *, inset=False):
     obj = QFrame()
     obj.setObjectName('FusionInset' if inset else 'FusionPanel')
     layout = QVBoxLayout(obj)
-    layout.setContentsMargins(22, 20, 22, 20)
-    layout.setSpacing(12)
+    layout.setContentsMargins(SHELL['panel_x'], SHELL['panel_y'], SHELL['panel_x'], SHELL['panel_y'])
+    layout.setSpacing(SHELL['panel_gap'])
     layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     if title:
         layout.addWidget(label(title, 'FusionCardTitle'))
@@ -456,8 +622,8 @@ def page(title, subtitle, kicker=None):
     root.setObjectName('FusionInner')
     scroll.setWidget(root)
     layout = QVBoxLayout(root)
-    layout.setContentsMargins(4, 4, 12, 16)
-    layout.setSpacing(20)
+    layout.setContentsMargins(SHELL['page_side'], SHELL['page_top'], SHELL['page_right'], SHELL['page_bottom'])
+    layout.setSpacing(SHELL['page_gap'])
     layout.addWidget(label(kicker, 'FusionKicker'))
     layout.addWidget(label(title, 'PageTitle'))
     layout.addWidget(label(subtitle))
@@ -762,9 +928,9 @@ class StatusCard(QFrame):
         self.setMinimumWidth(0)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(4)
-        top = QHBoxLayout(); top.setSpacing(8)
+        layout.setContentsMargins(SHELL['card_x'], SHELL['card_y'], SHELL['card_x'], SHELL['card_y'])
+        layout.setSpacing(SHELL['card_gap'])
+        top = QHBoxLayout(); top.setSpacing(SHELL['card_row'])
         self.glyph = StatusGlyph()
         heading = label(title, 'FusionCardTitle')
         heading.setMinimumWidth(0)
@@ -832,7 +998,7 @@ class Hero(QFrame):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = QRectF(self.rect()).adjusted(1, 1, -1, -1)
         path = QPainterPath()
-        path.addRoundedRect(rect, 20, 20)
+        path.addRoundedRect(rect, RADIUS['hero'], RADIUS['hero'])
         p.setClipPath(path)
         gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
         gradient.setColorAt(0, QColor(c['surface']))
@@ -845,7 +1011,7 @@ class Hero(QFrame):
         p.setOpacity(0.95)
         p.setClipping(False)
         p.setPen(QPen(QColor(c['accent']), 1))
-        p.drawRoundedRect(rect, 20, 20)
+        p.drawRoundedRect(rect, RADIUS['hero'], RADIUS['hero'])
         p.end()
 
 
@@ -926,7 +1092,7 @@ class ChainActivity(QWidget):
             self._hit.append(hit)
             if i == self._hover:
                 p.fillRect(hit, QColor(c['panel']))
-            for x, atoms, color in ((center - width * .62, credit, c['green']), (center + width * .62, debit, c['blue'])):
+            for x, atoms, color in ((center - width * .62, credit, c['received']), (center + width * .62, debit, c['sent'])):
                 if atoms <= 0:
                     continue
                 bh = (bottom - top) * atoms / ceiling
@@ -1266,8 +1432,10 @@ class FusionOverview(QScrollArea):
         compact = self.hero.width() > 0 and self.hero.width() < 640
         self.balance_unit.setVisible(compact)
         self.balance_value.setText(amount if compact else amount + ' WAM')
-        size = 40 if compact else 56
-        self.balance_value.setStyleSheet('font-size:%dpx;font-weight:700;letter-spacing:-1px;' % size)
+        size = TYPE['display_compact'] if compact else TYPE['display']
+        self.balance_value.setStyleSheet(
+            'font-size:%dpx;font-weight:%d;letter-spacing:%spx;'
+            % (size, WEIGHT['bold'], TRACKING['balance']))
 
     def _select_tx(self, row, column):
         if 0 <= row < len(self._txids):
@@ -1286,7 +1454,7 @@ class FusionOverview(QScrollArea):
             if item is not None:
                 positive = item.data(Qt.ItemDataRole.UserRole) > 0
                 item.setIcon(vector_icon('receive' if positive else 'send',
-                                         fusion_palette(mode)['green' if positive else 'red']))
+                                         direction_tone(fusion_palette(mode), item.data(Qt.ItemDataRole.UserRole))))
 
     def render_snapshot(self, snap, *, locked=False, operational=False, network=None,
                         faulted=False, available_atoms=None, reservation_count=None,
@@ -1373,7 +1541,7 @@ class FusionOverview(QScrollArea):
                 if j == 0:
                     item.setData(Qt.ItemDataRole.UserRole, value)
                     item.setIcon(vector_icon('receive' if value > 0 else 'send',
-                                             fusion_palette(mode)['green' if value > 0 else 'red']))
+                                             direction_tone(fusion_palette(mode), value)))
                 if j == 1:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 self.activity_table.setItem(i, j, item)
