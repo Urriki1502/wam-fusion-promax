@@ -73,6 +73,8 @@ RUNTIME_SNAPSHOT = frozenset({
     'domain', 'domain.backup_ack', 'domain.errors', 'domain.payment_evidence',
     'domain.payment_state',
     'presentation', 'presentation.action_state', 'presentation.strings',
+    # PM-016 (W-TEST-01): the one UI preference store.
+    'ui_settings',
     'presentation.locales', 'presentation.locales.en', 'presentation.locales.vi',
     'presentation.locales.ja', 'presentation.locales.zh_hans',
     'infrastructure', 'infrastructure.core_compat',

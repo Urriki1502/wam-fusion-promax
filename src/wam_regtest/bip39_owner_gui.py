@@ -444,9 +444,9 @@ class Bip39TrialWindow(QWidget):
         # Remember ONLY the wallet profile PATH. Never password, mnemonic,
         # private keys or native anchor secrets cross this boundary.
         try:
-            from PySide6.QtCore import QSettings
+            from .ui_settings import ui_settings
             if folder:
-                QSettings("WAM Privacy Wallet", "REGTEST").setValue(
+                ui_settings().setValue(
                     "last_shared_bip39_profile" if getattr(self,'shared_profile',None) else "last_bip39_profile", str(folder))
         except Exception:
             pass
@@ -966,9 +966,9 @@ class Bip39TrialWindow(QWidget):
 def _last_remembered_profile():
     # Remember ONLY the last successfully opened wallet profile PATH. Never
     # password, mnemonic, private keys or native anchor secrets cross here.
-    from PySide6.QtCore import QSettings
+    from .ui_settings import ui_settings
     try:
-        value = QSettings("WAM Privacy Wallet", "REGTEST").value("last_bip39_profile", type=str)
+        value = ui_settings().value("last_bip39_profile", type=str)
         return str(value) if value else ""
     except Exception:
         return ""

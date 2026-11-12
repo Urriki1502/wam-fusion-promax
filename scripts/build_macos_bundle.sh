@@ -37,6 +37,10 @@ mkdir -p bundle-input
 SOURCE_STAGE=$(mktemp -d "$(pwd)/bundle-input/build-XXXXXX")
 mkdir "$SOURCE_STAGE/spec" "$SOURCE_STAGE/runs"
 export WAM_MACOS_RUN_ROOT="$SOURCE_STAGE/runs"
+# W-TEST-01: frozen qualification stages must never write the owner's real UI
+# preferences (remembered profile, appearance, language). The frozen app reads
+# this through wam_regtest.ui_settings; frozen_environment() passes it through.
+export WAM_UI_SETTINGS_PATH="$SOURCE_STAGE/runs/qualification-ui-settings.ini"
 echo "MACOS_APP_SOURCE_STAGE=$SOURCE_STAGE"
 python -I -m wam_regtest.build_provenance capture --stamp "$SOURCE_STAGE/wallet-source.json"
 (cd wsp-upstream && env -u WAM_SOURCE_HEAD python -I -m wam_regtest.build_provenance capture --stamp "$SOURCE_STAGE/wsp-source.json")

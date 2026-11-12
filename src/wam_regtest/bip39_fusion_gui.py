@@ -7,7 +7,7 @@ not a painted mockup or a separate demo account.
 """
 import os
 import re
-from PySide6.QtCore import Qt, QSize, QSettings, QTimer
+from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QFontDatabase, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QFrame, QLabel, QLineEdit,
@@ -35,6 +35,7 @@ from .wallet_read import WalletReadSnapshot, format_wam
 from .amounts import parse_amount, _parse_atoms
 from .branding import brand_image
 from .infrastructure import core_compat
+from .ui_settings import ui_settings
 
 
 def displayed_reserved_inputs(result):
@@ -324,7 +325,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.appearance_group = self.header_theme.group
         self.appearance_buttons = self.header_theme.buttons
         self.reduce_motion = QCheckBox("Reduce interface motion")
-        stored = QSettings("WAM Privacy Wallet", "REGTEST")
+        stored = ui_settings()
         self.reduce_motion.setChecked(
             os.environ.get("QT_REDUCE_MOTION") == "1"
             or stored.value("fusion_reduce_motion", False, type=bool))
@@ -345,7 +346,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
                 ("日本語", "ja"),
                 ("简体中文", "zh-Hans")):
             self.language.addItem(caption, code)
-        language_choice = QSettings("WAM Privacy Wallet", "REGTEST").value("ui_language", "system")
+        language_choice = ui_settings().value("ui_language", "system")
         if language_choice not in ("system", "en", "vi", "ja", "zh-Hans"):
             language_choice = "system"
         self.language.blockSignals(True)
@@ -437,7 +438,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self._theme_sync = False
         self.header_theme.currentChanged.connect(self._theme_chosen)
         self.settings_theme.currentChanged.connect(self._theme_chosen)
-        saved = QSettings("WAM Privacy Wallet", "REGTEST").value("fusion_appearance", 0, type=int)
+        saved = ui_settings().value("fusion_appearance", 0, type=int)
         if saved in (0, 1, 2):
             self.header_theme.setCurrentIndex(saved, animate=False)
             self.settings_theme.setCurrentIndex(saved, animate=False)
@@ -477,13 +478,13 @@ class Bip39FusionWindow(Bip39TrialWindow):
         value = self.language.itemData(index)
         if type(value) is not str:
             return
-        settings = QSettings("WAM Privacy Wallet", "REGTEST")
+        settings = ui_settings()
         settings.setValue("ui_language", value)
         settings.sync()
 
     def _set_reduce_motion(self, checked):
         self.setProperty("fusion_reduce_motion", bool(checked))
-        QSettings("WAM Privacy Wallet", "REGTEST").setValue("fusion_reduce_motion", bool(checked))
+        ui_settings().setValue("fusion_reduce_motion", bool(checked))
         self.style().unpolish(self)
         self.style().polish(self)
 
@@ -495,7 +496,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
             for slider in (self.header_theme, self.settings_theme):
                 if slider.currentIndex() != index:
                     slider.setCurrentIndex(index, animate=slider is not self.sender())
-            QSettings("WAM Privacy Wallet", "REGTEST").setValue("fusion_appearance", index)
+            ui_settings().setValue("fusion_appearance", index)
             self._apply_fusion_theme()
         finally:
             self._theme_sync = False

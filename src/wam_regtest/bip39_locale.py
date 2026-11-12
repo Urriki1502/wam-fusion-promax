@@ -4,10 +4,12 @@ System default follows the Qt locale: vi and ja prefixes select those
 catalogs. Simplified Chinese is selected only for zh, zh-Hans, zh-CN, zh-SG,
 and zh_Hans* names; Traditional and other Chinese locales use English. An
 explicit ui_language value in
-QSettings("WAM Privacy Wallet", "REGTEST") wins. This does not select the
+the UI preference store (ui_settings) wins. This does not select the
 BIP39 wordlist language.
 """
-from PySide6.QtCore import QLocale, QSettings
+from PySide6.QtCore import QLocale
+
+from .ui_settings import ui_settings
 
 from .presentation.strings import CATALOG, resolve_language, text
 
@@ -65,7 +67,7 @@ _STRINGS = {lang: {key: entries[key] for key in _LEGACY_KEYS if key in entries}
 def stored_language(settings=None):
     """Persisted UI language. A missing value means the system locale."""
     if settings is None:
-        settings = QSettings("WAM Privacy Wallet", "REGTEST")
+        settings = ui_settings()
     value = settings.value("ui_language", "system")
     return value if type(value) is str and value else "system"
 
