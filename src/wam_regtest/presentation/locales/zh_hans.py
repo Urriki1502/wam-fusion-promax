@@ -26,6 +26,8 @@ ZH_HANS = {
     "close_to_lock": "未验证就关闭将锁定钱包。重新打开后可以完成备份。",
     "ok": "OK",
     "cancel": "取消",
+    "common.copy": "复制",
+    "common.select_all": "全选",
     "recovery_verify_kicker": "WAM Fusion / 独立恢复 · REGTEST",
     "recovery_verify_title": "验证恢复短语",
     "recovery_verify_subtitle": "请按顺序输入 12 个恢复词，以验证并扫描钱包历史。",

@@ -88,32 +88,16 @@ class _WrappingStatusLabel(QLabel):
         super().keyPressEvent(event)
 
     def contextMenuEvent(self, event):
-        # QLineEdit's public menu supplies Qt's translated Copy and Select All.
-        # Those labels are not application copy. Copy is rebound so the
-        # clipboard receives the selection without the wrapping marks.
-        field = QLineEdit(self)
-        field.hide()
-        field.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        field.setFixedSize(0, 0)
-        field.setText(self.text())
-        # The menu stays owned by this hidden field so its translated actions
-        # live until the menu closes. Reparenting it cancels popup tracking.
-        menu = field.createStandardContextMenu()
-        menu.aboutToHide.connect(field.deleteLater)
-        by_name = {action.objectName(): action for action in menu.actions()}
-        copy = by_name["edit-copy"]
-        select_all = by_name["select-all"]
-        for action in list(menu.actions()):
-            menu.removeAction(action)
-        menu.addAction(copy)
-        menu.addSeparator()
-        menu.addAction(select_all)
-        copy.triggered.disconnect()
-        copy.triggered.connect(self._copy_selection)
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        copy = menu.addAction(t("common.copy"))
+        copy.setShortcut(QKeySequence(QKeySequence.StandardKey.Copy))
         copy.setEnabled(self.hasSelectedText())
-        select_all.triggered.disconnect()
-        select_all.triggered.connect(self._select_all)
+        copy.triggered.connect(self._copy_selection)
+        select_all = menu.addAction(t("common.select_all"))
+        select_all.setShortcut(QKeySequence(QKeySequence.StandardKey.SelectAll))
         select_all.setEnabled(bool(self.text()))
+        select_all.triggered.connect(self._select_all)
         menu.popup(event.globalPos())
         event.accept()
 

@@ -1259,7 +1259,7 @@
       "proven_source_sha256": "b775bce12b032e3895b6b04374112a3714c8a3f5a600a4db9b2c848b0c555f3c"
     },
     "bip39_fusion_gui": {
-      "fingerprint": "e523fb095a2152ce95c90c4b237fb396c48baaa7c61605af96db2966933ebf3c",
+      "fingerprint": "74793f1bad63f9f9b34cd177add31bb190317f63c289a49b42c54d8f0708be20",
       "moved": [
         {
           "key": "wallet.window_title",

@@ -26,6 +26,8 @@ VI = {
     "close_to_lock": "Đóng mà không xác minh sẽ khóa ví. Bạn có thể hoàn tất sao lưu khi mở lại.",
     "ok": "OK",
     "cancel": "Hủy",
+    "common.copy": "Sao chép",
+    "common.select_all": "Chọn tất cả",
     "recovery_verify_kicker": "WAM Fusion / Khôi phục độc lập · REGTEST",
     "recovery_verify_title": "Xác minh cụm từ khôi phục",
     "recovery_verify_subtitle": "Nhập 12 từ khôi phục theo thứ tự để xác minh và quét lịch sử ví.",

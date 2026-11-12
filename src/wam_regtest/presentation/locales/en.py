@@ -24,6 +24,8 @@ EN = {
     "close_to_lock": "Closing without verifying will lock the wallet. You can complete backup on reopen.",
     "ok": "OK",
     "cancel": "Cancel",
+    "common.copy": "Copy",
+    "common.select_all": "Select All",
     "recovery_verify_kicker": "WAM Fusion / Independent Recovery · REGTEST",
     "recovery_verify_title": "Verify your recovery phrase",
     "recovery_verify_subtitle": "Enter your 12 recovery words in order to verify and scan wallet history.",

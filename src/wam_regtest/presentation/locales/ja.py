@@ -26,6 +26,8 @@ JA = {
     "close_to_lock": "検証せずに閉じるとウォレットがロックされます。開き直したときにバックアップを完了できます。",
     "ok": "OK",
     "cancel": "キャンセル",
+    "common.copy": "コピー",
+    "common.select_all": "すべてを選択",
     "recovery_verify_kicker": "WAM Fusion / 独立リカバリー · REGTEST",
     "recovery_verify_title": "リカバリーフレーズを検証",
     "recovery_verify_subtitle": "検証してウォレット履歴を走査するため、12 のリカバリー語を順番に入力してください。",

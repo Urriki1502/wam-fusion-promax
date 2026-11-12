@@ -13,6 +13,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMenu
 
 from wam_regtest.bip39_fusion_gui import Bip39FusionWindow
+from wam_regtest.bip39_locale import t
 from wam_regtest.wallet_executor import ExecutorState
 
 TXID = "ab" * 32
@@ -99,15 +100,25 @@ class StatusCopyExact(unittest.TestCase):
                         return
                     QTimer.singleShot(0, step)
                     return
-                copy = next(action for action in menu.actions()
-                            if action.objectName() == "edit-copy")
-                outcome["select_all"] = any(
-                    action.objectName() == "select-all" and action.isEnabled()
-                    for action in menu.actions())
-                if not copy.isEnabled():
-                    outcome["error"] = "context menu Copy is disabled"
+                actions = list(menu.actions())
+                if len(actions) != 2:
+                    outcome["error"] = [(action.text(), action.isSeparator()) for action in actions]
                     menu.close()
                     return
+                copy, select_all = actions
+                if (copy.text() != t("common.copy")
+                        or select_all.text() != t("common.select_all")):
+                    outcome["error"] = (copy.text(), select_all.text())
+                    menu.close()
+                    return
+                if not copy.isEnabled() or not select_all.isEnabled():
+                    outcome["error"] = "context menu Copy or Select All is disabled"
+                    menu.close()
+                    return
+                outcome["shortcuts"] = (
+                    copy.shortcut() == QKeySequence(QKeySequence.StandardKey.Copy),
+                    select_all.shortcut() == QKeySequence(QKeySequence.StandardKey.SelectAll),
+                )
                 copy.trigger()
                 menu.close()
                 outcome["done"] = True
@@ -123,7 +134,7 @@ class StatusCopyExact(unittest.TestCase):
             QContextMenuEvent.Reason.Mouse, point, label.mapToGlobal(point)))
         self.app.processEvents()
         self.assertTrue(outcome.get("done"), outcome.get("error", outcome))
-        self.assertTrue(outcome.get("select_all"))
+        self.assertEqual(outcome.get("shortcuts"), (True, True))
 
     def test_mouse_selection_copies_exact_txid_from_status_and_review(self):
         for label in (self.window.status, self.window.review_summary):
