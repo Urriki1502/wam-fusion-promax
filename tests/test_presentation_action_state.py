@@ -152,8 +152,27 @@ def _imported_names(tree, package):
     return names
 
 
+def _package_of(path):
+    """D-PM009-2: the package a file's relative imports resolve against.
+
+    For a/b/c.py and for a/b/__init__.py alike it is ``a.b``, so nested
+    sub-packages of a layer resolve correctly."""
+    return '.'.join(path.parent.relative_to(ROOT / 'src').parts)
+
+
 class PresentationLayerRule(unittest.TestCase):
     """D-PM005-2: covers `import` statements, relative imports and __init__.py."""
+
+    def test_relative_imports_resolve_against_each_files_own_package(self):
+        src = ROOT / 'src'
+        nested = src / 'wam_regtest/domain/sub/mod.py'
+        init = src / 'wam_regtest/domain/sub/__init__.py'
+        self.assertEqual(_package_of(nested), 'wam_regtest.domain.sub')
+        self.assertEqual(_package_of(init), 'wam_regtest.domain.sub')
+        tree = ast.parse('from ...presentation import strings\nfrom ..presentation import x\n')
+        names = _imported_names(tree, _package_of(nested))
+        self.assertIn('wam_regtest.presentation.strings', names)  # caught at depth 3
+        self.assertIn('wam_regtest.domain.presentation.x', names)
 
     def test_pure_presentation_modules_import_nothing(self):
         for name in ('__init__.py', 'action_state.py'):
@@ -164,7 +183,7 @@ class PresentationLayerRule(unittest.TestCase):
     def test_lower_layers_never_import_presentation(self):
         for layer in ('foundation', 'infrastructure', 'domain', 'application'):
             for path in (ROOT / 'src/wam_regtest' / layer).rglob('*.py'):
-                package = 'wam_regtest.' + layer
+                package = _package_of(path)
                 for target in _imported_names(ast.parse(path.read_text()), package):
                     self.assertFalse(target == 'wam_regtest.presentation'
                                      or target.startswith('wam_regtest.presentation.'),
@@ -205,16 +224,31 @@ class FusionWindowSingleWriter(unittest.TestCase):
         import itertools
         from wam_regtest.wallet_executor import ExecutorState
         w = self.window
-        for ready, spend, busy, delivering, locked, reauth, faulted, core in itertools.product(
-                (False, True), (False, True), (False, True), (False, True), (False, True),
-                (False, True), (False, True), (True, False, None)):
-            w._ready, w._spend_enabled, w._delivering_result = ready, spend, delivering
-            w.executor.busy = busy
-            w.executor.state = ExecutorState(locked=locked, faulted=faulted,
-                                             reauthentication_required=reauth, core_alive=core)
-            w._set_actions()
-            self.assertEqual(w.overview.go_send.isEnabled(), self._oracle_go_send(w, True),
-                             (ready, spend, busy, delivering, locked, reauth, faulted, core))
+        from types import SimpleNamespace
+        worker = object()  # D-PM009-1: an in-flight worker, by identity only
+        try:
+            for (ready, spend, busy, delivering, locked, reauth, faulted, core,
+                 working, shared, connected, coordinator) in itertools.product(
+                    (False, True), (False, True), (False, True), (False, True), (False, True),
+                    (False, True), (False, True), (True, False, None),
+                    (False, True), (False, True), (False, True), (False, True)):
+                if not shared and (connected or coordinator):
+                    continue  # connection/coordinator state only exists for a shared profile
+                w._ready, w._spend_enabled, w._delivering_result = ready, spend, delivering
+                w._worker = worker if working else None
+                w.shared_profile = SimpleNamespace(coordinator=coordinator) if shared else None
+                w._shared_connected = connected
+                w.executor.busy = busy
+                w.executor.state = ExecutorState(locked=locked, faulted=faulted,
+                                                 reauthentication_required=reauth, core_alive=core)
+                w._set_actions()
+                self.assertEqual(w.overview.go_send.isEnabled(), self._oracle_go_send(w, connected),
+                                 (ready, spend, busy, delivering, locked, reauth, faulted, core,
+                                  working, shared, connected, coordinator))
+        finally:
+            w._worker = None
+            w.shared_profile = None
+            w._shared_connected = False
 
     def test_render_verified_no_longer_writes_go_send(self):
         source = (ROOT / 'src/wam_regtest/bip39_fusion_gui.py').read_text()

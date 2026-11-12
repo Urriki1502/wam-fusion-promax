@@ -154,7 +154,14 @@ class LegacyCatalogTests(unittest.TestCase):
                                 right = eval(compile(ast.Expression(replacement), '<catalog>', 'eval'),
                                              {'__builtins__': {}}, env)
                                 self.assertEqual(left, right, (module, record['replacement'], platform, field))
-            _prove_structure(module, data, _proven_source(module, data))
+
+    def test_source_structure_matches_before_move(self):
+        # D-PM018-1: separate from the English byte-identity test, and one
+        # subTest per module, so a proof that must be skipped (no git history
+        # and an edited module) skips only that module's proof.
+        for module, data in FIXTURE['modules'].items():
+            with self.subTest(module=module):
+                _prove_structure(module, data, _proven_source(module, data))
 
     def test_tampered_structure_fingerprint_fails(self):
         module, data = next(iter(FIXTURE['modules'].items()))

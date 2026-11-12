@@ -14,8 +14,10 @@ Isolated by default, by construction:
   * Every other process (tests, source runs, the qualification app, probes)
     uses an isolated INI file: WAM_UI_SETTINGS_PATH when set (the frozen
     qualification pipeline sets it), otherwise a private file in a fresh
-    temporary directory for this process. Such a process can therefore never
-    write the owner's real preferences, however it was invoked.
+    temporary directory for this process. Such a process never opens the
+    native per-user store. WAM_UI_SETTINGS_PATH is trusted as given: whoever
+    sets it chooses the file, so pointing it at the owner's real preferences
+    file is the only way such a process could write them.
 """
 import os
 import tempfile

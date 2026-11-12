@@ -107,9 +107,10 @@ class MainPathCatalogTests(unittest.TestCase):
                         return copy.deepcopy(reverse[shape(node)])
                     return super().visit(node)
 
-            restored = Restore().visit(ast.parse(_proven_source(module, data)))
-            self.assertEqual(hashlib.sha256(shape(restored).encode()).hexdigest(),
-                             data['fingerprint'], module)
+            with self.subTest(module=module):  # a skipped proof skips only this module
+                restored = Restore().visit(ast.parse(_proven_source(module, data)))
+                self.assertEqual(hashlib.sha256(shape(restored).encode()).hexdigest(),
+                                 data['fingerprint'], module)
 
     def test_all_used_keys_exist_and_resolve_only_inside_functions(self):
         seen = set()
