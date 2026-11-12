@@ -105,7 +105,8 @@ def main():
                      *production_arguments(source_root,'linux-desktop')]
             entry='src/wam_regtest/linux_production_entry.py'
         else:
-            modules=['--collect-submodules','wam_regtest']
+            modules=['--collect-submodules','wam_regtest',
+                     '--hidden-import','wam_regtest.qualification.real_core_smoke']
             entry='src/wam_regtest/linux_package_entry.py'
         command=[sys.executable,'-I','-m','PyInstaller','--noconfirm','--clean','--onedir','--noupx',
             '--name',name,'--paths','src',*modules,

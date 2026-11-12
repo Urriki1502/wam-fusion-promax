@@ -5,7 +5,8 @@ import tempfile
 import unittest
 from wam_regtest.encrypted_storage import publish, read, EncryptedStorageError
 from wam_regtest.private_directory import MacosPrivateDirectoryError
-from wam_regtest.core import smoke_real_core, CoreSmokeError
+from wam_regtest.core import CoreSmokeError
+from wam_regtest.qualification.real_core_smoke import smoke_real_core
 
 
 class NativeEncryptedStorageContracts(unittest.TestCase):

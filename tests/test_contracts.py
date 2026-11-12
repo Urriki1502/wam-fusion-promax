@@ -7,7 +7,8 @@ import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
 
-from wam_regtest.core import CoreSmokeError, smoke_real_core, verified_core_paths, _early_exit_category, _write_private_config
+from wam_regtest.core import CoreSmokeError, verified_core_paths, _write_private_config
+from wam_regtest.qualification.real_core_smoke import _early_exit_category, smoke_real_core
 from wam_regtest.release import ARCHIVES, ReleaseError, _verify_executable_shape, _NoRedirect
 from wam_regtest.wsp_live import LiveCoreReadOnlyCli, RealWspScanError, _pinned_source, REGTEST_GENESIS
 

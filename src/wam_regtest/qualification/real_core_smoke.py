@@ -1,0 +1,341 @@
+"""Disposable real-Core REGTEST smoke. Qualification only, never shipped.
+
+Developer acceptance harness, not a production executable loader binding or
+key custody boundary. No user datadir is ever read or modified. CLI
+arguments, printed markers, the 120 second startup timeout and public
+denial codes match the historical core.smoke_real_core.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+import subprocess
+import time
+
+from ..core import (
+    CoreSmokeError, _port, _read_cli, _write_private_config, verified_core_paths,
+)
+from ..custody import private_temporary_directory
+from ..infrastructure import core_compat
+
+
+def _early_exit_category(datadir: Path) -> str:
+    """Classify actual wamd stderr WITHOUT emitting log lines or credentials.
+
+    The node log remains inside the private disposable datadir. Only fixed
+    non-secret categories escape the process boundary to CI.
+    """
+    try:
+        log = datadir / "core-output.log"
+        with log.open("rb") as stream:
+            data = stream.read(65536).decode("utf-8", "replace").lower()
+    except OSError:
+        return "CORE_DAEMON_EARLY_EXIT_LOG_UNAVAILABLE"
+    if any(word in data for word in ("dyld", "library not loaded", "symbol not found")):
+        return "CORE_MACOS_DYNAMIC_LIBRARY_UNAVAILABLE"
+    if any(word in data for word in ("unknown configuration", "unknown option",
+                                     "unrecognized option", "invalid parameter")):
+        return "CORE_DAEMON_OPTION_UNSUPPORTED"
+    if any(word in data for word in ("permission denied", "operation not permitted")):
+        return "CORE_DAEMON_PERMISSION_DENIED"
+    if any(word in data for word in ("unable to bind", "could not bind",
+                                     "unable to start http server")):
+        return "CORE_DAEMON_PORT_BIND_DENIED"
+    if any(word in data for word in ("error opening block database", "database corrupt",
+                                     "database environment")):
+        return "CORE_DAEMON_DATABASE_DENIED"
+    # Report only a fixed vocabulary of observed startup tokens. Never send
+    # arbitrary daemon lines (could contain RPC credentials or private paths).
+    import re
+    safe_words = frozenset((
+        "error", "failed", "fatal", "regtest", "config", "configuration",
+        "unknown", "invalid", "unsupported", "argument", "option", "daemon",
+        "wallet", "datadir", "rpc", "bind", "port", "peer", "network",
+        "index", "txindex", "coinstatsindex", "blockfilterindex", "connect",
+        "listen", "permission", "denied", "directory", "database", "file",
+        "lock", "address", "genesis", "server", "shutdown", "usage", "help",
+        "timeout", "missing", "cannot", "unable", "not", "set", "already",
+        "bitcoin", "wam", "core", "refused", "incompatible", "root",
+    ))
+    tokens = [w for w in re.findall(r"[a-z]{2,32}", data)
+              if w in safe_words]
+    if tokens:
+        return "CORE_DAEMON_EXIT_LOG_TOKENS_" + "_".join(tokens[:12]).upper()
+    return "CORE_DAEMON_EARLY_EXIT_UNCLASSIFIED"
+
+
+def smoke_real_core(core_dir: Path, *, explicit_consent: bool, timeout: int = 120,
+                    wsp_source: Path | None = None,
+                    wsp_payment_e2e: bool = False,
+                    gui_e2e: bool = False,
+                    interactive_demo: bool = False,
+                    security_e2e: bool = False,
+                    wallet_e2e: bool = False, operational_demo: bool = False, q02_e2e: bool = False,
+                    recovery_case: tuple | None = None, headless_callback=None) -> dict:
+    if explicit_consent is not True or not 30 <= timeout <= 240:
+        raise CoreSmokeError("CORE_REAL_REGTEST_CONSENT_DENIED")
+    if (wsp_source is not None and
+            (type(wsp_source) is not type(Path()) or not wsp_source.is_absolute())):
+        raise CoreSmokeError("CORE_WSP_SOURCE_SCOPE_DENIED")
+    if (type(wsp_payment_e2e) is not bool
+            or (wsp_payment_e2e and wsp_source is None)):
+        raise CoreSmokeError("CORE_PUBLIC_FIXTURE_PAYMENT_SCOPE_DENIED")
+    if (type(gui_e2e) is not bool or (gui_e2e and not wsp_payment_e2e)):
+        raise CoreSmokeError("CORE_REAL_GUI_SCOPE_DENIED")
+    if (type(interactive_demo) is not bool
+            or (interactive_demo and (not wsp_payment_e2e
+                                      or wsp_source is None or gui_e2e))):
+        raise CoreSmokeError("CORE_REAL_DEMO_SCOPE_DENIED")
+    if type(security_e2e) is not bool or (security_e2e and (not wsp_payment_e2e or interactive_demo)):
+        raise CoreSmokeError("CORE_SECURITY_SCOPE_DENIED")
+    if (type(wallet_e2e) is not bool or (wallet_e2e and not security_e2e)
+            or type(operational_demo) is not bool or (operational_demo and not interactive_demo)):
+        raise CoreSmokeError("CORE_DISPOSABLE_WALLET_SCOPE_DENIED")
+    if recovery_case is not None and (type(recovery_case) is not tuple or len(recovery_case)!=5
+            or not wsp_payment_e2e or interactive_demo or gui_e2e or security_e2e or wallet_e2e):
+        raise CoreSmokeError("CORE_RECOVERY_CASE_SCOPE_DENIED")
+    if headless_callback is not None:
+        import sys
+        if (sys.platform!='linux' or not callable(headless_callback) or not wsp_payment_e2e
+                or gui_e2e or interactive_demo or security_e2e or wallet_e2e or recovery_case is not None):
+            raise CoreSmokeError('CORE_HEADLESS_SCOPE_DENIED')
+    if type(q02_e2e) is not bool or (q02_e2e and (interactive_demo or operational_demo)):
+        raise CoreSmokeError('CORE_Q02_ACCEPTANCE_SCOPE_DENIED')
+    node, cli, receipt = verified_core_paths(core_dir)
+    q02_receipt=None
+    if q02_e2e:
+        from ..q02_probe import probe,Q02ProbeError
+        try:q02_receipt=probe(core_dir)
+        except Q02ProbeError as error:raise CoreSmokeError(error.args[0]) from None
+    # The caller runs on a dedicated CI runner or owner-approved macOS test host.
+    # We intentionally do NOT claim fd-to-loader or hardened process provenance.
+    with private_temporary_directory(prefix="wam-real-regtest-") as temp:
+        # Canonicalize the OS-created temporary directory: macOS /var is a
+        # system symlink. Private storage then walks canonical ancestors with
+        # O_NOFOLLOW rather than relaxing its symlink checks.
+        import sys
+        if sys.platform == "win32":
+            from ..custody import create_directory
+            datadir = Path(temp).absolute()/"chain"
+            create_directory(datadir)
+            from ..windows_core_regtest_smoke import _host_env
+            child_env=_host_env(datadir)
+        else:
+            datadir = Path(temp).resolve(strict=True)
+            datadir.chmod(0o700)
+            child_env={"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "HOME": str(datadir), "LC_ALL": "C"}
+        rpc, p2p = _port(), _port()
+        if rpc == p2p:
+            raise CoreSmokeError("CORE_PORT_COLLISION_DENIED")
+        _write_private_config(datadir, rpc, p2p)
+        prefix = [str(cli), f"-datadir={datadir}"]
+        proc = None
+        try:
+            with (datadir / "core-output.log").open("xb") as log:
+                # Only the exact path/hash from signed receipt; no shell or user keys.
+                proc = subprocess.Popen(
+                    [str(node), f"-datadir={datadir}", "-daemon=0"],
+                    stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                    cwd=node.parent if sys.platform=="win32" else datadir,
+                    env=child_env,
+                    creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0) if sys.platform=="win32" else 0,
+                )
+            from ..rpc_scope import register
+            register(proc,core_dir,datadir,authorized_disposable_mutation=True)
+            end = time.monotonic() + timeout
+            info = None
+            while time.monotonic() < end:
+                if proc.poll() is not None:
+                    code = proc.returncode
+                    status = _early_exit_category(datadir)
+                    # Process status is a bounded integer; no paths, passwords
+                    # or uncontrolled log text are emitted.
+                    if type(code) is int and -255 <= code <= 255:
+                        status += "_STATUS_" + ("NEG" if code < 0 else "POS") + str(abs(code))
+                    raise CoreSmokeError(status)
+                try:
+                    candidate = _read_cli(prefix + ["getblockchaininfo"], timeout=5)
+                    if isinstance(candidate, dict):
+                        info = candidate
+                        break
+                except CoreSmokeError:
+                    pass
+                time.sleep(0.5)
+            if info is None or info.get("chain") != "regtest":
+                from ..foundation import diagnostics
+                if info is None:
+                    diagnostics.record('CORE_SMOKE_STARTUP', CoreSmokeError('CORE_RPC_NO_ANSWER'))
+                else:
+                    diagnostics.record('CORE_SMOKE_STARTUP', CoreSmokeError('CORE_WRONG_CHAIN'))
+                raise CoreSmokeError("CORE_WRONG_CHAIN_DENIED")
+            from ..wsp_live import REGTEST_GENESIS
+            genesis=_read_cli(prefix + ['getblockhash','0'])
+            if genesis!=REGTEST_GENESIS:raise CoreSmokeError('CORE_WRONG_GENESIS_DENIED')
+            version=_read_cli(prefix + ['getnetworkinfo'])
+            if (type(version) is not dict or type(version.get('version')) is not int or version.get('version')!=core_compat.RPC_VERSION
+                    or version.get('subversion')!=core_compat.RPC_SUBVERSION or type(version.get('protocolversion')) is not int or version.get('protocolversion')!=core_compat.PROTOCOL_VERSION):
+                raise CoreSmokeError('CORE_RPC_VERSION_DENIED')
+            if _read_cli(prefix + ["getconnectioncount"]) != 0:
+                raise CoreSmokeError("CORE_EXTERNAL_PEERS_DENIED")
+            _read_cli(prefix + ["createwallet", "test"])
+            addr = _read_cli(prefix + ["-rpcwallet=test", "getnewaddress"])
+            if not isinstance(addr, str) or not 20 <= len(addr) <= 120:
+                raise CoreSmokeError("CORE_REGTEST_ADDRESS_DENIED")
+            # The deliberately public scalar 31 is never a user key. For
+            # opted-in payment E2E, mine coinbase to its known P2WPKH script.
+            # This supplies an actual matured UTXO that the pinned WSP
+            # serializer can spend into a genuine BIP352 output.
+            mine_to = addr
+            if wsp_payment_e2e:
+                from ..wsp_live import public_regtest_mining_address
+                mine_to = public_regtest_mining_address(wsp_source)
+            mined = _read_cli(prefix + ["generatetoaddress", "101", mine_to], timeout=90)
+            if not isinstance(mined, list) or len(mined) != 101:
+                raise CoreSmokeError("CORE_REGTEST_GENERATE_DENIED")
+            height = _read_cli(prefix + ["getblockcount"])
+            if type(height) is not int or height < 101:
+                raise CoreSmokeError("CORE_REGTEST_HEIGHT_DENIED")
+            tip = _read_cli(prefix + ["getbestblockhash"])
+            if not isinstance(tip, str) or len(tip) != 64 or tip != mined[-1]:
+                raise CoreSmokeError("CORE_REGTEST_TIP_DENIED")
+            final = _read_cli(prefix + ["getblockchaininfo"])
+            if not isinstance(final, dict) or final.get("chain") != "regtest" or final.get("blocks") != height:
+                raise CoreSmokeError("CORE_REGTEST_CHAIN_DRIFT_DENIED")
+            if _read_cli(prefix + ["getconnectioncount"]) != 0:
+                raise CoreSmokeError("CORE_EXTERNAL_PEERS_DENIED")
+            wsp_receipt = None
+            if wsp_source is not None:
+                from ..wsp_live import scan_actual_core_blocks, RealWspScanError
+                try:
+                    wsp_receipt = scan_actual_core_blocks(
+                        cli, datadir, wsp_source, expected_height=height,
+                        payment_e2e=wsp_payment_e2e,
+                        mining_address=(mine_to if wsp_payment_e2e else None),
+                    )
+                except RealWspScanError as exc:
+                    raise CoreSmokeError(str(exc)) from None
+            gui_receipt = None
+            if gui_e2e:
+                # The REAL daemon remains running here. The native Qt worker
+                # independently opens WSP SQLite and calls official Core RPC
+                # again before any Receive/Balance/History UI claim.
+                try:
+                    from ..desktop_probe import probe_running_real_core_gui
+                    gui_receipt = probe_running_real_core_gui(
+                        core_dir, datadir, wsp_source,
+                        expected_height=wsp_receipt["observed_height"],
+                        expected_txid=wsp_receipt["public_fixture_payment_txid"],
+                        expected_atoms=wsp_receipt["confirmed_receive_atoms"],
+                    )
+                except Exception:
+                    raise CoreSmokeError("CORE_MACOS_NATIVE_QT_E2E_DENIED") from None
+            demo_finished = False
+            if interactive_demo:
+                # Owner-approved, disposable REGTEST only. Launch the real Qt
+                # live-sync window while wamd is alive, not after temp cleanup.
+                # The existing finally shuts down wamd and deletes test data
+                # only AFTER the user has closed the GUI.
+                try:
+                    from ..desktop import launch_readonly_wallet
+                    print("REAL REGTEST PUBLIC DEMO: no mainnet or real funds; "
+                          "close the wallet window to stop Core and delete the test chain.",
+                          flush=True)
+                    if operational_demo:
+                        from ..operational_gui import launch_disposable_wallet
+                        exit_status = launch_disposable_wallet(core_dir,datadir,wsp_source,mine_to)
+                    else:
+                        exit_status = launch_readonly_wallet(core_dir,datadir,wsp_source)
+                    if exit_status != 0:
+                        raise CoreSmokeError("CORE_REAL_DEMO_WINDOW_DENIED")
+                    demo_finished = True
+                except CoreSmokeError:
+                    raise
+                except Exception:
+                    raise CoreSmokeError("CORE_REAL_DEMO_GUI_DENIED") from None
+            security_receipt = None
+            if security_e2e:
+                from ..security_probe import probe_security, SecurityProbeError
+                try:
+                    if sys.platform == "win32":
+                        from ..windows_vault_probe import prove_real_windows_vault
+                        from ..windows_core_transport import local_rpc_port
+                        security_receipt=prove_real_windows_vault(cli,datadir,local_rpc_port(datadir),child_env,wsp_source,mine_to)
+                    else:
+                        security_receipt = probe_security(cli, datadir, wsp_source, mine_to)
+                except SecurityProbeError as exc:
+                    raise CoreSmokeError(str(exc)) from None
+            wallet_receipt = None
+            if headless_callback is not None:
+                wallet_receipt=headless_callback(core_dir,datadir,wsp_source,mine_to)
+            if wallet_e2e:
+                from ..wallet_probe import probe_wallet, WalletProbeError
+                try:
+                    wallet_receipt = probe_wallet(core_dir,datadir,wsp_source,mine_to)
+                except WalletProbeError as exc:
+                    raise CoreSmokeError(str(exc)) from None
+            recovery_receipt = None
+            if recovery_case is not None:
+                from ..reopen_probe import probe_reopened_wallet, ReopenProbeError
+                try:
+                    recovery_receipt = probe_reopened_wallet(core_dir,datadir,wsp_source,mine_to,recovery_case)
+                except ReopenProbeError as exc:
+                    raise CoreSmokeError(str(exc)) from None
+            final_height = _read_cli(prefix + ["getblockcount"])
+            final_tip = _read_cli(prefix + ["getbestblockhash"])
+            if (type(final_height) is not int or not 101<=final_height<=1_000_000
+                    or type(final_tip) is not str or len(final_tip)!=64
+                    or _read_cli(prefix+["getconnectioncount"])!=0):
+                raise CoreSmokeError("CORE_FINAL_CHAIN_ATTESTATION_DENIED")
+            return {
+                "q02_authentication":q02_receipt,
+                "wallet_live_core": wallet_receipt,
+                "recovery_live_core": recovery_receipt,
+                "security_live_core": security_receipt,
+                "interactive_demo_closed_cleanly": demo_finished,
+                "gui_real_core_e2e_pass": gui_receipt is not None,
+                "gui_live_core_view": gui_receipt,
+                "status": ("REAL_WAM_CORE_V0_1_13_NATIVE_QT_WALLET_E2E_PASS"
+                           if gui_receipt is not None else
+                           "REAL_WAM_CORE_V0_1_13_BIP352_RECEIVE_E2E_PASS"
+                           if wsp_payment_e2e and wsp_receipt is not None else
+                           "REAL_WAM_CORE_V0_1_13_REGTEST_AND_NATIVE_WSP_SCANNER_PASS"
+                           if wsp_receipt is not None else
+                           "REAL_WAM_CORE_V0_1_13_REGTEST_RPC_101_BLOCKS_PASS"),
+                "wsp_real_core_scan_pass": wsp_receipt is not None,
+                "wsp_live_scan": wsp_receipt,
+                "regtest_public_fixture_broadcast_confirmed": (
+                    wsp_receipt["regtest_fixture_broadcast_confirmed"]
+                    if wsp_receipt is not None else False
+                ),
+                "platform": receipt["platform"], "node_sha256": receipt["wamd_sha256"],
+                "chain": final["chain"], "genesis":genesis,
+                "observed_core_version":version["version"],
+                "observed_core_subversion":version["subversion"],
+                "block_height": final_height,
+                "tip": final_tip,
+                "live_wamd_process_observed": True, "live_rpc_observed": True,
+                "wallet_send_e2e_pass": wallet_receipt is not None,
+                "wsp_bip352_e2e_pass": (
+                    wsp_receipt["wsp_bip352_payment_confirmed"]
+                    if wsp_receipt is not None else False
+                ),
+                "mainnet_allowed": False, "production_process_binding_qualified": False,
+            }
+        finally:
+            if proc is not None:
+                if proc.poll() is None:
+                    try:
+                        _read_cli(prefix + ["stop"], timeout=8)
+                    except CoreSmokeError:
+                        pass
+                    try:
+                        proc.wait(timeout=12)
+                    except subprocess.TimeoutExpired:
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=6)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                            proc.wait(timeout=6)
+
+            from ..rpc_scope import unregister
+            unregister(datadir)

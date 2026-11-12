@@ -58,6 +58,7 @@ python -I -m PyInstaller --noconfirm --clean --onedir --windowed \
   --paths "$(pwd)/src" \
   --add-data "$SOURCE_STAGE/Q05_BUILD_SOURCE.json:." \
   --collect-submodules wam_regtest \
+  --hidden-import wam_regtest.qualification.real_core_smoke \
   --collect-submodules wam_sp \
   --copy-metadata coincurve \
   --hidden-import coincurve._cffi_backend \

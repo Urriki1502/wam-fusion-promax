@@ -68,9 +68,8 @@ SCAN = {name: _scan(name) for name in AVAILABLE}
 # Reviewed function-level edges from shipped modules to excluded modules. Each
 # is a developer/acceptance branch or another platform's sys.platform branch;
 # a new edge must be reviewed here (fails closed at runtime if reached).
-_COMMON_LAZY = {('core', 'desktop_probe'), ('core', 'q02_probe'), ('core', 'reopen_probe'),
-                ('core', 'security_probe'), ('core', 'wallet_probe'), ('core', 'windows_vault_probe'),
-                ('managed_onboarding', 'onboarding_probe')}
+# PM-008 moved smoke_real_core's probe imports out of shipped core.
+_COMMON_LAZY = {('managed_onboarding', 'onboarding_probe')}
 _NON_WINDOWS_SMOKE = {('core', 'windows_core_regtest_smoke'), ('core_process', 'windows_core_regtest_smoke'),
                       ('core_supervisor', 'windows_core_regtest_smoke'), ('rpc_scope', 'windows_core_regtest_smoke'),
                       ('windows_core_transport', 'windows_core_regtest_smoke')}

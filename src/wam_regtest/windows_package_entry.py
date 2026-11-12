@@ -79,7 +79,8 @@ def main():
     try:
         if sys.argv[1:] and not (ci or q04_mode or q05_mode or q06_mode):raise ValueError('WIN_BUNDLE_ARGUMENT_DENIED')
         core,source=_resources()
-        from wam_regtest.core import smoke_real_core,CoreSmokeError
+        from wam_regtest.core import CoreSmokeError
+        from wam_regtest.qualification.real_core_smoke import smoke_real_core
         if q04_mode:
             with tempfile.TemporaryDirectory(prefix='wam-win-frozen-') as t:
                 stage=Path(t).absolute()/'core';_stage_original_core(core,stage)

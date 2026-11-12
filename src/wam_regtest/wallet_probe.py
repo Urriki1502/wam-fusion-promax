@@ -454,7 +454,7 @@ def probe_wallet(core_dir,datadir,source,mining_address):
         window=None
         stage="REOPEN_ON_NEW_CORE"
         print("WALLET_E2E_STAGE=REOPEN_ON_NEW_CORE",flush=True)
-        from .core import smoke_real_core
+        from .qualification.real_core_smoke import smoke_real_core
         reopened=smoke_real_core(core_dir,explicit_consent=True,wsp_source=source,
                                  wsp_payment_e2e=True,
                                  recovery_case=(backup,'wallet-backup.enc',password,keychain,initial.receive_code))

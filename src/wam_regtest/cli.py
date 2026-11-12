@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 import sys
 
-from .core import CoreSmokeError, smoke_real_core
+from .core import CoreSmokeError
+from .qualification.real_core_smoke import smoke_real_core
 from .q04_runner import Q04RunnerError, run_q04_scenario
 from .external_core import ExternalAttachmentError
 

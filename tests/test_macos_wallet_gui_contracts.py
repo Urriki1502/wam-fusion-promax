@@ -4,7 +4,8 @@ from pathlib import Path
 import sys
 import unittest
 
-from wam_regtest.core import CoreSmokeError, smoke_real_core
+from wam_regtest.core import CoreSmokeError
+from wam_regtest.qualification.real_core_smoke import smoke_real_core
 from wam_regtest.wallet_read import RealWalletReadError, read_real_wallet_snapshot
 from wam_regtest.desktop import resolve_theme
 

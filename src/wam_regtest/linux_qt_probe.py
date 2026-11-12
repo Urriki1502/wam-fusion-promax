@@ -39,7 +39,7 @@ def background_snapshot(app,window):
 def probe(core,datadir,source,mining):
     from wam_sp.keystore import Keyring
     from wam_sp.scanner import Scanner
-    from .core import smoke_real_core
+    from .qualification.real_core_smoke import smoke_real_core
     app=qt_application();session=window=receiver=scan=None;stage='CREATE'
     try:
         assert app.platformName()=='xcb','LINUX_NATIVE_XCB_REQUIRED'

@@ -126,7 +126,7 @@ def launch(core,datadir,source,mining,*,backup=None):
 
 def run(args):
     from .linux_runtime import configure
-    from .core import smoke_real_core
+    from .qualification.real_core_smoke import smoke_real_core
     try:
         core=args.core_dir.expanduser().absolute();source=args.wsp_source_root.expanduser().absolute()
         configure(core,args.manifest_sha256,args.anchor_socket.expanduser().absolute(),

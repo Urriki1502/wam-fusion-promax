@@ -4,7 +4,8 @@ import unittest
 from wam_regtest.operational_gui import parse_amount
 from wam_regtest.wallet_session import WalletSession,WalletSessionError,WalletCoreCli
 from wam_regtest.wsp_live import RealWspScanError
-from wam_regtest.core import smoke_real_core,CoreSmokeError
+from wam_regtest.core import CoreSmokeError
+from wam_regtest.qualification.real_core_smoke import smoke_real_core
 
 
 class WalletSessionContracts(unittest.TestCase):

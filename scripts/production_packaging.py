@@ -2,6 +2,8 @@
 
 RUNTIME is the reviewed macOS ARM64 set. Windows x64 and Linux x86_64 reuse it
 and add only what their normal production entry actually needs (Phase 5).
+The qualification package is probe orchestration and is absent from every
+platform set; arguments() excludes it with the rest of the non-runtime tree.
 Other-platform runtime helpers that common modules dispatch to behind
 sys.platform guards stay until they can be separated in a qualified change;
 their diagnostic callers are excluded. Windows/Linux production bytes are NOT

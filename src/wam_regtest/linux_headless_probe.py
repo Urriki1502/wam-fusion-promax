@@ -6,7 +6,7 @@ from . import custody
 from .linux_headless import HeadlessWallet,open_session
 from .wallet_session import WalletSession,WalletCoreCli,WalletSessionError
 from .vault import CheckpointVault
-from .core import smoke_real_core
+from .qualification.real_core_smoke import smoke_real_core
 
 PASSWORD=b'public-disposable-linux-e2e-password'
 

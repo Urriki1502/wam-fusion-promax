@@ -84,18 +84,12 @@ LINUX_EXTRA_SNAPSHOT = frozenset({'linux_production_entry'})
 
 # Function-level imports of a non-runtime wam_regtest module from a macOS
 # RUNTIME module. The whole set at this revision (F-10). A new edge fails.
-#   * core.smoke_real_core's probe imports, plus that function's win32 helper
+# smoke_real_core's probe imports left runtime with the qualification split.
+# What remains:
 #   * managed_onboarding.assert_unified_welcome_qt -> onboarding_probe
 #   * win32 windows_core_regtest_smoke helpers reached from core /
 #     core_process / core_supervisor / rpc_scope / windows_core_transport
 RUNTIME_FUNCTION_IMPORTS = frozenset({
-    ('core', 'smoke_real_core', 'desktop_probe'),
-    ('core', 'smoke_real_core', 'q02_probe'),
-    ('core', 'smoke_real_core', 'reopen_probe'),
-    ('core', 'smoke_real_core', 'security_probe'),
-    ('core', 'smoke_real_core', 'wallet_probe'),
-    ('core', 'smoke_real_core', 'windows_core_regtest_smoke'),
-    ('core', 'smoke_real_core', 'windows_vault_probe'),
     ('core', '_write_private_config', 'windows_core_regtest_smoke'),
     ('core_process', '_windows_socket', 'windows_core_regtest_smoke'),
     ('core_supervisor', 'CoreSupervisor.start', 'windows_core_regtest_smoke'),
@@ -204,6 +198,57 @@ def _dynamic_wam_regtest_modules(node):
         parts = value.split('.')
         return [parts[1] if len(parts) > 1 else '__init__']
     return []
+
+
+def _is_qualification(name):
+    return name == 'wam_regtest.qualification' or name.startswith('wam_regtest.qualification.')
+
+
+def _importer_package(policy, module):
+    """__package__ of a wallet_module_names() entry."""
+    path = policy.module_path(ROOT, module)
+    if path.name == '__init__.py':
+        return 'wam_regtest' if module == '__init__' else 'wam_regtest.' + module
+    parent = module.rpartition('.')[0]
+    return 'wam_regtest.' + parent if parent else 'wam_regtest'
+
+
+def _qualification_imports(node, package):
+    """Qualification imports at any relative level and any dotted depth."""
+    found = []
+    if isinstance(node, ast.Import):
+        for alias in node.names:
+            if _is_qualification(alias.name):
+                found.append(alias.name)
+    elif isinstance(node, ast.ImportFrom):
+        module = node.module or ''
+        if node.level == 0:
+            if _is_qualification(module):
+                found.append(module)
+            if module == 'wam_regtest':
+                for alias in node.names:
+                    qualified = 'wam_regtest.' + alias.name
+                    if _is_qualification(qualified):
+                        found.append(qualified)
+        elif node.level > 0:
+            base = package
+            for _ in range(node.level - 1):
+                base = base.rpartition('.')[0]
+            targets = [base + '.' + module] if module else [
+                base + '.' + alias.name for alias in node.names]
+            found.extend(name for name in targets if _is_qualification(name))
+    elif isinstance(node, ast.Call):
+        func = node.func
+        name = func.id if isinstance(func, ast.Name) else (
+            func.attr if isinstance(func, ast.Attribute) else None)
+        if name in ('import_module', '__import__') and node.args:
+            argument = node.args[0]
+            if isinstance(argument, ast.Constant) and type(argument.value) is str:
+                value = argument.value
+                if (value == 'wam_regtest.qualification'
+                        or value.startswith('wam_regtest.qualification.')):
+                    found.append(value)
+    return found
 
 
 def _runtime_import_edges():
@@ -859,6 +904,31 @@ class RuntimeLayering(unittest.TestCase):
         module_level, function_level = _runtime_import_edges()
         self.assertEqual(module_level, set())
         self.assertEqual(function_level, set(RUNTIME_FUNCTION_IMPORTS))
+
+    def test_qualification_package_is_excluded_and_unimported_by_runtime(self):
+        """F-10. The whole qualification package stays out of every shipped set,
+        and no RUNTIME module imports it at module or function level."""
+        policy = _packaging()
+        names = policy.wallet_module_names(ROOT)
+        qualification = {name for name in names
+                         if name == 'qualification' or name.startswith('qualification.')}
+        self.assertIn('qualification', qualification)
+        self.assertIn('qualification.real_core_smoke', qualification)
+        for platform in ('macos', 'windows', 'linux-desktop'):
+            runtime = policy.runtime_modules(platform)
+            self.assertFalse(qualification & runtime, platform)
+            args = policy.arguments(ROOT, platform)
+            hidden = {args[i + 1] for i in range(0, len(args), 2) if args[i] == '--hidden-import'}
+            excluded = {args[i + 1] for i in range(0, len(args), 2) if args[i] == '--exclude-module'}
+            for name in qualification:
+                self.assertNotIn('wam_regtest.' + name, hidden)
+                self.assertIn('wam_regtest.' + name, excluded)
+            for module in sorted(runtime):
+                tree = ast.parse(policy.module_path(ROOT, module).read_text())
+                package = _importer_package(policy, module)
+                for node in ast.walk(tree):
+                    imported = _qualification_imports(node, package)
+                    self.assertEqual(imported, [], '%s imports %s' % (module, imported))
 
 
 class ImportOrigin(unittest.TestCase):
