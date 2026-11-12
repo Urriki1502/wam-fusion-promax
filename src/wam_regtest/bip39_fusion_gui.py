@@ -564,7 +564,12 @@ class Bip39FusionWindow(Bip39TrialWindow):
         else:
             mode = "light" if selection == 1 else "dark"
         colors = fusion_palette(mode)
-        self.setStyleSheet(fusion_stylesheet(mode))
+        # Reapplying an unchanged sheet resigns the Cocoa key window once
+        # Tab is allowed to reach every control. Icons below still follow
+        # the selected page.
+        if getattr(self, '_styled_mode', None) != mode:
+            self.setStyleSheet(fusion_stylesheet(mode))
+            self._styled_mode = mode
         present_brand_title(
             self._brand_title, t('wallet.brand'),
             SHELL['sidebar_width'] - 2 * SHELL['sidebar_pad_x'],
