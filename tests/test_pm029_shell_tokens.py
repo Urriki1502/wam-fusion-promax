@@ -7,8 +7,8 @@ import unittest
 from pathlib import Path
 
 from wam_regtest.fusion_ui import (
-    FOCUS, QR, SHELL, SPACING, TYPE, direction_tone, enable_shell_tab_focus,
-    fusion_palette, fusion_stylesheet, present_brand_title,
+    FOCUS, QR, SHELL, SPACING, TYPE, direction_tone, install_keyboard_focus_mark,
+    fusion_palette, fusion_stylesheet, present_brand_title, page, StateSwitch,
 )
 from wam_regtest.presentation.strings import CATALOG
 
@@ -20,21 +20,22 @@ SHELL_MODULES = (
     'src/wam_regtest/fusion_motion.py',
     'src/wam_regtest/bip39_backup_page.py',
 )
+_KF = '[keyboardFocus="true"]'
 FOCUS_SELECTORS = (
-    'QListWidget:focus',
-    'QPushButton:focus',
-    'QPushButton#FusionPrimary:focus',
-    'QCheckBox::indicator:focus',
-    'QCheckBox::indicator:checked:focus',
-    'QComboBox:focus',
-    'QLineEdit:focus',
-    'QPlainTextEdit:focus',
-    'QPlainTextEdit#ReceiveCode:focus',
-    'QTextEdit:focus',
-    'QTableWidget:focus',
-    'QTableWidget#FusionActivityTable:focus',
-    'QToolButton#FusionSegment:focus',
-    'QTableWidget::item:focus',
+    'QListWidget' + _KF,
+    'QPushButton' + _KF,
+    'QPushButton#FusionPrimary' + _KF,
+    'QCheckBox' + _KF + '::indicator',
+    'QCheckBox' + _KF + '::indicator:checked',
+    'QComboBox' + _KF,
+    'QLineEdit' + _KF,
+    'QPlainTextEdit' + _KF,
+    'QPlainTextEdit#ReceiveCode' + _KF,
+    'QTextEdit' + _KF,
+    'QTableWidget' + _KF,
+    'QTableWidget#FusionActivityTable' + _KF,
+    'QToolButton#FusionSegment' + _KF,
+    'QTableWidget' + _KF + '::item:focus',
 )
 
 
@@ -126,6 +127,9 @@ class ShellTokenContracts(unittest.TestCase):
             sheet = fusion_stylesheet(mode)
             for selector in FOCUS_SELECTORS:
                 self.assertIn(selector, sheet, selector)
+            for line in sheet.splitlines():
+                if ':focus' in line:
+                    self.assertIn('[keyboardFocus="true"]', line, line)
             # The ring is the accent colour. It has to clear 3:1 against the
             # surfaces those controls sit on (WCAG non-text contrast).
             for surface in ('bg', 'surface', 'panel', 'tint', 'sidebar'):
@@ -137,6 +141,9 @@ class ShellTokenContracts(unittest.TestCase):
                 _contrast(colors['onaccent'], colors['accent']), 3.0, mode)
         switch = (ROOT / 'src/wam_regtest/fusion_ui.py').read_text()
         self.assertIn("QPen(QColor(colors['focus']), FOCUS)", switch)
+        self.assertIn("property('keyboardFocus')", switch)
+        self.assertNotIn('setTabFocusBehavior', switch)
+        self.assertNotIn('TabFocusAllControls', switch)
         self.assertGreaterEqual(FOCUS, 2)
 
     def test_qr_colours_come_from_the_token_table(self):
@@ -151,33 +158,59 @@ class SidebarBrandFit(unittest.TestCase):
         from wam_regtest.desktop import qt_application
         cls.app = qt_application()
 
-    def test_tab_chain_includes_buttons_checks_and_combos(self):
+    def test_system_keyboard_navigation_is_left_alone(self):
         from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import (
-            QApplication, QCheckBox, QComboBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
-        )
-        root = QWidget()
-        self.addCleanup(root.deleteLater)
-        scroll = QScrollArea(root)
-        scroll.setObjectName('FusionScroll')
-        inner = QWidget()
-        layout = QVBoxLayout(inner)
-        button = QPushButton('Send')
-        button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        from PySide6.QtWidgets import QCheckBox
+        shell = (ROOT / 'src/wam_regtest/fusion_ui.py').read_text()
+        gui = (ROOT / 'src/wam_regtest/bip39_fusion_gui.py').read_text()
+        self.assertNotIn('setTabFocusBehavior', shell + gui)
+        self.assertNotIn('enable_shell_tab_focus', shell + gui)
+        self.assertNotIn("FocusPolicy.NoFocus", shell)
         box = QCheckBox('Reduce interface motion')
-        combo = QComboBox()
-        layout.addWidget(button)
-        layout.addWidget(box)
-        layout.addWidget(combo)
-        scroll.setWidget(inner)
-        enable_shell_tab_focus(root)
-        self.assertEqual(button.focusPolicy(), Qt.FocusPolicy.StrongFocus)
-        self.assertEqual(box.focusPolicy(), Qt.FocusPolicy.StrongFocus)
-        self.assertEqual(combo.focusPolicy(), Qt.FocusPolicy.StrongFocus)
-        self.assertEqual(scroll.focusPolicy(), Qt.FocusPolicy.NoFocus)
-        self.assertEqual(
-            QApplication.styleHints().tabFocusBehavior(),
-            Qt.TabFocusBehavior.TabFocusAllControls)
+        switch = StateSwitch('Locked')
+        self.addCleanup(box.deleteLater)
+        self.addCleanup(switch.deleteLater)
+        self.assertEqual(switch.focusPolicy(), box.focusPolicy())
+
+    def test_page_scroll_still_moves_on_page_down(self):
+        from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QWidget
+        scroll, layout = page('Title', 'subtitle')
+        self.addCleanup(scroll.deleteLater)
+        filler = QWidget()
+        filler.setMinimumHeight(1800)
+        filler.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        layout.addWidget(filler)
+        scroll.resize(420, 280)
+        scroll.show()
+        self.assertNotEqual(scroll.focusPolicy(), Qt.FocusPolicy.NoFocus)
+        scroll.setFocus(Qt.FocusReason.TabFocusReason)
+        self.app.processEvents()
+        self.assertIs(self.app.focusWidget(), scroll)
+        before = scroll.verticalScrollBar().value()
+        QTest.keyClick(scroll, Qt.Key.Key_PageDown)
+        self.app.processEvents()
+        self.assertGreater(scroll.verticalScrollBar().value(), before)
+
+    def test_focus_ring_follows_keyboard_and_not_the_mouse(self):
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QPushButton
+        install_keyboard_focus_mark(None)
+        button = QPushButton('Refresh')
+        self.addCleanup(button.deleteLater)
+        button.show()
+        button.setFocus(Qt.FocusReason.MouseFocusReason)
+        self.app.processEvents()
+        self.assertFalse(bool(button.property('keyboardFocus')))
+        button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self.app.processEvents()
+        self.assertFalse(bool(button.property('keyboardFocus')))
+        button.clearFocus()
+        self.app.processEvents()
+        button.setFocus(Qt.FocusReason.TabFocusReason)
+        self.app.processEvents()
+        self.assertTrue(bool(button.property('keyboardFocus')))
 
     def test_brand_breaks_on_words_in_every_language(self):
         from PySide6.QtWidgets import QLabel

@@ -137,31 +137,67 @@ def fusion_palette(mode):
     return colors
 
 
-def enable_shell_tab_focus(root):
-    """Put buttons, checkboxes and combo boxes on the Tab chain.
+_KEYBOARD_FOCUS_REASONS = frozenset((
+    Qt.FocusReason.TabFocusReason,
+    Qt.FocusReason.BacktabFocusReason,
+    Qt.FocusReason.ShortcutFocusReason,
+))
+_keyboard_focus_mark = None
 
-    Cocoa leaves a control out of Tab when its policy is only TabFocus,
-    unless the system keyboard setting is on. StrongFocus is what this
-    style walks. Page scroll areas stay out of that chain so Tab reaches
-    the controls inside them.
+
+class _KeyboardFocusMark(QObject):
+    """Draw the focus ring only after keyboard focus.
+
+    Opening the window and clicking with the mouse leave the ring off.
+    Tab, Backtab and a shortcut turn it on. Which controls Tab reaches
+    stays the system keyboard-navigation setting.
     """
-    from PySide6.QtWidgets import (
-        QAbstractScrollArea, QApplication, QCheckBox, QComboBox, QPushButton,
-    )
-    # Changing a scroll area's policy can re-polish its children back to
-    # TabFocus, which Cocoa then skips. Set the chain membership last.
-    hints = QApplication.styleHints()
-    if hasattr(hints, 'setTabFocusBehavior'):
-        hints.setTabFocusBehavior(Qt.TabFocusBehavior.TabFocusAllControls)
-    for area in root.findChildren(QAbstractScrollArea):
-        if area.objectName() == 'FusionScroll':
-            area.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-    for widget in root.findChildren(QPushButton):
-        widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-    for widget in root.findChildren(QCheckBox):
-        widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-    for widget in root.findChildren(QComboBox):
-        widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self._busy = False
+
+    def eventFilter(self, watched, event):
+        # The filter sits on the application, so it also sees styles and
+        # other non-widgets. Polishing re-enters this filter; ignore that.
+        if self._busy or not isinstance(watched, QWidget):
+            return False
+        kind = event.type()
+        if kind == QEvent.Type.FocusIn:
+            keyboard = event.reason() in _KEYBOARD_FOCUS_REASONS
+        elif kind == QEvent.Type.FocusOut:
+            keyboard = False
+        else:
+            return False
+        self._busy = True
+        try:
+            self._mark(watched, keyboard)
+        finally:
+            self._busy = False
+        return False
+
+    @staticmethod
+    def _mark(widget, keyboard):
+        if bool(widget.property('keyboardFocus')) == bool(keyboard):
+            return
+        widget.setProperty('keyboardFocus', bool(keyboard))
+        style = widget.style()
+        if style is not None:
+            style.unpolish(widget)
+            style.polish(widget)
+        widget.update()
+
+
+def install_keyboard_focus_mark(root):
+    """Install the ring filter once for this process. `root` is the shell."""
+    del root
+    global _keyboard_focus_mark
+    app = QApplication.instance()
+    if app is None or _keyboard_focus_mark is not None:
+        return _keyboard_focus_mark
+    _keyboard_focus_mark = _KeyboardFocusMark(app)
+    app.installEventFilter(_keyboard_focus_mark)
+    return _keyboard_focus_mark
 
 
 def direction_tone(colors, net):
@@ -181,6 +217,9 @@ def fusion_stylesheet(mode):
     c = fusion_palette(mode)
     t, w, r, s = TYPE, WEIGHT, RADIUS, SPACING
     ring = FOCUS
+    # The ring follows keyboard focus only. :focus would also frame the
+    # navigation list on open, because that list holds the initial focus.
+    kf = '[keyboardFocus="true"]'
     return f"""
     QMainWindow,QWidget#WalletRoot,QDialog,QMessageBox,QInputDialog {{
         background:{c['bg']};color:{c['text']};
@@ -232,18 +271,18 @@ def fusion_stylesheet(mode):
     QListWidget::item {{padding:9px {s['md']}px;border-radius:{r['nav']}px;margin:2px 0;}}
     QListWidget::item:selected {{background:{c['accent']};color:{c['onaccent']};font-weight:{w['bold']};}}
     QListWidget::item:hover:!selected {{background:{c['hover']};color:{c['text']};}}
-    QListWidget:focus {{border:{ring}px solid {c['focus']};padding:0;}}
+    QListWidget{kf} {{border:{ring}px solid {c['focus']};padding:0;}}
     QLineEdit,QTextEdit,QPlainTextEdit {{
         background:{c['panel']};color:{c['text']};selection-background-color:{c['selection']};
         border:1px solid {c['border']};border-radius:{r['control']}px;padding:{s['md']}px;
     }}
-    QLineEdit:focus,QTextEdit:focus,QPlainTextEdit:focus {{border:{ring}px solid {c['focus']};padding:11px;}}
-    QPushButton:focus,QComboBox:focus {{border:{ring}px solid {c['focus']};padding:11px 16px;}}
-    QToolButton:focus {{border:{ring}px solid {c['focus']};}}
-    QPlainTextEdit#ReceiveCode:focus {{border:{ring}px solid {c['focus']};padding:15px;}}
-    QToolButton#FusionSegment:focus {{border:{ring}px solid {c['focus']};padding:6px 10px;}}
-    QToolButton#FusionQuick:focus {{border:{ring}px solid {c['focus']};padding:10px 12px;}}
-    QToolButton#FusionAdvanced:focus {{border:{ring}px solid {c['focus']};padding:8px;}}
+    QLineEdit{kf},QTextEdit{kf},QPlainTextEdit{kf} {{border:{ring}px solid {c['focus']};padding:11px;}}
+    QPushButton{kf},QComboBox{kf} {{border:{ring}px solid {c['focus']};padding:11px 16px;}}
+    QToolButton{kf} {{border:{ring}px solid {c['focus']};}}
+    QPlainTextEdit#ReceiveCode{kf} {{border:{ring}px solid {c['focus']};padding:15px;}}
+    QToolButton#FusionSegment{kf} {{border:{ring}px solid {c['focus']};padding:6px 10px;}}
+    QToolButton#FusionQuick{kf} {{border:{ring}px solid {c['focus']};padding:10px 12px;}}
+    QToolButton#FusionAdvanced{kf} {{border:{ring}px solid {c['focus']};padding:8px;}}
     QLineEdit:disabled {{color:{c['muted']};background:{c['bg']};}}
     QPushButton,QComboBox {{
         background:{c['tint']};color:{c['text']};border:1px solid {c['border']};
@@ -252,7 +291,7 @@ def fusion_stylesheet(mode):
     QPushButton#PrimaryButton,QPushButton#FusionPrimary {{
         background:{c['accent']};color:{c['onaccent']};border:1px solid {c['accent']};
     }}
-    QPushButton#FusionPrimary:focus,QPushButton#PrimaryButton:focus {{border:{ring}px solid {c['onaccent']};padding:11px 16px;}}
+    QPushButton#FusionPrimary{kf},QPushButton#PrimaryButton{kf} {{border:{ring}px solid {c['onaccent']};padding:11px 16px;}}
     QPushButton#FusionSecondary {{background:{c['tint']};color:{c['text']};border:1px solid {c['border']};}}
     QPushButton#FusionDestructive {{background:{c['surface']};color:{c['error']};border:1px solid {c['border']};}}
     QPushButton:hover:enabled,QComboBox:hover {{background:{c['hover']};border:1px solid {c['focus']};}}
@@ -272,16 +311,16 @@ def fusion_stylesheet(mode):
     QCheckBox {{color:{c['text']};spacing:{s['sm']}px;}}
     QCheckBox::indicator {{width:17px;height:17px;border:1px solid {c['muted']};border-radius:{r['check']}px;background:{c['panel']};}}
     QCheckBox::indicator:checked {{background:{c['accent']};border:1px solid {c['accent']};}}
-    QCheckBox::indicator:focus {{border:{ring}px solid {c['focus']};}}
-    QCheckBox::indicator:checked:focus {{background:{c['accent']};border:{ring}px solid {c['onaccent']};}}
+    QCheckBox{kf}::indicator {{border:{ring}px solid {c['focus']};}}
+    QCheckBox{kf}::indicator:checked {{background:{c['accent']};border:{ring}px solid {c['onaccent']};}}
     QTableWidget,QTableWidget#FusionActivityTable {{
         background:{c['surface']};alternate-background-color:{c['surface']};color:{c['text']};
         border:0;gridline-color:{c['border']};selection-background-color:{c['selection']};selection-color:{c['text']};
     }}
-    QTableWidget:focus,QTableWidget#FusionActivityTable:focus {{border:{ring}px solid {c['focus']};}}
+    QTableWidget{kf},QTableWidget#FusionActivityTable{kf} {{border:{ring}px solid {c['focus']};}}
     QTableWidget::item {{padding:10px;border-bottom:1px solid {c['border']};}}
     QTableWidget::item:selected {{background:{c['selection']};color:{c['text']};}}
-    QTableWidget::item:focus {{border:{ring}px solid {c['focus']};}}
+    QTableWidget{kf}::item:focus {{border:{ring}px solid {c['focus']};}}
     QHeaderView::section {{
         background:{c['surface']};color:{c['muted']};border:0;border-bottom:1px solid {c['border']};
         padding:10px;font-size:{t['caption']}px;font-weight:{w['semibold']};
@@ -298,11 +337,6 @@ def fusion_stylesheet(mode):
 
 class StateSwitch(QCheckBox):
     """Two-position visual switch retaining Qt checkbox focus/key semantics."""
-    def __init__(self, text=''):
-        super().__init__(text)
-        # Cocoa's default Tab cycle skips a checkbox left at TabFocus.
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-
     def sizeHint(self):
         return QSize(self.fontMetrics().horizontalAdvance(self.text()) + 68, 34)
 
@@ -325,7 +359,7 @@ class StateSwitch(QCheckBox):
         painter.setPen(QColor(colors['text']))
         painter.drawText(QRectF(58, 0, self.width() - 58, self.height()),
                          Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self.text())
-        if self.hasFocus():
+        if self.property('keyboardFocus'):
             # Sit the ring outside the track so it is read against the
             # surface behind the switch, not against the green fill.
             painter.setBrush(Qt.BrushStyle.NoBrush)
