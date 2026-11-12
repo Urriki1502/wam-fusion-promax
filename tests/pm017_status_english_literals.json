@@ -1,0 +1,340 @@
+{
+  "source_revision": "f189129",
+  "source_sha256": "3568209aa1dc23da15e76b8344336f249b1ec22830ead9cb134d44a89263b6b0",
+  "fingerprint": "803d23b7f10fe487f09b262e5e6d0e8f0a024d8a711714dd56708fffd743300f",
+  "new_keys": [
+    "status.snapshot_not_verified",
+    "status.header_snapshot_state",
+    "status.not_verified",
+    "status.identity_after_snapshot",
+    "status.height_after_snapshot",
+    "status.unlocked",
+    "status.keys_open",
+    "status.isolated",
+    "status.zero_peer",
+    "status.snapshot_verified",
+    "status.wallet_verified_snapshot",
+    "status.verifying",
+    "status.refreshing_state",
+    "status.core_running",
+    "status.core_alive_unverified",
+    "status.faulted",
+    "status.reservations_preserved",
+    "status.core_error",
+    "status.owned_core_fault",
+    "status.core_fault",
+    "status.core_fault_reservations",
+    "status.identity_pinned",
+    "status.pinned_process_unconfirmed",
+    "status.checking_identity",
+    "status.not_connected",
+    "status.core_not_running",
+    "status.process_alive_unverified",
+    "status.height",
+    "status.verified_height",
+    "status.syncing",
+    "status.waiting_snapshot",
+    "status.locked",
+    "status.password_required",
+    "status.peer_check",
+    "status.peers_unconfirmed",
+    "status.awaiting_peer_check",
+    "status.peer_state_after_check",
+    "status.pinned_disconnected",
+    "status.pinned_snapshot",
+    "status.disconnected",
+    "status.peers_disconnected",
+    "status.connected",
+    "status.peers_verified"
+  ],
+  "moved": [
+    {
+      "key": "status.snapshot_not_verified",
+      "english": "Snapshot not verified",
+      "original": "'Snapshot not verified'",
+      "replacement": "t('status.snapshot_not_verified')"
+    },
+    {
+      "key": "status.header_snapshot_state",
+      "english": "Header reports wallet snapshot state, not Core identity.",
+      "original": "'Header reports wallet snapshot state, not Core identity.'",
+      "replacement": "t('status.header_snapshot_state')"
+    },
+    {
+      "key": "status.not_verified",
+      "english": "Not verified",
+      "original": "'Not verified'",
+      "replacement": "t('status.not_verified')"
+    },
+    {
+      "key": "status.identity_after_snapshot",
+      "english": "Identity appears after a verified snapshot",
+      "original": "'Identity appears after a verified snapshot'",
+      "replacement": "t('status.identity_after_snapshot')"
+    },
+    {
+      "key": "status.not_verified",
+      "english": "Not verified",
+      "original": "'Not verified'",
+      "replacement": "t('status.not_verified')"
+    },
+    {
+      "key": "status.height_after_snapshot",
+      "english": "Height appears after a verified snapshot",
+      "original": "'Height appears after a verified snapshot'",
+      "replacement": "t('status.height_after_snapshot')"
+    },
+    {
+      "key": "status.unlocked",
+      "english": "Unlocked",
+      "original": "'Unlocked'",
+      "replacement": "t('status.unlocked')"
+    },
+    {
+      "key": "status.keys_open",
+      "english": "Keys open · not a security score",
+      "original": "'Keys open · not a security score'",
+      "replacement": "t('status.keys_open')"
+    },
+    {
+      "key": "status.isolated",
+      "english": "Isolated",
+      "original": "'Isolated'",
+      "replacement": "t('status.isolated')"
+    },
+    {
+      "key": "status.zero_peer",
+      "english": "Zero-peer REGTEST",
+      "original": "'Zero-peer REGTEST'",
+      "replacement": "t('status.zero_peer')"
+    },
+    {
+      "key": "status.snapshot_verified",
+      "english": "Snapshot verified",
+      "original": "'Snapshot verified'",
+      "replacement": "t('status.snapshot_verified')"
+    },
+    {
+      "key": "status.wallet_verified_snapshot",
+      "english": "Wallet values come from this verified REGTEST snapshot.",
+      "original": "'Wallet values come from this verified REGTEST snapshot.'",
+      "replacement": "t('status.wallet_verified_snapshot')"
+    },
+    {
+      "key": "status.verifying",
+      "english": "Verifying",
+      "original": "'Verifying'",
+      "replacement": "t('status.verifying')"
+    },
+    {
+      "key": "status.refreshing_state",
+      "english": "Refreshing owned Core and WSP state.",
+      "original": "'Refreshing owned Core and WSP state.'",
+      "replacement": "t('status.refreshing_state')"
+    },
+    {
+      "key": "status.core_running",
+      "english": "Core running",
+      "original": "'Core running'",
+      "replacement": "t('status.core_running')"
+    },
+    {
+      "key": "status.core_alive_unverified",
+      "english": "Owned Core is alive. Snapshot is not verified yet.",
+      "original": "'Owned Core is alive. Snapshot is not verified yet.'",
+      "replacement": "t('status.core_alive_unverified')"
+    },
+    {
+      "key": "status.faulted",
+      "english": "Faulted",
+      "original": "'Faulted'",
+      "replacement": "t('status.faulted')"
+    },
+    {
+      "key": "status.reservations_preserved",
+      "english": "Original reservations are preserved. Do not retry uncertain payments.",
+      "original": "'Original reservations are preserved. Do not retry uncertain payments.'",
+      "replacement": "t('status.reservations_preserved')"
+    },
+    {
+      "key": "status.core_error",
+      "english": "Core error",
+      "original": "'Core error'",
+      "replacement": "t('status.core_error')"
+    },
+    {
+      "key": "status.owned_core_fault",
+      "english": "Owned Core reported a fault.",
+      "original": "'Owned Core reported a fault.'",
+      "replacement": "t('status.owned_core_fault')"
+    },
+    {
+      "key": "status.core_fault",
+      "english": "Core fault",
+      "original": "'Core fault'",
+      "replacement": "t('status.core_fault')"
+    },
+    {
+      "key": "status.core_fault_reservations",
+      "english": "Owned Core reported a fault. Reservations stay preserved.",
+      "original": "'Owned Core reported a fault. Reservations stay preserved.'",
+      "replacement": "t('status.core_fault_reservations')"
+    },
+    {
+      "key": "status.identity_pinned",
+      "english": "Identity pinned",
+      "original": "'Identity pinned'",
+      "replacement": "t('status.identity_pinned')"
+    },
+    {
+      "key": "status.pinned_process_unconfirmed",
+      "english": "Pinned binary · live process unconfirmed",
+      "original": "'Pinned binary · live process unconfirmed'",
+      "replacement": "t('status.pinned_process_unconfirmed')"
+    },
+    {
+      "key": "status.verifying",
+      "english": "Verifying",
+      "original": "'Verifying'",
+      "replacement": "t('status.verifying')"
+    },
+    {
+      "key": "status.checking_identity",
+      "english": "Checking owned Core identity",
+      "original": "'Checking owned Core identity'",
+      "replacement": "t('status.checking_identity')"
+    },
+    {
+      "key": "status.not_connected",
+      "english": "Not connected",
+      "original": "'Not connected'",
+      "replacement": "t('status.not_connected')"
+    },
+    {
+      "key": "status.core_not_running",
+      "english": "Owned Core is not running",
+      "original": "'Owned Core is not running'",
+      "replacement": "t('status.core_not_running')"
+    },
+    {
+      "key": "status.core_running",
+      "english": "Core running",
+      "original": "'Core running'",
+      "replacement": "t('status.core_running')"
+    },
+    {
+      "key": "status.process_alive_unverified",
+      "english": "Process alive · snapshot not verified",
+      "original": "'Process alive · snapshot not verified'",
+      "replacement": "t('status.process_alive_unverified')"
+    },
+    {
+      "key": "status.height",
+      "english": "Height {height}",
+      "original": "'Height ' + str(snap.height)",
+      "replacement": "t('status.height').format(height=str(snap.height))"
+    },
+    {
+      "key": "status.verified_height",
+      "english": "Verified snapshot height",
+      "original": "'Verified snapshot height'",
+      "replacement": "t('status.verified_height')"
+    },
+    {
+      "key": "status.syncing",
+      "english": "Syncing",
+      "original": "'Syncing'",
+      "replacement": "t('status.syncing')"
+    },
+    {
+      "key": "status.waiting_snapshot",
+      "english": "Waiting for a verified snapshot",
+      "original": "'Waiting for a verified snapshot'",
+      "replacement": "t('status.waiting_snapshot')"
+    },
+    {
+      "key": "status.locked",
+      "english": "Locked",
+      "original": "'Locked'",
+      "replacement": "t('status.locked')"
+    },
+    {
+      "key": "status.password_required",
+      "english": "Password required to unlock",
+      "original": "'Password required to unlock'",
+      "replacement": "t('status.password_required')"
+    },
+    {
+      "key": "status.peer_check",
+      "english": "Peer check",
+      "original": "'Peer check'",
+      "replacement": "t('status.peer_check')"
+    },
+    {
+      "key": "status.peers_unconfirmed",
+      "english": "{peer_count} peer(s) without a connection flag",
+      "original": "str(network['peer_count']) + ' peer(s) without a connection flag'",
+      "replacement": "t('status.peers_unconfirmed').format(peer_count=str(network['peer_count']))"
+    },
+    {
+      "key": "status.awaiting_peer_check",
+      "english": "Awaiting peer check",
+      "original": "'Awaiting peer check'",
+      "replacement": "t('status.awaiting_peer_check')"
+    },
+    {
+      "key": "status.peer_state_after_check",
+      "english": "Peer state follows a verified network check",
+      "original": "'Peer state follows a verified network check'",
+      "replacement": "t('status.peer_state_after_check')"
+    },
+    {
+      "key": "status.identity_pinned",
+      "english": "Identity pinned",
+      "original": "'Identity pinned'",
+      "replacement": "t('status.identity_pinned')"
+    },
+    {
+      "key": "status.pinned_disconnected",
+      "english": "Pinned binary · Core not connected",
+      "original": "'Pinned binary · Core not connected'",
+      "replacement": "t('status.pinned_disconnected')"
+    },
+    {
+      "key": "status.identity_pinned",
+      "english": "Identity pinned",
+      "original": "'Identity pinned'",
+      "replacement": "t('status.identity_pinned')"
+    },
+    {
+      "key": "status.pinned_snapshot",
+      "english": "Pinned binary from this snapshot",
+      "original": "'Pinned binary from this snapshot'",
+      "replacement": "t('status.pinned_snapshot')"
+    },
+    {
+      "key": "status.disconnected",
+      "english": "Disconnected",
+      "original": "'Disconnected'",
+      "replacement": "t('status.disconnected')"
+    },
+    {
+      "key": "status.peers_disconnected",
+      "english": "{peer_count} peer(s) disconnected",
+      "original": "str(network['peer_count']) + ' peer(s) disconnected'",
+      "replacement": "t('status.peers_disconnected').format(peer_count=str(network['peer_count']))"
+    },
+    {
+      "key": "status.connected",
+      "english": "Connected",
+      "original": "'Connected'",
+      "replacement": "t('status.connected')"
+    },
+    {
+      "key": "status.peers_verified",
+      "english": "{peer_count} verified peer(s)",
+      "original": "str(network['peer_count']) + ' verified peer(s)'",
+      "replacement": "t('status.peers_verified').format(peer_count=str(network['peer_count']))"
+    }
+  ]
+}
