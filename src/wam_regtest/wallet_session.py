@@ -467,7 +467,11 @@ class WalletSession:
                 self._preflight_not_submitted(rpc)
                 self._before_broadcast_submission()
                 # Retain irreversible uncertainty in encrypted storage BEFORE RPC.
-                self.scanner.store.db.execute("UPDATE reservations SET state='uncertain' WHERE token=?",(token,))
+                # Every row of this token: that is the historical statement.
+                from wam_regtest.domain.payment_state import (
+                    mark_reservations_uncertain_before_submission)
+                mark_reservations_uncertain_before_submission(
+                    self.scanner.store.db, token, signed_rows_only=False)
                 self._save()
                 try:
                     txid=Wallet(self.scanner).broadcast(self._signed,token,rpc)

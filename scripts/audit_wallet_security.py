@@ -23,6 +23,27 @@ def method(tree,label):
 def events(fn):
     return [(n.lineno,name(n.func),n) for n in ast.walk(fn) if isinstance(n,ast.Call)]
 def line(calls,label): return min(n for n,k,_ in calls if k==label)
+def uncertain_before_submission(broadcast_fn):
+    """The uncertain write is still before the first save, which is before submission.
+
+    The SQL may sit inline, or in mark_reservations_uncertain_before_submission,
+    which broadcast must call before that save. The helper executes the update
+    and does not submit.
+    """
+    save_at=line(events(broadcast_fn),'self._save')
+    inline=any(isinstance(n,ast.Constant) and isinstance(n.value,str)
+        and "state='uncertain'" in n.value and n.lineno<save_at for n in ast.walk(broadcast_fn))
+    if inline: return True
+    marker='mark_reservations_uncertain_before_submission'
+    if not any(k==marker and n<save_at for n,k,_ in events(broadcast_fn)): return False
+    helper=ast.parse((Path(__file__).resolve().parents[1]
+        /'src/wam_regtest/domain/payment_state.py').read_text())
+    fn=next(n for n in helper.body if isinstance(n,ast.FunctionDef) and n.name==marker)
+    sql=any(isinstance(n,ast.Constant) and isinstance(n.value,str) and "state='uncertain'" in n.value
+        for n in ast.walk(fn))
+    execute=any(isinstance(n,ast.Call) and name(n.func).endswith('execute') for n in ast.walk(fn))
+    submits=any(isinstance(n,ast.Constant) and n.value=='sendrawtransaction' for n in ast.walk(fn))
+    return bool(sql and execute and not submits)
 def contracts(tree):
     s,b=method(tree,'sign'),method(tree,'broadcast'); se,be=events(s),events(b)
     lease=all(any(isinstance(n,ast.With) and any(name(i.context_expr)=='self.vault.anchor.lease'
@@ -35,8 +56,7 @@ def contracts(tree):
        'live_inputs_before_sensitive_operations':line(se,'self._unchanged_inputs')<line(se,'Signer.sign') and line(be,'self._unchanged_inputs')<line(be,'Wallet.broadcast'),
        'sign_anchor_precedes_crypto':line(se,'Wallet.mark_signed')<line(se,'self._save')<line(se,'Signer.sign'),
        'broadcast_anchor_precedes_submission':line(be,'self._save')<line(be,'Wallet.broadcast'),
-       'uncertain_before_submission':any(isinstance(n,ast.Constant) and isinstance(n.value,str)
-           and "state='uncertain'" in n.value and n.lineno<line(be,'self._save') for n in ast.walk(b)),
+       'uncertain_before_submission':uncertain_before_submission(b),
        'faults_on_crypto_or_submission_failure':all(any(isinstance(n,ast.Assign)
            and any(name(t)=='self.faulted' for t in n.targets)
            and isinstance(n.value,ast.Constant) and n.value.value is True for n in ast.walk(f)) for f in (s,b))}

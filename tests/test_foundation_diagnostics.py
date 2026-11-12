@@ -231,6 +231,22 @@ class DomainApplicationLayerRule(unittest.TestCase):
         self.assertIs(exported, defined)
         self.assertTrue(issubclass(defined, ValueError))
 
+    def test_payment_state_imports_only_stdlib_or_foundation(self):
+        path = Path(__file__).resolve().parents[1] / 'src/wam_regtest/domain/payment_state.py'
+        tree = ast.parse(path.read_text())
+        found = [name for node in ast.walk(tree) for name in _layer_modules(node, 'domain')]
+        for name in found:
+            self.assertTrue(_domain_import_allowed(name), name)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                module = node.module or ''
+                self.assertFalse(module.startswith('wam_sp'), module)
+                self.assertFalse(module.startswith('PySide6'), module)
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    self.assertFalse(alias.name.startswith(('wam_sp', 'PySide6', 'wam_regtest')))
+        self.assertIn('payment_state.py', path.name)
+
 
 class ExistingMarkersUnchanged(unittest.TestCase):
     """The pre-existing env-gated markers keep their exact gates and text."""

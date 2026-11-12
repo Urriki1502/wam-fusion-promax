@@ -319,9 +319,11 @@ class Q06OwnedSpendSession(WalletSession):
                 elif existing['txid'] != txid:
                     self.faulted = self._q06_uncertain = True
                     raise Q06SpendSessionError('Q06_PAYMENT_EVIDENCE_PRESERVED_NO_RETRY')
-                self.scanner.store.db.execute(
-                    "UPDATE reservations SET state='uncertain' WHERE token=? AND state='signed'",
-                    (token,))
+                from wam_regtest.domain.payment_state import (
+                    mark_reservations_uncertain_before_submission)
+                # Only rows still 'signed': that is the historical resume statement.
+                mark_reservations_uncertain_before_submission(
+                    self.scanner.store.db, token, signed_rows_only=True)
                 self._save()
             try:
                 actual = Wallet(self.scanner).broadcast(signed, token, rpc)
