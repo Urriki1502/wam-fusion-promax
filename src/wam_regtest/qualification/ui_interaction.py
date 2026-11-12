@@ -14,9 +14,18 @@ Per language it records:
       FOCUS_INVISIBLE   focus lands on a widget that is not visible;
       FOCUS_OUTSIDE     the widget lies outside the window's rectangle;
       FOCUS_UNLABELLED  no accessible name and no text;
-      FOCUS_STUCK       Tab does not move focus.
+      FOCUS_TRAP        Tab only moves inside one widget and returns to a
+                        cell already visited (focus cannot leave it);
+      FOCUS_LOST        no widget has focus;
+      FOCUS_STEP_LIMIT  no cycle within the step limit.
+    Every run records why traversal ended (CYCLE_COMPLETE, FOCUS_TRAP,
+    FOCUS_LOST or STEP_LIMIT). FOCUS_INVISIBLE checks widget visibility,
+    not the focus indicator; FOCUS_UNLABELLED is a heuristic (visible text
+    is not always an accessible label).
   * mouse navigation: a real mouse click on every sidebar item. Finding
-    NAV_CLICK_MISMATCH when the page or title does not follow the click.
+    NAV_CLICK_MISMATCH when the selection, the DISPLAYED stack page or the
+    title does not follow the click (PAGE_NOT_DISPLAYED for programmatic
+    selection while recording action states).
   * action states: the enabled state of every visible button on every page,
     for the locked fixture and the verified-unlocked fixture. This is a review
     table, not an oracle.
@@ -34,7 +43,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 MAX_TAB_STEPS = 60
-PAGES = range(7)  # overview, receive, history, send, security, network, settings
+PAGES = tuple(range(7))  # overview, receive, history, send, security, network, settings
 
 
 def _describe(widget):
@@ -52,17 +61,45 @@ def _describe(widget):
 
 
 def _buttons(window):
+    """Every visible button, named or not (unnamed ones are a finding of their own)."""
     from PySide6.QtWidgets import QAbstractButton
     rows = []
     for button in window.findChildren(QAbstractButton):
-        if button.isVisible() and (button.text() or button.accessibleName()):
+        if button.isVisible():
             rows.append(dict(text=(button.text() or button.accessibleName())[:60],
+                             type=type(button).__name__, name=button.objectName(),
                              enabled=button.isEnabled()))
     return rows
 
 
+def _focus_state(widget):
+    """Focus identity: the widget plus, for item views, the current cell."""
+    if widget is None:
+        return None
+    index = None
+    current = getattr(widget, 'currentIndex', None)
+    if callable(current):
+        try:
+            model_index = current()
+            if hasattr(model_index, 'row'):
+                index = (model_index.row(), model_index.column())
+        except TypeError:
+            index = None
+    return (id(widget), index)
+
+
+def _show_page(window, row, settle):
+    """Select a sidebar row and return whether the DISPLAYED page followed."""
+    window.navigation.setCurrentRow(row)
+    settle()
+    return (window.stack.currentIndex() == row
+            and window.stack.currentWidget() is window.stack.widget(row)
+            and window.stack.currentWidget().isVisible()
+            and window.page_title.text() == window.navigation.item(row).text())
+
+
 def render_interaction(output, languages=('en',), size=(1100, 720), theme_index=1):
-    from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt
+    from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QRect, Qt, qVersion
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication
     from ..bip39_fusion_gui import Bip39FusionWindow
@@ -104,9 +141,10 @@ def render_interaction(output, languages=('en',), size=(1100, 720), theme_index=
                 window.raise_()
                 window.activateWindow()
                 settle()
-                # Action states: locked first, then the verified-unlocked fixture.
-                for state_name in ('locked', 'unlocked'):
-                    if state_name == 'unlocked':
+                # Action states. "initial_not_opened" is the fresh window before any
+                # open (unlock not yet offered), not a session locked after use.
+                for state_name in ('initial_not_opened', 'verified_unlocked'):
+                    if state_name == 'verified_unlocked':
                         _snap, result = _fixture_snapshot()
                         executor.state = ExecutorState(locked=False, faulted=False, core_alive=True)
                         window._ready = True
@@ -115,56 +153,75 @@ def render_interaction(output, languages=('en',), size=(1100, 720), theme_index=
                         window._set_actions()
                     pages = {}
                     for row in PAGES:
-                        window.navigation.setCurrentRow(row)
-                        settle()
-                        pages[window.navigation.item(row).text()] = _buttons(window)
+                        shown = _show_page(window, row, settle)
+                        if not shown:
+                            findings.append(dict(language=language, kind='PAGE_NOT_DISPLAYED',
+                                                 row=row, state=state_name))
+                        pages[window.navigation.item(row).text()] = dict(
+                            displayed=shown, buttons=_buttons(window.stack.currentWidget()))
                     record['states'][state_name] = pages
-                # Mouse navigation with real clicks on the sidebar items.
+                # Mouse navigation: real clicks; the displayed page must follow.
                 navigation = window.navigation
-                for row in PAGES:
+                for row in (*PAGES[1:], PAGES[0]):
                     rect = navigation.visualItemRect(navigation.item(row))
                     QTest.mouseClick(navigation.viewport(), Qt.MouseButton.LeftButton,
                                      Qt.KeyboardModifier.NoModifier, rect.center())
                     settle()
-                    ok = (navigation.currentRow() == row
+                    ok = (navigation.currentRow() == row and window.stack.currentIndex() == row
+                          and window.stack.currentWidget().isVisible()
                           and window.page_title.text() == navigation.item(row).text())
-                    record['navigation'].append(dict(row=row, item=navigation.item(row).text(), ok=ok))
+                    record['navigation'].append(dict(row=row, item=navigation.item(row).text(),
+                                                     stack_index=window.stack.currentIndex(), ok=ok))
                     if not ok:
                         findings.append(dict(language=language, kind='NAV_CLICK_MISMATCH', row=row))
-                # Keyboard focus traversal from the overview.
-                navigation.setCurrentRow(0)
-                settle()
+                # Keyboard focus traversal from the overview navigation list.
+                _show_page(window, 0, settle)
                 navigation.setFocus(Qt.FocusReason.TabFocusReason)
                 settle()
                 window_rect = window.rect()
-                first = None
+                seen = {}      # focus state -> step first seen
+                widgets = []   # widget id per step
+                reason = 'STEP_LIMIT'
                 for step in range(MAX_TAB_STEPS):
                     focused = QApplication.focusWidget()
-                    info = _describe(focused) or {}
-                    if focused is not None:
-                        top_left = focused.mapTo(window, QPoint(0, 0))
-                        info['visible'] = focused.isVisible()
-                        info['inside'] = window_rect.contains(top_left)
-                        if not focused.isVisible():
-                            findings.append(dict(language=language, kind='FOCUS_INVISIBLE', step=step, **_describe(focused)))
-                        elif not info['inside']:
-                            findings.append(dict(language=language, kind='FOCUS_OUTSIDE', step=step, **_describe(focused)))
-                        if not (focused.accessibleName() or info.get('text')):
-                            findings.append(dict(language=language, kind='FOCUS_UNLABELLED', step=step, **_describe(focused)))
+                    if focused is None:
+                        findings.append(dict(language=language, kind='FOCUS_LOST', step=step))
+                        reason = 'FOCUS_LOST'
+                        break
+                    state = _focus_state(focused)
+                    if state in seen:
+                        since = widgets[seen[state]:]
+                        if all(w == id(focused) for w in since):
+                            # Tab only moved inside this one widget and came back
+                            # to a cell already visited: focus cannot leave it.
+                            findings.append(dict(language=language, kind='FOCUS_TRAP', step=step,
+                                                 cells_visited=len(since), **_describe(focused)))
+                            reason = 'FOCUS_TRAP'
+                        else:
+                            record['cycle_length'] = step - seen[state]
+                            reason = 'CYCLE_COMPLETE'
+                        break
+                    seen[state] = step
+                    widgets.append(id(focused))
+                    info = _describe(focused)
+                    top_left = focused.mapTo(window, QPoint(0, 0))
+                    info['visible'] = focused.isVisible()
+                    info['inside'] = window_rect.contains(QRect(top_left, focused.size()))
+                    info['cell'] = state[1]
+                    if not focused.isVisible():
+                        findings.append(dict(language=language, kind='FOCUS_INVISIBLE', step=step, **_describe(focused)))
+                    elif not info['inside']:
+                        findings.append(dict(language=language, kind='FOCUS_OUTSIDE', step=step, **_describe(focused)))
+                    if not (focused.accessibleName() or info.get('text')):
+                        findings.append(dict(language=language, kind='FOCUS_UNLABELLED', step=step, **_describe(focused)))
                     record['focus'].append(info)
-                    if first is None:
-                        first = focused
                     if language == languages[0]:
                         assert window.grab().save(str(destination / f'focus-{language}-{step:02d}.png'))
-                    QTest.keyClick(focused or window, Qt.Key.Key_Tab)
+                    QTest.keyClick(focused, Qt.Key.Key_Tab)
                     settle()
-                    now = QApplication.focusWidget()
-                    if now is focused and focused is not None:
-                        findings.append(dict(language=language, kind='FOCUS_STUCK', step=step, **_describe(focused)))
-                        break
-                    if now is first:
-                        record['cycle_length'] = step + 1
-                        break  # completed one full Tab cycle
+                else:
+                    findings.append(dict(language=language, kind='FOCUS_STEP_LIMIT', step=MAX_TAB_STEPS))
+                record['termination'] = reason
             finally:
                 window._closed = True
                 window.hide()
@@ -176,7 +233,12 @@ def render_interaction(output, languages=('en',), size=(1100, 720), theme_index=
             os.environ.pop('WAM_UI_SETTINGS_PATH', None)
         else:
             os.environ['WAM_UI_SETTINGS_PATH'] = previous
-    report = dict(status='UI_INTERACTION_RECORDED', qt_platform=app.platformName(),
+    hints = app.styleHints()
+    platform = dict(qt_version=qVersion(), style=app.style().name(),
+                    # Native traversal follows this (macOS: the system "Keyboard
+                    # navigation" setting decides whether buttons take Tab focus).
+                    tab_focus_behavior=str(hints.tabFocusBehavior()))
+    report = dict(status='UI_INTERACTION_RECORDED', qt_platform=app.platformName(), platform=platform,
                   frozen=bool(getattr(sys, 'frozen', False)), size=list(size),
                   backend_or_core_started=False, wallet_or_transaction_acceptance=False,
                   g6_or_owner_acceptance=False, finding_count=len(findings),
