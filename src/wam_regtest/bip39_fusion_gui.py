@@ -26,7 +26,7 @@ from .fusion_ui import (
     FusionOverview, fusion_stylesheet, fusion_palette, page, panel,
     label, ResponsiveRow, vector_icon, nav_icon_for, FUSION_NAV_PAGES, fusion_nav_pages,
     StateSwitch, action, ThemeSlider, grow_with_wrapped_text,
-    SHELL, present_brand_title,
+    SHELL, present_brand_title, enable_shell_tab_focus,
 )
 from .fusion_motion import fade_widget, PressFeedback, TransitionHost, STAGGER_MS, STANDARD_MS, motion_reduced
 from .fusion_status import classify
@@ -518,6 +518,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         if hasattr(QApplication.styleHints(), "colorSchemeChanged"):
             QApplication.styleHints().colorSchemeChanged.connect(
                 self._native_theme_changed)
+        enable_shell_tab_focus(self)
         self._set_actions()
 
     def _language_chosen(self, index):

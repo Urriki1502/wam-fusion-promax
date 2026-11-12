@@ -137,6 +137,28 @@ def fusion_palette(mode):
     return colors
 
 
+def enable_shell_tab_focus(root):
+    """Put buttons, checkboxes and combo boxes on the Tab chain.
+
+    Cocoa leaves a control out of Tab when its policy is only TabFocus,
+    unless the system keyboard setting is on. StrongFocus is what this
+    style walks. Page scroll areas stay out of that chain so Tab reaches
+    the controls inside them.
+    """
+    from PySide6.QtWidgets import (
+        QAbstractScrollArea, QCheckBox, QComboBox, QPushButton,
+    )
+    for widget in root.findChildren(QPushButton):
+        widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    for widget in root.findChildren(QCheckBox):
+        widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    for widget in root.findChildren(QComboBox):
+        widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    for area in root.findChildren(QAbstractScrollArea):
+        if area.objectName() == 'FusionScroll':
+            area.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+
 def direction_tone(colors, net):
     """Received and sent each use one colour. Red is reserved for errors."""
     try:

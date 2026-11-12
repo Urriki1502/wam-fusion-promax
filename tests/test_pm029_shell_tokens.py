@@ -7,8 +7,8 @@ import unittest
 from pathlib import Path
 
 from wam_regtest.fusion_ui import (
-    FOCUS, QR, SHELL, SPACING, TYPE, direction_tone, fusion_palette,
-    fusion_stylesheet, present_brand_title,
+    FOCUS, QR, SHELL, SPACING, TYPE, direction_tone, enable_shell_tab_focus,
+    fusion_palette, fusion_stylesheet, present_brand_title,
 )
 from wam_regtest.presentation.strings import CATALOG
 
@@ -150,6 +150,29 @@ class SidebarBrandFit(unittest.TestCase):
     def setUpClass(cls):
         from wam_regtest.desktop import qt_application
         cls.app = qt_application()
+
+    def test_tab_chain_includes_buttons_checks_and_combos(self):
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QCheckBox, QComboBox, QPushButton, QScrollArea, QVBoxLayout, QWidget
+        root = QWidget()
+        self.addCleanup(root.deleteLater)
+        scroll = QScrollArea(root)
+        scroll.setObjectName('FusionScroll')
+        inner = QWidget()
+        layout = QVBoxLayout(inner)
+        button = QPushButton('Send')
+        button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        box = QCheckBox('Reduce interface motion')
+        combo = QComboBox()
+        layout.addWidget(button)
+        layout.addWidget(box)
+        layout.addWidget(combo)
+        scroll.setWidget(inner)
+        enable_shell_tab_focus(root)
+        self.assertEqual(button.focusPolicy(), Qt.FocusPolicy.StrongFocus)
+        self.assertEqual(box.focusPolicy(), Qt.FocusPolicy.StrongFocus)
+        self.assertEqual(combo.focusPolicy(), Qt.FocusPolicy.StrongFocus)
+        self.assertEqual(scroll.focusPolicy(), Qt.FocusPolicy.NoFocus)
 
     def test_brand_breaks_on_words_in_every_language(self):
         from PySide6.QtWidgets import QLabel
