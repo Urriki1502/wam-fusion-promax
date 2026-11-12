@@ -1,5 +1,6 @@
 {
   "source": "f1891298b5b762c54d2c27ba5e3921a44b9d832a",
+  "proven_at": "371f10e36fad8c6122998179658b407f7cddff4a",
   "modules": {
     "bip39_owner_gui": {
       "fingerprint": "1cdf738e5e4ea88983ba0ca4bd5f07380ce80ea230834b2a214d849edfb563a5",
@@ -1254,7 +1255,8 @@
           "endline": 752,
           "endcol": 50
         }
-      ]
+      ],
+      "proven_source_sha256": "b775bce12b032e3895b6b04374112a3714c8a3f5a600a4db9b2c848b0c555f3c"
     },
     "bip39_fusion_gui": {
       "fingerprint": "74793f1bad63f9f9b34cd177add31bb190317f63c289a49b42c54d8f0708be20",
@@ -2499,7 +2501,8 @@
           "endline": 1114,
           "endcol": 80
         }
-      ]
+      ],
+      "proven_source_sha256": "e084eb061679f76f5ef8c9e7e565120db95c478847b9e38d6efb1a04a632a1ea"
     },
     "bip39_backup_page": {
       "fingerprint": "580c32ebc50bc449a5092bd31196d50ee8bcc5f5feb2b55f8127ee697ab10db0",
@@ -2524,7 +2527,8 @@
           "endline": 315,
           "endcol": 45
         }
-      ]
+      ],
+      "proven_source_sha256": "c80654d90afebe55c35231e7e35e1e4e4e68ced5345b884886b1bfb25641b5f1"
     }
   },
   "new_keys": [

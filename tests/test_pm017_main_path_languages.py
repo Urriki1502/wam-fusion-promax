@@ -10,6 +10,7 @@ import json
 import os
 import re
 import string
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -24,6 +25,33 @@ FIXTURE = json.loads((ROOT / 'tests/pm017_english_literals.json').read_text())
 
 def shape(node):
     return ast.dump(node, include_attributes=False)
+
+
+def _proven_source(module, data):
+    """The module text the PM-017 structural proof applies to.
+
+    The proof is "the PM-017 revision equals f189129 with only the recorded
+    string moves". It is anchored to that exact revision (FIXTURE['proven_at'],
+    pinned by SHA-256), so later legitimate edits of the module do not void it
+    and are not frozen by it. The current file is used while it is unchanged;
+    otherwise the pinned revision is read from git. Without git history the
+    proof cannot be re-run here and the test is skipped, never passed.
+    """
+    path = ROOT / 'src/wam_regtest' / (module + '.py')
+    current = path.read_bytes()
+    if hashlib.sha256(current).hexdigest() == data['proven_source_sha256']:
+        return current.decode()
+    try:
+        proven = subprocess.run(
+            ['git', '-C', str(ROOT), 'show',
+             FIXTURE['proven_at'] + ':src/wam_regtest/' + module + '.py'],
+            capture_output=True, check=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        raise unittest.SkipTest('PM-017 proof revision %s not available without git history'
+                                % FIXTURE['proven_at'][:12])
+    if hashlib.sha256(proven).hexdigest() != data['proven_source_sha256']:
+        raise AssertionError('PM-017 proof revision content changed: ' + module)
+    return proven.decode()
 
 
 class MainPathCatalogTests(unittest.TestCase):
@@ -79,8 +107,7 @@ class MainPathCatalogTests(unittest.TestCase):
                         return copy.deepcopy(reverse[shape(node)])
                     return super().visit(node)
 
-            source = ROOT / 'src/wam_regtest' / (module + '.py')
-            restored = Restore().visit(ast.parse(source.read_text()))
+            restored = Restore().visit(ast.parse(_proven_source(module, data)))
             self.assertEqual(hashlib.sha256(shape(restored).encode()).hexdigest(),
                              data['fingerprint'], module)
 
