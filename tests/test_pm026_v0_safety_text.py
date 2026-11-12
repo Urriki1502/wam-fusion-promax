@@ -1,7 +1,9 @@
 """PM-026: V0 P1/P2 layout fixes for safety text (V0-A1, V0-A2/A3, V0-A4).
 
-Structural guards. The rendered proof is the native/frozen ui_gallery run
-(evidence/PM-026-v0-safety-text), because offscreen fonts lack CJK metrics.
+Structural guards. The rendered proof is the native source ui_gallery run
+(evidence/PM-026-v0-safety-text, frozen=false) and the frozen ui_gallery run
+on FC-11 (evidence/PM-026-v0-safety-text/frozen-gallery-53fa69e), because
+offscreen fonts lack CJK metrics.
 """
 import os
 import tempfile

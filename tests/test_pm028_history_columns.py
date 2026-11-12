@@ -74,11 +74,25 @@ class HistoryColumns(unittest.TestCase):
             self.assertFalse(table.isColumnHidden(column), column)
 
     def test_detail_panel_still_shows_block_and_confirmations(self):
+        from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
+        from wam_regtest.fusion_pages import ui_text
         page = self._page(560)
-        page.table.selectRow(0)
+        table = page.table
+        table.setFocus()
+        table.selectRow(0)
         page.show_details()
-        self.assertIn('112', page.detail_values.text())
+        expected = ui_text('pages.block_amounts')
         self.assertEqual(page.detail_id.text(), TXID)
+        self.assertEqual(page.detail_values.text(), expected.format(
+            height=112, confirmations=1, credit='0.00000000', debit='0.25010000'))
+        # D-PM028-1: keyboard selection reaches the next row's details even
+        # when Block/Confirmed are hidden from the table.
+        QTest.keyClick(table, Qt.Key.Key_Down)
+        self.app.processEvents()
+        self.assertEqual(page.detail_id.text(), 'cd' * 32)
+        self.assertEqual(page.detail_values.text(), expected.format(
+            height=108, confirmations=5, credit='0.50000000', debit='0.00000000'))
 
 
 class AdaptiveButtonRowTests(unittest.TestCase):

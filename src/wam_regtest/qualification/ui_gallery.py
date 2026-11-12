@@ -273,9 +273,21 @@ def _render_window(language, width, height, theme_index, theme, shoot, settle, f
         window.navigation.setCurrentRow(2)
         window.history_page.table.selectRow(0)
         scene('10-history-detail')
+        # A consistent refused-unlock state (D-PM024-2): the owner reports
+        # locked, the cached view is cleared and the window's own denial
+        # handler renders the refusal. It issues no executor command.
         window.navigation.setCurrentRow(0)
-        window.status.setText(t('owner.refused_prefix') + error_text('WALLET_UNLOCK_REFUSED'))
+        executor.state = ExecutorState(locked=True, faulted=False, core_alive=True)
+        window._ready = False
+        window._spend_enabled = False
+        window._clear_visuals()
+        window._on_denied('WALLET_UNLOCK_REFUSED')
         scene('11-status-refusal')
+        executor.state = ExecutorState(locked=False, faulted=False, core_alive=True)
+        window._ready = True
+        window._spend_enabled = True
+        window._render_verified(result)
+        window._set_actions()
         window.status.setText('')
         # Backup flow: public test vector only.
         window.navigation.clearSelection()
