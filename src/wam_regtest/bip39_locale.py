@@ -13,7 +13,10 @@ from PySide6.QtCore import QLocale
 
 from .ui_settings import native_store_enabled, ui_settings
 
-from .presentation.strings import CATALOG, resolve_language, text
+from .presentation.strings import CATALOG, SUPPORTED_LANGUAGES, resolve_language, text
+
+# Tokens the Fusion language picker can select.
+_PICKER_CHOICES = ('system',) + SUPPORTED_LANGUAGES
 
 # Compatibility views of the original Q06 table, not a second copy catalog.
 _LEGACY_KEYS = ('app_name',
@@ -74,6 +77,24 @@ def stored_language(settings=None):
     return value if type(value) is str and value else "system"
 
 
+def effective_choice(settings=None):
+    """Picker token for the language actually in effect.
+
+    A missing ui_language is English in an isolated process and 'system' in
+    the native store. _lang resolves this token, so the picker and the UI
+    share that one rule. A stored picker token is returned as stored. Any
+    other stored value falls back to 'system'.
+    """
+    if settings is None:
+        settings = ui_settings()
+    if not native_store_enabled() and not settings.contains("ui_language"):
+        return "en"
+    value = stored_language(settings)
+    if value not in _PICKER_CHOICES:
+        return "system"
+    return value
+
+
 def _lang():
     """Catalog language for this process.
 
@@ -81,10 +102,7 @@ def _lang():
     production store is enabled. Isolated processes use English until a
     value is stored. A stored value, including 'system', is resolved as before.
     """
-    settings = ui_settings()
-    if not native_store_enabled() and not settings.contains("ui_language"):
-        return "en"
-    return resolve_language(stored_language(settings), QLocale.system().name())
+    return resolve_language(effective_choice(), QLocale.system().name())
 
 
 def t(key):

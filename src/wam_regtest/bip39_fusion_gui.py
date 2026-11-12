@@ -19,7 +19,7 @@ from .bip39_owner_gui import Bip39TrialWindow
 from .presentation.action_state import SharedInputs, apply_shared_profile, available_actions, fusion_actions
 from .domain.payment_state import reserved_rows_needing_attention
 
-from .bip39_locale import t
+from .bip39_locale import effective_choice, t
 from .desktop import resolve_theme
 from .gui_errors import operation_error
 from .fusion_ui import (
@@ -389,9 +389,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
                 ("Bahasa Indonesia", "id"),
                 ("日本語", "ja")):
             self.language.addItem(caption, code)
-        language_choice = ui_settings().value("ui_language", "system")
-        if language_choice not in ("system", "en", "zh-Hans", "vi", "ko", "id", "ja"):
-            language_choice = "system"
+        language_choice = effective_choice()
         self.language.blockSignals(True)
         language_index = self.language.findData(language_choice)
         self.language.setCurrentIndex(language_index if language_index >= 0 else 0)
