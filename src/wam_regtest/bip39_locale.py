@@ -1,15 +1,15 @@
 """UI language adapter over the presentation catalog.
 
-System default follows the Qt locale: vi and ja prefixes select those
-catalogs. Simplified Chinese is selected only for zh, zh-Hans, zh-CN, zh-SG,
-and zh_Hans* names; Traditional and other Chinese locales use English. An
-explicit ui_language value in
-the UI preference store (ui_settings) wins. This does not select the
-BIP39 wordlist language.
+An explicit ui_language value in the UI preference store wins, including
+'system'. When the key is missing, the native production store follows the
+Qt locale and every other process uses English. vi and ja prefixes select
+those catalogs. Simplified Chinese is selected only for zh, zh-Hans, zh-CN,
+zh-SG, and zh_Hans* names; Traditional and other Chinese locales use English.
+This does not select the BIP39 wordlist language.
 """
 from PySide6.QtCore import QLocale
 
-from .ui_settings import ui_settings
+from .ui_settings import native_store_enabled, ui_settings
 
 from .presentation.strings import CATALOG, resolve_language, text
 
@@ -65,7 +65,7 @@ _STRINGS = {lang: {key: entries[key] for key in _LEGACY_KEYS if key in entries}
 
 
 def stored_language(settings=None):
-    """Persisted UI language. A missing value means the system locale."""
+    """Persisted UI language token. A missing or empty value is 'system'."""
     if settings is None:
         settings = ui_settings()
     value = settings.value("ui_language", "system")
@@ -73,7 +73,16 @@ def stored_language(settings=None):
 
 
 def _lang():
-    return resolve_language(stored_language(), QLocale.system().name())
+    """Catalog language for this process.
+
+    A missing ui_language follows the system locale only when the native
+    production store is enabled. Isolated processes use English until a
+    value is stored. A stored value, including 'system', is resolved as before.
+    """
+    settings = ui_settings()
+    if not native_store_enabled() and not settings.contains("ui_language"):
+        return "en"
+    return resolve_language(stored_language(settings), QLocale.system().name())
 
 
 def t(key):

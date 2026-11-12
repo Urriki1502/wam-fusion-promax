@@ -162,18 +162,26 @@ class CatalogTests(unittest.TestCase):
                     self.assertEqual(bip39_locale.t(key), text(key, language))
 
     def test_system_locale_resolution_follows_prefix(self):
+        import tempfile
         from types import SimpleNamespace
+        from PySide6.QtCore import QSettings
         from wam_regtest import bip39_locale
-        for name, language in (('vi_VN', 'vi'), ('VI_vn', 'vi'), ('en_US', 'en'),
-                               ('ja_JP', 'ja'), ('zh_CN', 'zh-Hans'), ('zh_Hans_CN', 'zh-Hans'),
-                               ('zh_SG', 'zh-Hans'), ('zh', 'zh-Hans'), ('zh_TW', 'en'),
-                               ('zh_HK', 'en'), ('zh_MO', 'en'), ('zh_Hant', 'en'),
-                               ('C', 'en'), ('fr_FR', 'en')):
-            with patch.object(bip39_locale, 'stored_language', return_value='system'), \
-                    patch.object(bip39_locale.QLocale, 'system',
-                                 return_value=SimpleNamespace(name=lambda n=name: n)):
-                self.assertEqual(bip39_locale._lang(), language)
-                self.assertEqual(bip39_locale.t('backup_title'), text('backup_title', language))
+        # PM-020: an isolated process resolves the system locale only when
+        # 'system' is stored. A missing key is English, so this prefix matrix
+        # stores that choice explicitly.
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = QSettings(str(Path(tmp) / 'ui.ini'), QSettings.Format.IniFormat)
+            settings.setValue('ui_language', 'system')
+            for name, language in (('vi_VN', 'vi'), ('VI_vn', 'vi'), ('en_US', 'en'),
+                                   ('ja_JP', 'ja'), ('zh_CN', 'zh-Hans'), ('zh_Hans_CN', 'zh-Hans'),
+                                   ('zh_SG', 'zh-Hans'), ('zh', 'zh-Hans'), ('zh_TW', 'en'),
+                                   ('zh_HK', 'en'), ('zh_MO', 'en'), ('zh_Hant', 'en'),
+                                   ('C', 'en'), ('fr_FR', 'en')):
+                with patch.object(bip39_locale, 'ui_settings', return_value=settings), \
+                        patch.object(bip39_locale.QLocale, 'system',
+                                     return_value=SimpleNamespace(name=lambda n=name: n)):
+                    self.assertEqual(bip39_locale._lang(), language)
+                    self.assertEqual(bip39_locale.t('backup_title'), text('backup_title', language))
 
     def test_used_key_coverage(self):
         used = set()
