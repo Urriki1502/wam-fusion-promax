@@ -346,7 +346,7 @@ JA = {
     "owner.policy_amount": "金額または手数料が WSP ポリシーの範囲外です。",
     "owner.broadcast_title": "署名済み REGTEST 取引を送信",
     "owner.broadcast_consent": "以前確認した PSBT は署名済みです。元の所有 WAM REGTEST Core へ今送信しますか？結果が曖昧な場合、予約のロックを維持しなければなりません。",
-    "owner.confirm_title": "REGTEST の一ブロックを承認",
+    "owner.confirm_title": "REGTEST の一ブロックを確認",
     "owner.confirm_consent": "元の所有する使い捨て REGTEST Core で、送信直後の取引を確認するために正確に一ブロックだけ採掘しますか？\\nTXID: {txid}\\nテストチェーンが変わります。mainnet 資金や復元単語は決して使用しないでください。結果不明の場合、再試行してはいけません。",
     "owner.rescanning": "元の REGTEST チェーンを独立して再スキャン中…",
     "owner.resume_title": "以前署名した REGTEST 支払いを送信",
