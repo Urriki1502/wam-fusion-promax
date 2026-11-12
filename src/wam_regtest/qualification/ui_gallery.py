@@ -98,11 +98,16 @@ def _inspect(root, scene, findings):
 
 
 def render_gallery(output, languages=None, sizes=SIZES, themes=THEMES):
-    from PySide6.QtCore import QCoreApplication, QEvent, QSettings
+    from PySide6.QtCore import QCoreApplication, QEvent
     from ..desktop import qt_application
     from ..presentation.strings import SUPPORTED_LANGUAGES
+    from ..ui_settings import native_store_enabled, ui_settings
     from ..wallet_executor import ExecutorState
 
+    if native_store_enabled():
+        # Only shipped production entries enable the owner's real store; the
+        # gallery must never write the owner's UI preferences.
+        raise RuntimeError('UI_GALLERY_NATIVE_STORE_DENIED')
     destination = Path(output)
     destination.mkdir(parents=True, exist_ok=False)
     settings_dir = tempfile.mkdtemp(prefix='wam-ui-gallery-')
@@ -124,7 +129,7 @@ def render_gallery(output, languages=None, sizes=SIZES, themes=THEMES):
 
     try:
         for language in (languages or SUPPORTED_LANGUAGES):
-            store = QSettings(settings_path, QSettings.Format.IniFormat)
+            store = ui_settings()  # isolated INI: WAM_UI_SETTINGS_PATH set above
             store.setValue('ui_language', language)
             store.sync()
             for width, height in sizes:

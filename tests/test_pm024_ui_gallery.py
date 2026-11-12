@@ -68,6 +68,16 @@ class GalleryRenders(unittest.TestCase):
                 self.assertIn(finding['kind'], {'H_SCROLL', 'TEXT_CLIPPED_V', 'TEXT_OVERFLOW_H',
                                                 'TEXT_CLIPPED_H', 'BUTTON_CLIPPED'})
 
+    def test_refuses_when_the_native_store_is_enabled(self):
+        from unittest.mock import patch
+        from wam_regtest import ui_settings
+        from wam_regtest.qualification.ui_gallery import render_gallery
+        with tempfile.TemporaryDirectory() as tmp, patch.object(ui_settings, '_native', True):
+            with self.assertRaisesRegex(RuntimeError, 'UI_GALLERY_NATIVE_STORE_DENIED'):
+                render_gallery(Path(tmp) / 'g', languages=('en',), sizes=((900, 630),),
+                               themes=((1, 'light'),))
+            self.assertFalse((Path(tmp) / 'g').exists())
+
     def test_refuses_to_overwrite_an_existing_output(self):
         from wam_regtest.qualification.ui_gallery import render_gallery
         with tempfile.TemporaryDirectory() as tmp:
