@@ -590,8 +590,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self.overview.activity_panel,
         )
         for delay, widget in enumerate(groups):
+            # Context object = this window: Qt drops the pending fade if the
+            # window is destroyed first (for example right after Quit), instead
+            # of calling into deleted widgets.
             QTimer.singleShot(
-                STAGGER_MS * delay,
+                STAGGER_MS * delay, self,
                 lambda widget=widget: fade_widget(
                     widget, start=0.35, end=1.0, duration=STANDARD_MS, parent=self))
 
