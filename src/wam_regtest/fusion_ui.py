@@ -3,13 +3,13 @@ from __future__ import annotations
 from .bip39_locale import t as ui_text
 from .presentation.strings import CATALOG
 
-from PySide6.QtCore import QEvent, Qt, QRectF, QPointF, QSize, Signal, Property, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import QEvent, QObject, Qt, QRectF, QPointF, QSize, Signal, Property, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import (
     QColor, QPainter, QPen, QIcon, QPixmap, QPolygonF, QLinearGradient,
     QPainterPath, QFont, QFontMetrics, QRadialGradient,
 )
 from PySide6.QtWidgets import (
-    QBoxLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea,
+    QApplication, QBoxLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea,
     QVBoxLayout, QWidget, QToolTip, QSizePolicy, QTableWidget, QTableWidgetItem,
     QPlainTextEdit, QCheckBox, QToolButton, QButtonGroup,
 )
@@ -401,11 +401,46 @@ def panel(title=None, subtitle=None, *, inset=False):
     return obj, layout
 
 
+class _FocusFollower(QObject):
+    """Scroll a keyboard-focused descendant into view (V0 R-12).
+
+    Parented to its scroll area, so Qt disconnects it when the area goes."""
+
+    def __init__(self, scroll):
+        super().__init__(scroll)
+        self._scroll = scroll
+        app = QApplication.instance()
+        if app is not None:
+            app.focusChanged.connect(self._follow)
+
+    def _follow(self, _old, new):
+        inner = self._scroll.widget()
+        if new is not None and inner is not None and inner.isAncestorOf(new):
+            self._scroll.ensureWidgetVisible(new, 16, 16)
+
+
+def keep_focus_visible(scroll, accessible_name=None):
+    """Name a page scroll area for assistive tech (R-11) and keep the focused
+    control inside its visible area (R-12)."""
+    if accessible_name:
+        scroll.setAccessibleName(accessible_name)
+    _FocusFollower(scroll)
+    return scroll
+
+
+def keyboard_table(table, accessible_name):
+    """Tables: Tab leaves the table (R-10 keyboard trap); arrows move cells."""
+    table.setTabKeyNavigation(False)
+    table.setAccessibleName(accessible_name)
+    return table
+
+
 def page(title, subtitle, kicker=None):
     if kicker is None:
         kicker = ui_text('fusion.wam_fusion_regtest')
     scroll = QScrollArea()
     scroll.setObjectName('FusionScroll')
+    keep_focus_visible(scroll, title)
     scroll.setFrameShape(QFrame.Shape.NoFrame)
     scroll.setWidgetResizable(True)
     root = QWidget()
@@ -1068,6 +1103,7 @@ class FusionOverview(QScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         root = QWidget(); root.setObjectName('FusionInner'); self.setWidget(root)
+        keep_focus_visible(self, ui_text('fusion.overview'))
         root.setMinimumWidth(0)
         whole = QVBoxLayout(root)
         whole.setContentsMargins(4, 4, 8, 36)
@@ -1161,6 +1197,7 @@ class FusionOverview(QScrollArea):
         self.activity_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.activity_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.activity_table.horizontalHeader().setStretchLastSection(True)
+        keyboard_table(self.activity_table, ui_text('fusion.recent_transactions'))
         self.activity_table.setMinimumHeight(168)
         self.activity_table.setMinimumWidth(0)
         self.activity_table.setColumnWidth(0, 200)
