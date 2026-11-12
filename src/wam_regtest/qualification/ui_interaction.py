@@ -88,6 +88,23 @@ def _focus_state(widget):
     return (id(widget), index)
 
 
+def _focus_rect(widget, window):
+    """Window rectangle of what has focus: the current cell for item views,
+    otherwise the whole widget."""
+    from PySide6.QtCore import QPoint, QRect
+    current = getattr(widget, 'currentIndex', None)
+    visual = getattr(widget, 'visualRect', None)
+    if callable(current) and callable(visual) and hasattr(widget, 'viewport'):
+        try:
+            index = current()
+            if index.isValid():
+                cell = visual(index)
+                return QRect(widget.viewport().mapTo(window, cell.topLeft()), cell.size())
+        except TypeError:
+            pass
+    return QRect(widget.mapTo(window, QPoint(0, 0)), widget.size())
+
+
 def _show_page(window, row, settle):
     """Select a sidebar row and return whether the DISPLAYED page followed."""
     window.navigation.setCurrentRow(row)
@@ -179,6 +196,7 @@ def render_interaction(output, languages=('en',), size=(1100, 720), theme_index=
                 navigation.setFocus(Qt.FocusReason.TabFocusReason)
                 settle()
                 window_rect = window.rect()
+                reported = set()
                 seen = {}      # focus state -> step first seen
                 widgets = []   # widget id per step
                 reason = 'STEP_LIMIT'
@@ -204,16 +222,21 @@ def render_interaction(output, languages=('en',), size=(1100, 720), theme_index=
                     seen[state] = step
                     widgets.append(id(focused))
                     info = _describe(focused)
-                    top_left = focused.mapTo(window, QPoint(0, 0))
                     info['visible'] = focused.isVisible()
-                    info['inside'] = window_rect.contains(QRect(top_left, focused.size()))
+                    info['inside'] = window_rect.contains(_focus_rect(focused, window))
                     info['cell'] = state[1]
+                    def report(kind):
+                        # Once per widget: an item view repeats per cell.
+                        key = (kind, id(focused))
+                        if key not in reported:
+                            reported.add(key)
+                            findings.append(dict(language=language, kind=kind, step=step, **_describe(focused)))
                     if not focused.isVisible():
-                        findings.append(dict(language=language, kind='FOCUS_INVISIBLE', step=step, **_describe(focused)))
+                        report('FOCUS_INVISIBLE')
                     elif not info['inside']:
-                        findings.append(dict(language=language, kind='FOCUS_OUTSIDE', step=step, **_describe(focused)))
+                        report('FOCUS_OUTSIDE')
                     if not (focused.accessibleName() or info.get('text')):
-                        findings.append(dict(language=language, kind='FOCUS_UNLABELLED', step=step, **_describe(focused)))
+                        report('FOCUS_UNLABELLED')
                     record['focus'].append(info)
                     if language == languages[0]:
                         assert window.grab().save(str(destination / f'focus-{language}-{step:02d}.png'))
