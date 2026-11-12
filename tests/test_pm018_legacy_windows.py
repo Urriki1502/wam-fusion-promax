@@ -11,6 +11,7 @@ import json
 import os
 import re
 import string
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -78,6 +79,57 @@ def namespace(signed, session, platform, field):
     }
 
 
+def _proven_source(module, data):
+    """Post-move module text the structure proof applies to.
+
+    Anchored to that file's git blob and content SHA-256, so a later edit of
+    the live module does not freeze or void the proof. The current file is
+    used while it still matches. Otherwise the blob is read from git and its
+    SHA-256 is checked. Without git, or without that blob, the proof is
+    skipped and must not pass.
+    """
+    path = ROOT / 'src/wam_regtest' / (module + '.py')
+    current = path.read_bytes()
+    if hashlib.sha256(current).hexdigest() == data['proven_source_sha256']:
+        return current.decode()
+    blob = data['proven_blob']
+    try:
+        proven = subprocess.run(
+            ['git', '-C', str(ROOT), 'cat-file', '-p', blob],
+            capture_output=True, check=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError) as error:
+        raise unittest.SkipTest(
+            'PM-018 proof blob %s is not available (%s)' % (blob[:12], error)) from error
+    if hashlib.sha256(proven).hexdigest() != data['proven_source_sha256']:
+        raise AssertionError('PM-018 proof blob content changed: ' + module)
+    return proven.decode()
+
+
+def _prove_structure(module, data, source):
+    reverse = {}
+    for record in data['moved']:
+        original = ast.parse(record['original'], mode='eval').body
+        replacement = ast.parse(record['replacement'], mode='eval').body
+        fingerprint = shape(replacement)
+        if fingerprint in reverse and shape(reverse[fingerprint]) != shape(original):
+            raise AssertionError(record['replacement'])
+        reverse[fingerprint] = original
+
+    class Restore(ast.NodeTransformer):
+        def visit(self, node):
+            if shape(node) in reverse:
+                return copy.deepcopy(reverse[shape(node)])
+            return super().visit(node)
+
+    fresh = ast.parse(source)
+    fresh.body = [node for node in fresh.body
+                  if not (isinstance(node, ast.ImportFrom) and node.module == 'bip39_locale')]
+    restored = Restore().visit(fresh)
+    got = hashlib.sha256(shape(restored).encode()).hexdigest()
+    if got != data['fingerprint']:
+        raise AssertionError('PM-018 structure fingerprint mismatch for %s: %s' % (module, got))
+
+
 class LegacyCatalogTests(unittest.TestCase):
     def test_transcribed_english_matches_catalog_and_source_rendering(self):
         for key, literal in FIXTURE['english'].items():
@@ -102,19 +154,17 @@ class LegacyCatalogTests(unittest.TestCase):
                                 right = eval(compile(ast.Expression(replacement), '<catalog>', 'eval'),
                                              {'__builtins__': {}}, env)
                                 self.assertEqual(left, right, (module, record['replacement'], platform, field))
+            _prove_structure(module, data, _proven_source(module, data))
 
-            class Restore(ast.NodeTransformer):
-                def visit(self, node):
-                    if shape(node) in reverse:
-                        return copy.deepcopy(reverse[shape(node)])
-                    return super().visit(node)
-
-            fresh = ast.parse((ROOT / 'src/wam_regtest' / (module + '.py')).read_text())
-            fresh.body = [node for node in fresh.body
-                          if not (isinstance(node, ast.ImportFrom) and node.module == 'bip39_locale')]
-            restored = Restore().visit(fresh)
-            self.assertEqual(hashlib.sha256(shape(restored).encode()).hexdigest(),
-                             data['fingerprint'], module)
+    def test_tampered_structure_fingerprint_fails(self):
+        module, data = next(iter(FIXTURE['modules'].items()))
+        source = _proven_source(module, data)
+        tampered = dict(data)
+        tampered['fingerprint'] = 'f' * 64
+        with self.assertRaises(AssertionError) as caught:
+            _prove_structure(module, tampered, source)
+        self.assertIn(module, str(caught.exception))
+        self.assertIn('fingerprint mismatch', str(caught.exception))
 
     def test_used_keys_exist_and_resolve_inside_functions(self):
         seen = set()

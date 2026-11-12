@@ -363,6 +363,8 @@
   "modules": {
     "managed_gui": {
       "fingerprint": "16faf4d550a0836faebb7d1ae95080d2094bdc1acdfa2b7218a88ae670cb42d7",
+      "proven_blob": "13b422108a15f909d2c40727eba3fc12d15697c5",
+      "proven_source_sha256": "2740be04c76b5946e3b3772841774100350be1409b38ce739380a88fa487ee2c",
       "moved": [
         {
           "keys": [
@@ -522,6 +524,8 @@
     },
     "operational_gui": {
       "fingerprint": "48e050258f79fef771b0ad8e5c7cff74bea83e024890d29b94c847b35d7bf94b",
+      "proven_blob": "e5c39bcb674bb49d2da55807117bc1213de65a2f",
+      "proven_source_sha256": "6dfa6ef0cc1ce832284801cfcc4d5194d1264286d445f08e068becd2122d7025",
       "moved": [
         {
           "keys": [
@@ -1513,6 +1517,8 @@
     },
     "desktop": {
       "fingerprint": "100c4c32e7bb3dcba45e43e2b4eaf1fc775f8aaf185c0f80987054285a854cde",
+      "proven_blob": "99b55a76ed359addb5fdcf5df7b6a1356794921f",
+      "proven_source_sha256": "3b0667cef56b4db7abb33d647487c1436815ef8dba9c35202a4ec7c8321ea641",
       "moved": [
         {
           "keys": [
