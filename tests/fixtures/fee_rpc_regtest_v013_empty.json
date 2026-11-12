@@ -1,0 +1,90 @@
+{
+ "_provenance": "ACTUAL measurement: official WAM Core v0.1.13 (/WAM:0.1.13/), disposable REGTEST, empty chain, no peers; captured 2026-11-13 by evidence/FEE-0-audit/capture_rpc_schemas.py. JSON numbers stored as strings and parsed back to Decimal in tests.",
+ "getnetworkinfo": {
+  "version": 113,
+  "subversion": "/WAM:0.1.13/",
+  "protocolversion": 70016,
+  "relayfee": "0.00001000",
+  "incrementalfee": "0.00001000",
+  "networkactive": true,
+  "connections": 0
+ },
+ "getmempoolinfo": {
+  "loaded": true,
+  "size": 0,
+  "bytes": 0,
+  "usage": 0,
+  "total_fee": "0E-8",
+  "maxmempool": 300000000,
+  "mempoolminfee": "0.00001000",
+  "minrelaytxfee": "0.00001000",
+  "incrementalrelayfee": "0.00001000",
+  "unbroadcastcount": 0,
+  "fullrbf": true
+ },
+ "estimatesmartfee_2_conservative": {
+  "errors": [
+   "Insufficient data or no feerate found"
+  ],
+  "blocks": 0
+ },
+ "estimatesmartfee_6_conservative": {
+  "errors": [
+   "Insufficient data or no feerate found"
+  ],
+  "blocks": 0
+ },
+ "estimatesmartfee_25_conservative": {
+  "errors": [
+   "Insufficient data or no feerate found"
+  ],
+  "blocks": 0
+ },
+ "estimaterawfee_6": {
+  "short": {
+   "decay": "0.962",
+   "scale": 1,
+   "fail": {
+    "startrange": 0,
+    "endrange": "1E+99",
+    "withintarget": 0,
+    "totalconfirmed": 0,
+    "inmempool": 0,
+    "leftmempool": 0
+   },
+   "errors": [
+    "Insufficient data or no feerate found which meets threshold"
+   ]
+  },
+  "medium": {
+   "decay": "0.9952",
+   "scale": 2,
+   "fail": {
+    "startrange": 0,
+    "endrange": "1E+99",
+    "withintarget": 0,
+    "totalconfirmed": 0,
+    "inmempool": 0,
+    "leftmempool": 0
+   },
+   "errors": [
+    "Insufficient data or no feerate found which meets threshold"
+   ]
+  },
+  "long": {
+   "decay": "0.99931",
+   "scale": 24,
+   "fail": {
+    "startrange": 0,
+    "endrange": "1E+99",
+    "withintarget": 0,
+    "totalconfirmed": 0,
+    "inmempool": 0,
+    "leftmempool": 0
+   },
+   "errors": [
+    "Insufficient data or no feerate found which meets threshold"
+   ]
+  }
+ }
+}
