@@ -195,23 +195,29 @@ class SidebarBrandFit(unittest.TestCase):
         self.assertGreater(scroll.verticalScrollBar().value(), before)
 
     def test_focus_ring_follows_keyboard_and_not_the_mouse(self):
-        from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QPushButton
+        from PySide6.QtCore import QEvent, Qt
+        from PySide6.QtGui import QFocusEvent
+        from PySide6.QtWidgets import QApplication, QPushButton
         install_keyboard_focus_mark(None)
         button = QPushButton('Refresh')
         self.addCleanup(button.deleteLater)
         button.show()
-        button.setFocus(Qt.FocusReason.MouseFocusReason)
-        self.app.processEvents()
+
+        def deliver(reason):
+            QApplication.sendEvent(button, QFocusEvent(QEvent.Type.FocusIn, reason))
+
+        deliver(Qt.FocusReason.MouseFocusReason)
         self.assertFalse(bool(button.property('keyboardFocus')))
-        button.setFocus(Qt.FocusReason.OtherFocusReason)
-        self.app.processEvents()
+        deliver(Qt.FocusReason.OtherFocusReason)
         self.assertFalse(bool(button.property('keyboardFocus')))
-        button.clearFocus()
-        self.app.processEvents()
-        button.setFocus(Qt.FocusReason.TabFocusReason)
-        self.app.processEvents()
+        deliver(Qt.FocusReason.ActiveWindowFocusReason)
+        self.assertFalse(bool(button.property('keyboardFocus')))
+        deliver(Qt.FocusReason.TabFocusReason)
         self.assertTrue(bool(button.property('keyboardFocus')))
+        deliver(Qt.FocusReason.BacktabFocusReason)
+        self.assertTrue(bool(button.property('keyboardFocus')))
+        QApplication.sendEvent(button, QFocusEvent(QEvent.Type.FocusOut, Qt.FocusReason.MouseFocusReason))
+        self.assertFalse(bool(button.property('keyboardFocus')))
 
     def test_brand_breaks_on_words_in_every_language(self):
         from PySide6.QtWidgets import QLabel
