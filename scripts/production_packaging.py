@@ -28,7 +28,7 @@ shared_regtest shared_regtest_gui supervisor_client supervisor_identity supervis
 supervisor_protocol supervisor_store telemetry vault wallet_executor wallet_read wallet_recovery
 foundation foundation.diagnostics
 infrastructure infrastructure.core_compat
-presentation presentation.action_state
+presentation presentation.action_state presentation.strings
 wallet_session windows_checkpoint_anchor windows_core_files windows_core_transport
 windows_private_storage windows_release_preflight
 wsp_import wsp_live

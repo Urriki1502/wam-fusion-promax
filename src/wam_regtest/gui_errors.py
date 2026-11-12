@@ -1,45 +1,12 @@
 """Fixed public UX categories. Never format exception text or authorize recovery."""
 INPUT_ERRORS=frozenset(('WALLET_INPUT_AMOUNT_INVALID','WALLET_INPUT_FEE_INVALID',
                         'WALLET_INPUT_RECIPIENT_INVALID','WALLET_INPUT_FUNDS_UNAVAILABLE'))
-_MESSAGES={
- 'WALLET_NATIVE_CHECKPOINT_VERIFICATION_REQUIRED':'This original wallet has a native checkpoint. Use Enable sending and explicitly approve custody verification before refreshing its history. Reservations remain protected; no wallet data should be reset.',
- 'Q06_SHARED_RECONCILIATION_DENIED':'Shared-chain reconciliation was refused. Native checkpoints, signed evidence and reservations are preserved. Verify the original profile, password and chain; do not remove runtime files.',
- 'Q06_RECONCILIATION_NOT_NEEDED':'The active custody session is healthy. Refresh the chain before requesting recovery.',
- 'SHARED_CONFIRMED_PEER_REQUIRED':'The configured Core peer is disconnected or not yet verified. Reconnect and verify the shared chain; signed and pending payments remain preserved.',
- 'SHARED_SINGLE_COORDINATOR_REQUIRED':'Only the explicitly designated Shared REGTEST coordinator may mine. This participant only receives and validates blocks.',
- 'WALLET_EXECUTOR_OPERATION_STILL_PENDING':'The operation is still running. Wait for completion; signing or broadcast will not be repeated automatically.',
- 'WALLET_EXECUTOR_BUSY_OR_CLOSED':'A wallet operation is in progress or the session is closed. Wait for completion or explicitly reopen the wallet.',
- 'WALLET_MANAGED_RUNTIME_PRESERVED':'Wallet keys are closed and recovery data is preserved. Authenticated recovery is required before reopening; do not remove files.',
- 'WALLET_MANAGED_OPEN_DENIED':'The wallet could not be authenticated or opened safely. Check the passphrase and current recovery state; existing data is preserved.',
- 'WALLET_CORE_REAUTHENTICATION_REQUIRED':'Explicit approval to reauthenticate the original REGTEST Core is required after wallet passphrase and custody verification. No automatic retry or external node adoption is allowed.',
+from .presentation.strings import CATALOG
+from .bip39_locale import t as ui_text
 
- 'WALLET_CORE_AUTHENTICATION_DENIED':'Local Core authentication failed. Balances are hidden and sensitive operations are stopped. Verify the authorized local credentials, then explicitly reauthenticate. Wallet state and reservations are retained.',
- 'WALLET_CORE_IDENTITY_DENIED':'Local Core identity or private configuration changed. Balances are hidden and sensitive operations are stopped. Verify the original REGTEST node before authenticated reopening; do not reset custody.',
- 'WALLET_CORE_UNAVAILABLE':'The verified local Core is unavailable. Balances are hidden and sensitive operations are stopped. Check the authorized local node; no request is retried automatically.',
- 'WALLET_CORE_UNVERIFIED':'Core verification failed. Balances are hidden and sensitive operations are stopped. Explicitly verify the original REGTEST environment before authenticated reopening. Reservations remain protected.',
-
- 'WALLET_INPUT_AMOUNT_INVALID':'Amount not accepted. Enter 0.00000330 to 22000000 WAM, using a decimal point and at most 8 decimal places.',
- 'WALLET_INPUT_FEE_INVALID':'Fee not accepted. Enter 0.00000001 to 0.01000000 WAM, using a decimal point and at most 8 decimal places.',
- 'WALLET_INPUT_RECIPIENT_INVALID':'Recipient not accepted. Use the complete REGTEST silent-payment code (wamrtsp1…). Ordinary Core addresses, other networks and invalid checksums are not supported.',
- 'WALLET_INPUT_FUNDS_UNAVAILABLE':'Not enough available confirmed funds in one privacy cluster for the amount and fee. Coins still reserved, in the mempool, or waiting for confirmation stay unavailable; locks are not released.',
- 'WALLET_STALE_SESSION_DENIED':'Wallet session is stale. Sensitive operations are stopped and reservations retained. Use the latest anchored backup; do not reset or replace the anchor.',
- 'WALLET_REVIEW_CHAIN_CHANGED':'The chain changed after review. Recheck the live chain. Only an unsigned draft may be canceled; signed reservations stay locked.',
- 'WALLET_REVIEW_UTXO_CHANGED':'A reviewed input is no longer available. Signing or broadcast was refused. Reservations remain protected.',
- 'WALLET_PAYMENT_ALREADY_PENDING':'A payment review is already active. Finish that review or cancel its unsigned draft before preparing another.',
- 'WALLET_SIGN_UNCERTAIN_LOCK_RETAINED':'Signing did not complete safely. Input reservations are irreversible. Do not retry automatically or release the locks.',
- 'WALLET_BROADCAST_UNCERTAIN_LOCK_RETAINED':'Broadcast result is uncertain. The node may have accepted the transaction. Do not retry automatically; reservations remain locked.',
- 'WALLET_BROADCAST_REJECTED_LOCK_RETAINED':'The local node rejected the signed transaction before submission; it was not sent. Input reservations stay signed and locked. Nothing is retried or released automatically.',
- 'WALLET_BROADCAST_NOT_SUBMITTED_LOCK_RETAINED':'Pre-submission verification could not complete; the transaction was not sent by this wallet. Input reservations stay signed and locked. Nothing is retried or released automatically.',
- 'WALLET_LOCK_CLEANUP_UNCERTAIN':'Lock could not close every wallet resource. Keys were dropped from this session and it is stopped; local wallet data and reservations are preserved. Restart the application before reopening; do not remove files.',
- 'WALLET_ROOT_LEASE_UNCERTAIN_LOCK_RETAINED':'The independent custody lease was lost. Operations are stopped and reservations retained. Do not reset the witness or retry automatically.',
- 'WALLET_BACKUP_STALE_OR_TAMPERED':'This backup does not match the latest anchored checkpoint. Choose the current unmodified backup; do not reset the anchor.',
- 'WALLET_UNLOCK_REFUSED':'Could not unlock: passphrase, encrypted snapshot or custody verification failed. The wallet remains locked. Check the passphrase and latest backup; do not reset custody.',
- 'WALLET_RECOVERY_REFUSED':'Recovery was refused: backup authentication, freshness or custody could not be verified. The wallet remains locked; use the latest same-platform backup.',
- 'WALLET_BACKUP_DIRECTORY_DENIED':'Backup destination was refused. Choose a new private folder owned by this account, without links or inherited access.',
- 'WALLET_LOCKED_OR_FAULTED':'Wallet is locked or faulted. Balances are hidden and sensitive operations are unavailable; reservations remain protected.',
- 'WALLET_SYNC_UNVERIFIED':'Live REGTEST synchronization could not be verified. Balances are hidden. Verify the local node and use Sync again; do not reset custody.',
- 'WALLET_OPERATION_DENIED_STATE_RETAINED':'Operation could not complete safely. Wallet state and reservations are retained. Verify the live chain and latest checkpoint; do not reset custody.',
-}
+# Public codes remain identifiers; English compatibility mapping is derived.
+_MESSAGES = {key.removeprefix('errors.'): value
+             for key, value in CATALOG['en'].items() if key.startswith('errors.')}
 
 def public_code(code,*,fallback='WALLET_OPERATION_DENIED_STATE_RETAINED'):
     safe=fallback if type(fallback) is str and fallback in _MESSAGES else 'WALLET_OPERATION_DENIED_STATE_RETAINED'
@@ -47,7 +14,7 @@ def public_code(code,*,fallback='WALLET_OPERATION_DENIED_STATE_RETAINED'):
 
 def error_text(code,*,fallback='WALLET_OPERATION_DENIED_STATE_RETAINED'):
     # No arbitrary reason, path, RPC error, address, passphrase or traceback.
-    return _MESSAGES[public_code(code,fallback=fallback)]
+    return ui_text('errors.' + public_code(code,fallback=fallback))
 
 def operation_error(action,error):
     from .wallet_session import WalletSessionError

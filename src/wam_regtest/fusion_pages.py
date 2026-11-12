@@ -1,5 +1,6 @@
 """Fusion 2.0 reusable screen components; no RPC, keys or signing authority."""
 from __future__ import annotations
+from .bip39_locale import t as ui_text
 from PySide6.QtCore import Qt, Signal, QRectF, QTimer
 from PySide6.QtGui import QColor,QPainter,QFont,QFontDatabase
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QLineEdit,QComboBox,QCheckBox,QTableWidget,QTableWidgetItem,QHeaderView,QApplication,QDialog,QDialogButtonBox,QFrame
@@ -9,7 +10,7 @@ from .wallet_read import format_wam
 
 class PaymentQR(QWidget):
     def __init__(self):
-        super().__init__();self.matrix=None;self.setMinimumSize(220,220);self.setMaximumSize(300,300);self.setAccessibleName('QR code of the verified REGTEST silent-payment address')
+        super().__init__();self.matrix=None;self.setMinimumSize(220,220);self.setMaximumSize(300,300);self.setAccessibleName(ui_text('pages.qr_code_of_the_verified_regtest_silent_payment_address'))
     def set_code(self,code):
         self.matrix=None;self.update()
         if not code:return
@@ -27,52 +28,52 @@ class PaymentQR(QWidget):
             for y,row in enumerate(self.matrix):
                 for x,dark in enumerate(row):
                     if dark:p.drawRect(left+x*unit,top+y*unit,unit,unit)
-        else:p.setPen(QColor('#5D6C82'));p.drawText(self.rect(),Qt.AlignmentFlag.AlignCenter,'Address not available\nUnlock and sync the wallet.')
+        else:p.setPen(QColor('#5D6C82'));p.drawText(self.rect(),Qt.AlignmentFlag.AlignCenter,ui_text('pages.address_not_available_unlock_and_sync_the_wallet'))
         p.end()
 
 
 class ReceivePage(QWidget):
     def __init__(self):
         super().__init__();self.code=None;self.setObjectName('FusionInner');root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
-        self.scroll,layout=page('Receive','One genuine BIP352 silent-payment code. A new on-chain destination for each sender.','SILENT PAYMENTS / RECEIVE');root.addWidget(self.scroll)
-        card,cl=panel('Your silent-payment address','REGTEST only · BIP352 · never a reusable public address')
-        self.qr=PaymentQR();qrbox=QWidget();ql=QVBoxLayout(qrbox);ql.setContentsMargins(0,0,0,0);ql.addWidget(self.qr,alignment=Qt.AlignmentFlag.AlignCenter);ql.addWidget(label('Exact address QR','FusionKicker'),alignment=Qt.AlignmentFlag.AlignCenter)
-        address=QWidget();al=QVBoxLayout(address);al.setContentsMargins(0,0,0,0);al.addWidget(label('BIP352 / REGTEST','FusionBadge'));self.receive_code=label('—','ReceiveCode',True);self.receive_code.setMinimumWidth(0);al.addWidget(self.receive_code)
-        self.copy_button=action('Copy full address','copy',True);self.copy_button.setEnabled(False);self.copy_button.clicked.connect(self.copy_address);al.addWidget(self.copy_button);self.copy_status=label('The copied value is never shortened.');al.addWidget(self.copy_status);al.addStretch()
+        self.scroll,layout=page(ui_text('pages.receive'),ui_text('pages.one_genuine_bip352_silent_payment_code_a_new_on_chain_destination'),ui_text('pages.silent_payments_receive'));root.addWidget(self.scroll)
+        card,cl=panel(ui_text('pages.your_silent_payment_address'),ui_text('pages.regtest_only_bip352_never_a_reusable_public_address'))
+        self.qr=PaymentQR();qrbox=QWidget();ql=QVBoxLayout(qrbox);ql.setContentsMargins(0,0,0,0);ql.addWidget(self.qr,alignment=Qt.AlignmentFlag.AlignCenter);ql.addWidget(label(ui_text('pages.exact_address_qr'),'FusionKicker'),alignment=Qt.AlignmentFlag.AlignCenter)
+        address=QWidget();al=QVBoxLayout(address);al.setContentsMargins(0,0,0,0);al.addWidget(label(ui_text('pages.bip352_regtest'),'FusionBadge'));self.receive_code=label('—','ReceiveCode',True);self.receive_code.setMinimumWidth(0);al.addWidget(self.receive_code)
+        self.copy_button=action(ui_text('pages.copy_full_address'),'copy',True);self.copy_button.setEnabled(False);self.copy_button.clicked.connect(self.copy_address);al.addWidget(self.copy_button);self.copy_status=label(ui_text('pages.the_copied_value_is_never_shortened'));al.addWidget(self.copy_status);al.addStretch()
         self._copy_timer=QTimer(self);self._copy_timer.setSingleShot(True)
-        self._copy_timer.timeout.connect(lambda:self.copy_status.setText('Copy includes the entire verified address.' if self.code else 'Address unavailable · unlock and verify the chain.'))
+        self._copy_timer.timeout.connect(lambda:self.copy_status.setText(ui_text('pages.copy_includes_the_entire_verified_address') if self.code else ui_text('pages.address_unavailable_unlock_and_verify_the_chain')))
         cl.addWidget(ResponsiveRow(qrbox,address,weights=[2,3],breakpoint=610));layout.addWidget(card)
-        info,il=panel('A quieter receiving experience');il.addWidget(label('Silent payments avoid publishing a reusable destination on-chain. The wallet scans confirmed blocks using its native WSP-1 account. This is not an anonymity guarantee.'))
-        il.addWidget(label('Use disposable REGTEST funds only. Never import a personal production key or send real value.','FusionGold'));layout.addWidget(info)
-        self.received=label('No verified receiving activity');layout.addWidget(self.received);layout.addStretch()
+        info,il=panel(ui_text('pages.a_quieter_receiving_experience'));il.addWidget(label(ui_text('pages.silent_payments_avoid_publishing_a_reusable_destination_on_chain')))
+        il.addWidget(label(ui_text('pages.use_disposable_regtest_funds_only_never_import_a_personal_product'),'FusionGold'));layout.addWidget(info)
+        self.received=label(ui_text('pages.no_verified_receiving_activity'));layout.addWidget(self.received);layout.addStretch()
     def render_snapshot(self,snap):
         self.code=None;self.copy_button.setEnabled(False);self.receive_code.setText('—');self.qr.set_code(None)
-        candidate=snap.receive_code if snap else None;self.qr.set_code(candidate);self.code=candidate;self.receive_code.setText(self.code or '—');self.copy_button.setEnabled(bool(self.code));self.copy_status.setText('Copy includes the entire verified address.' if self.code else 'Address unavailable · unlock and verify the chain.')
+        candidate=snap.receive_code if snap else None;self.qr.set_code(candidate);self.code=candidate;self.receive_code.setText(self.code or '—');self.copy_button.setEnabled(bool(self.code));self.copy_status.setText(ui_text('pages.copy_includes_the_entire_verified_address') if self.code else ui_text('pages.address_unavailable_unlock_and_verify_the_chain'))
         if snap is None:
-            self.received.setText('No verified receiving activity')
+            self.received.setText(ui_text('pages.no_verified_receiving_activity'))
         elif type(snap.receive_count) is int:
-            self.received.setText(f'{snap.receive_count} confirmed transaction(s) with wallet credits')
+            self.received.setText(ui_text('pages.value_1_confirmed_transaction_s_with_wallet_credits').format(value_1=snap.receive_count))
         else:
-            self.received.setText('Receive statistics unavailable until complete history is fingerprinted')
+            self.received.setText(ui_text('pages.receive_statistics_unavailable_until_complete_history_is_fingerpr'))
     def copy_address(self):
         if self.code:
-            QApplication.clipboard().setText(self.code);self.copy_status.setText('Full address copied');self._copy_timer.start(2200)
+            QApplication.clipboard().setText(self.code);self.copy_status.setText(ui_text('pages.full_address_copied'));self._copy_timer.start(2200)
 
 
 class HistoryPage(QWidget):
     page_requested=Signal(int)
     def __init__(self):
         super().__init__();self.setObjectName('FusionInner');self.rows=();self.mode='dark';self._offset=0;self._total=0;root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
-        scroll,layout=page('History','Credit is owned outputs, including change. Debit is spent owned inputs. Net change is credit minus debit; outgoing net includes the fee.','ON-CHAIN / HISTORY');root.addWidget(scroll)
-        card,cl=panel();toolbar=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Search transaction ID or block height');self.search.setClearButtonEnabled(True);self.search.setAccessibleName('Search confirmed transactions');self.filter=QComboBox();self.filter.addItems(('All activity','Credits','Debits'));toolbar.addWidget(self.search,1);toolbar.addWidget(self.filter);cl.addLayout(toolbar)
-        self.table=QTableWidget(0,6);self.table.setObjectName('FusionActivityTable');self.table.setHorizontalHeaderLabels(('DIRECTION','TRANSACTION','BLOCK','CONFIRMED','CREDIT WAM','DEBIT WAM'));self.table.verticalHeader().hide();self.table.setShowGrid(False);self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows);self.table.horizontalHeader().setSectionResizeMode(1,QHeaderView.ResizeMode.Stretch);self.table.setMinimumHeight(220);self.table.setColumnWidth(0,130);self.table.setColumnWidth(2,65);self.table.setColumnWidth(3,90);self.table.setColumnWidth(4,145);self.table.setColumnWidth(5,145);cl.addWidget(self.table)
-        nav=QHBoxLayout();self.newer=action('Newer confirmed history','history');self.older=action('Older confirmed history','history');self.newer.setEnabled(False);self.older.setEnabled(False);self.newer.clicked.connect(self._newer);self.older.clicked.connect(self._older);nav.addWidget(self.newer);nav.addWidget(self.older);nav.addStretch();cl.addLayout(nav)
+        scroll,layout=page(ui_text('pages.history'),ui_text('pages.credit_is_owned_outputs_including_change_debit_is_spent_owned_inp'),ui_text('pages.on_chain_history'));root.addWidget(scroll)
+        card,cl=panel();toolbar=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText(ui_text('pages.search_transaction_id_or_block_height'));self.search.setClearButtonEnabled(True);self.search.setAccessibleName(ui_text('pages.search_confirmed_transactions'));self.filter=QComboBox();self.filter.addItems((ui_text('pages.all_activity'),ui_text('pages.credits'),ui_text('pages.debits')));toolbar.addWidget(self.search,1);toolbar.addWidget(self.filter);cl.addLayout(toolbar)
+        self.table=QTableWidget(0,6);self.table.setObjectName('FusionActivityTable');self.table.setHorizontalHeaderLabels((ui_text('pages.direction'),ui_text('pages.transaction'),ui_text('pages.block'),ui_text('pages.confirmed'),ui_text('pages.credit_wam'),ui_text('pages.debit_wam')));self.table.verticalHeader().hide();self.table.setShowGrid(False);self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows);self.table.horizontalHeader().setSectionResizeMode(1,QHeaderView.ResizeMode.Stretch);self.table.setMinimumHeight(220);self.table.setColumnWidth(0,130);self.table.setColumnWidth(2,65);self.table.setColumnWidth(3,90);self.table.setColumnWidth(4,145);self.table.setColumnWidth(5,145);cl.addWidget(self.table)
+        nav=QHBoxLayout();self.newer=action(ui_text('pages.newer_confirmed_history'),'history');self.older=action(ui_text('pages.older_confirmed_history'),'history');self.newer.setEnabled(False);self.older.setEnabled(False);self.newer.clicked.connect(self._newer);self.older.clicked.connect(self._older);nav.addWidget(self.newer);nav.addWidget(self.older);nav.addStretch();cl.addLayout(nav)
         self.scope=label('');cl.addWidget(self.scope)
-        self.empty=label('No confirmed transactions · unlock and sync to verify history');cl.addWidget(self.empty);layout.addWidget(card)
-        detail,dl=panel('Transaction details','Select a row to inspect its exact confirmed data.');self.detail_id=label('No transaction selected','ReceiveCode',True);dl.addWidget(self.detail_id);self.detail_values=label('');dl.addWidget(self.detail_values);self.copy_button=action('Copy full transaction ID','copy');self.copy_button.setEnabled(False);self.copy_button.clicked.connect(self.copy_txid);dl.addWidget(self.copy_button);layout.addWidget(detail);layout.addStretch()
+        self.empty=label(ui_text('pages.no_confirmed_transactions_unlock_and_sync_to_verify_history'));cl.addWidget(self.empty);layout.addWidget(card)
+        detail,dl=panel(ui_text('pages.transaction_details'),ui_text('pages.select_a_row_to_inspect_its_exact_confirmed_data'));self.detail_id=label(ui_text('pages.no_transaction_selected'),'ReceiveCode',True);dl.addWidget(self.detail_id);self.detail_values=label('');dl.addWidget(self.detail_values);self.copy_button=action(ui_text('pages.copy_full_transaction_id'),'copy');self.copy_button.setEnabled(False);self.copy_button.clicked.connect(self.copy_txid);dl.addWidget(self.copy_button);layout.addWidget(detail);layout.addStretch()
         self.table.itemSelectionChanged.connect(self.show_details);self.search.textChanged.connect(self.apply_filter);self.filter.currentIndexChanged.connect(self.apply_filter)
     def render_snapshot(self,snap):
-        self.rows=snap.history if snap else ();self.search.clear();self.table.setRowCount(len(self.rows));self.detail_id.setText('No transaction selected');self.detail_values.setText('');self.copy_button.setEnabled(False)
+        self.rows=snap.history if snap else ();self.search.clear();self.table.setRowCount(len(self.rows));self.detail_id.setText(ui_text('pages.no_transaction_selected'));self.detail_values.setText('');self.copy_button.setEnabled(False)
         self._offset=snap.history_offset if snap and type(snap.history_offset) is int else 0
         self._total=snap.history_count if snap and type(snap.history_count) is int else len(self.rows)
         shown=len(self.rows)
@@ -81,19 +82,18 @@ class HistoryPage(QWidget):
         if snap is None:
             self.scope.setText('')
         elif snap.history_complete:
-            self.scope.setText(f'{shown} verified confirmed record(s)')
+            self.scope.setText(ui_text('pages.value_1_verified_confirmed_record_s').format(value_1=shown))
         else:
             start=self._offset+1 if shown else 0
             end=self._offset+shown
-            proof = ('Full history is fingerprinted in custody, not discarded.'
+            proof = (ui_text('pages.full_history_is_fingerprinted_in_custody_not_discarded')
                      if snap.history_sha256 is not None else
-                     'Full history was scanned against this Core; only the display is paged.')
+                     ui_text('pages.full_history_was_scanned_against_this_core_only_the_display_is_pa'))
             self.scope.setText(
-                f'Showing newest-offset {self._offset} records {start}–{end} of {self._total} '
-                f'verified records. {proof}')
+                ui_text('pages.showing_newest_offset_value_1_records_value_2_value_3_of_value_4').format(value_1=self._offset, value_2=start, value_3=end, value_4=self._total, value_5=proof))
         c=fusion_palette(self.mode)
         for i,row in enumerate(self.rows):
-            net=row.credit_atoms-row.debit_atoms;direction='Received' if net>0 else 'Sent' if net<0 else 'Activity'
+            net=row.credit_atoms-row.debit_atoms;direction=ui_text('pages.received') if net>0 else ui_text('pages.sent') if net<0 else ui_text('pages.activity')
             values=(direction,row.txid[:12]+'…',str(row.block_height),str(row.confirmations),format_wam(row.credit_atoms),format_wam(row.debit_atoms))
             for j,value in enumerate(values):
                 item=QTableWidgetItem(value);item.setToolTip(row.txid);item.setData(Qt.ItemDataRole.UserRole,row.txid)
@@ -115,12 +115,12 @@ class HistoryPage(QWidget):
         for i,row in enumerate(self.rows):
             visible=(not term or term in row.txid.lower() or term in str(row.block_height)) and (choice==0 or choice==1 and row.credit_atoms>0 or choice==2 and row.debit_atoms>0)
             self.table.setRowHidden(i,not visible);shown+=visible
-        self.empty.setVisible(shown==0);self.empty.setText('No matching confirmed transactions' if self.rows else 'No verified transactions · unlock and sync the wallet')
+        self.empty.setVisible(shown==0);self.empty.setText(ui_text('pages.no_matching_confirmed_transactions') if self.rows else ui_text('pages.no_verified_transactions_unlock_and_sync_the_wallet'))
         self.show_details()
     def show_details(self):
         row=self.table.currentRow()
-        if not 0<=row<len(self.rows) or self.table.isRowHidden(row):self.detail_id.setText('No transaction selected');self.detail_values.setText('');self.copy_button.setEnabled(False);return
-        tx=self.rows[row];self.detail_id.setText(tx.txid);self.detail_values.setText(f'Block {tx.block_height}  /  {tx.confirmations} confirmation(s)\nCredits  {format_wam(tx.credit_atoms)} WAM\nDebits   {format_wam(tx.debit_atoms)} WAM');self.copy_button.setEnabled(True)
+        if not 0<=row<len(self.rows) or self.table.isRowHidden(row):self.detail_id.setText(ui_text('pages.no_transaction_selected'));self.detail_values.setText('');self.copy_button.setEnabled(False);return
+        tx=self.rows[row];self.detail_id.setText(tx.txid);self.detail_values.setText(ui_text('pages.block_value_1_value_2_confirmation_s_credits_value_3_wam_debits_v').format(value_1=tx.block_height, value_2=tx.confirmations, value_3=format_wam(tx.credit_atoms), value_4=format_wam(tx.debit_atoms)));self.copy_button.setEnabled(True)
     def select_txid(self,txid):
         self.search.clear();self.filter.setCurrentIndex(0)
         for i,tx in enumerate(self.rows):
@@ -139,7 +139,7 @@ class HistoryPage(QWidget):
 class PaymentSteps(QFrame):
     def __init__(self):
         super().__init__();self.setObjectName('FusionInset');layout=QHBoxLayout(self);layout.setContentsMargins(16,13,16,13);self.labels=[]
-        for i,name in enumerate(('Prepare','Review','Approve signature','Broadcast','Result')):
+        for i,name in enumerate((ui_text('pages.prepare'),ui_text('pages.review'),ui_text('pages.approve_signature'),ui_text('pages.broadcast'),ui_text('pages.result'))):
             item=label(f'{i+1}  {name}','FusionMuted');item.setAlignment(Qt.AlignmentFlag.AlignCenter);layout.addWidget(item,1);self.labels.append(item)
     def set_stage(self,stage):
         for i,item in enumerate(self.labels):
@@ -169,12 +169,12 @@ class WalletConsent(QDialog):
             layout.addWidget(wrapped)
         self.password_input = QLineEdit()
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.password_input.setAccessibleName('Original wallet password')
+        self.password_input.setAccessibleName(ui_text('pages.original_wallet_password'))
         self.password_input.setVisible(password)
         layout.addWidget(self.password_input)
         buttons = QDialogButtonBox()
-        cancel = buttons.addButton('Cancel', QDialogButtonBox.ButtonRole.RejectRole)
-        approve = buttons.addButton(accept_text or ('Unlock' if password else 'Approve'), QDialogButtonBox.ButtonRole.AcceptRole)
+        cancel = buttons.addButton(ui_text('pages.cancel'), QDialogButtonBox.ButtonRole.RejectRole)
+        approve = buttons.addButton(accept_text or (ui_text('pages.unlock') if password else ui_text('pages.approve')), QDialogButtonBox.ButtonRole.AcceptRole)
         cancel.setDefault(True)
         approve.setAutoDefault(False)
         approve.setObjectName('FusionPrimary')
@@ -186,33 +186,31 @@ class WalletConsent(QDialog):
 class PaymentApproval(QDialog):
     """UI-only explicit approval, default Cancel; no session operation inside."""
     def __init__(self,review,kind,parent):
-        super().__init__(parent);self.setWindowTitle('Approve signature' if kind=='sign' else 'Approve broadcast');self.setObjectName('FusionApproval');self.setWindowModality(Qt.WindowModality.ApplicationModal);self.resize(580,440)
+        super().__init__(parent);self.setWindowTitle(ui_text('pages.approve_signature') if kind=='sign' else ui_text('pages.approve_broadcast'));self.setObjectName('FusionApproval');self.setWindowModality(Qt.WindowModality.ApplicationModal);self.resize(580,440)
         layout=QVBoxLayout(self);layout.setContentsMargins(28,24,28,24);layout.setSpacing(16)
-        layout.addWidget(label('EXPLICIT TRANSACTION APPROVAL','FusionKicker'));layout.addWidget(label('Approve signature' if kind=='sign' else 'Submit to REGTEST','PageTitle'))
-        layout.addWidget(label('Signing makes input reservations irreversible.' if kind=='sign' else 'An uncertain broadcast reply retains reservations. Do not assume it failed.','FusionGold'))
-        card,cl=panel('Exact payment');cl.addWidget(label('Recipient','FusionKicker'));cl.addWidget(label(review.code,'ReceiveCode',True));cl.addWidget(label(f'Amount     {format_wam(review.atoms)} WAM\nFee          {format_wam(review.fee)} WAM\nChange    {format_wam(review.change_atoms)} WAM\nInputs      {review.input_count}'));layout.addWidget(card)
-        buttons=QDialogButtonBox();self.cancel=buttons.addButton('Cancel',QDialogButtonBox.ButtonRole.RejectRole);self.approve=buttons.addButton('Approve Sign' if kind=='sign' else 'Approve Broadcast',QDialogButtonBox.ButtonRole.AcceptRole);self.approve.setObjectName('FusionPrimary');self.cancel.setDefault(True);self.approve.setAutoDefault(False);buttons.rejected.connect(self.reject);buttons.accepted.connect(self.accept);layout.addWidget(buttons)
+        layout.addWidget(label(ui_text('pages.explicit_transaction_approval'),'FusionKicker'));layout.addWidget(label(ui_text('pages.approve_signature') if kind=='sign' else ui_text('pages.submit_to_regtest'),'PageTitle'))
+        layout.addWidget(label(ui_text('pages.signing_makes_input_reservations_irreversible') if kind=='sign' else ui_text('pages.an_uncertain_broadcast_reply_retains_reservations_do_not_assume_i'),'FusionGold'))
+        card,cl=panel(ui_text('pages.exact_payment'));cl.addWidget(label(ui_text('pages.recipient'),'FusionKicker'));cl.addWidget(label(review.code,'ReceiveCode',True));cl.addWidget(label(ui_text('pages.amount_value_1_wam_fee_value_2_wam_change_value_3_wam_inputs_valu').format(value_1=format_wam(review.atoms), value_2=format_wam(review.fee), value_3=format_wam(review.change_atoms), value_4=review.input_count)));layout.addWidget(card)
+        buttons=QDialogButtonBox();self.cancel=buttons.addButton(ui_text('pages.cancel'),QDialogButtonBox.ButtonRole.RejectRole);self.approve=buttons.addButton(ui_text('pages.approve_sign') if kind=='sign' else ui_text('pages.approve_broadcast_2'),QDialogButtonBox.ButtonRole.AcceptRole);self.approve.setObjectName('FusionPrimary');self.cancel.setDefault(True);self.approve.setAutoDefault(False);buttons.rejected.connect(self.reject);buttons.accepted.connect(self.accept);layout.addWidget(buttons)
 
 
 def describe_broadcast_result(txid, inspect=None):
     """Map verified Core inspect/history facts to Result copy. Never infers failure."""
     import re
     if type(txid) is not str or re.fullmatch(r'[0-9a-f]{64}', txid) is None:
-        return ('Broadcast outcome is uncertain. Reservations are retained. '
-                'Do not retry automatically.')
+        return (ui_text('pages.broadcast_outcome_is_uncertain_reservations_are_retained_do_not_r'))
     status = inspect.get('status') if isinstance(inspect, dict) else None
     mempool = inspect.get('in_mempool') if isinstance(inspect, dict) else None
     if status == 'Q06_CONFIRMED_IN_VERIFIED_HISTORY':
-        return 'Confirmed on this REGTEST chain.\n' + txid
+        return ui_text('pages.confirmed_on_this_regtest_chain') + txid
     if mempool is True:
-        return ('Submitted and pending in this Core mempool (not confirmed).\n'
-                + txid + '\nDo not retry. Reserved inputs stay unavailable.')
+        return (ui_text('pages.submitted_and_pending_in_this_core_mempool_not_confirmed')
+                + txid + ui_text('pages.do_not_retry_reserved_inputs_stay_unavailable'))
     if mempool is False and status == 'Q06_TX_NOT_IN_CONFIRMED_HISTORY':
-        return ('Recorded TXID is not in confirmed history or this Core mempool. '
-                'Outcome is uncertain.\n' + txid
-                + '\nDo not retry or release reservations.')
-    return ('Submitted to this Core. Confirmation is pending.\n' + txid
-            + '\nDo not retry. Reserved inputs stay unavailable until confirmed.')
+        return (ui_text('pages.recorded_txid_is_not_in_confirmed_history_or_this_core_mempool_ou') + txid
+                + ui_text('pages.do_not_retry_or_release_reservations'))
+    return (ui_text('pages.submitted_to_this_core_confirmation_is_pending') + txid
+            + ui_text('pages.do_not_retry_reserved_inputs_stay_unavailable_until_confirmed'))
 
 
 class NetworkPage(QWidget):
@@ -224,24 +222,24 @@ class NetworkPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         self.scroll, layout = page(
-            'Network',
-            'Isolated or Shared REGTEST connectivity from the owned Core. This is not a new P2P protocol.',
-            'V1-NET / REGTEST')
+            ui_text('pages.network'),
+            ui_text('pages.isolated_or_shared_regtest_connectivity_from_the_owned_core_this'),
+            ui_text('pages.v1_net_regtest'))
         root.addWidget(self.scroll)
-        status, sl = panel('Network status', 'Unknown fields stay unknown until the owned Core verifies them.')
-        self.mode_value = label('Not verified', 'FusionCardValue')
-        self.connection_value = label('Core connectivity is not verified')
-        self.peer_value = label('Peer count is shown only after a verified network check')
-        self.height_value = label('Chain height is shown only after a verified snapshot')
-        self.sync_value = label('Sync status is unknown until Core is verified')
-        self.identity_value = label('Shared network identity is shown only for a configured Shared REGTEST profile')
+        status, sl = panel(ui_text('pages.network_status'), ui_text('pages.unknown_fields_stay_unknown_until_the_owned_core_verifies_them'))
+        self.mode_value = label(ui_text('pages.not_verified'), 'FusionCardValue')
+        self.connection_value = label(ui_text('pages.core_connectivity_is_not_verified'))
+        self.peer_value = label(ui_text('pages.peer_count_is_shown_only_after_a_verified_network_check'))
+        self.height_value = label(ui_text('pages.chain_height_is_shown_only_after_a_verified_snapshot'))
+        self.sync_value = label(ui_text('pages.sync_status_is_unknown_until_core_is_verified'))
+        self.identity_value = label(ui_text('pages.shared_network_identity_is_shown_only_for_a_configured_shared_reg'))
         for widget in (self.mode_value, self.connection_value, self.peer_value,
                        self.height_value, self.sync_value, self.identity_value):
             widget.setMinimumWidth(0)
             sl.addWidget(widget)
         layout.addWidget(status)
-        controls, cl = panel('Manual peer controls', 'Existing V1-NET commands only. No automatic peer discovery.')
-        self.controls_note = label('Isolated REGTEST keeps the Q06 zero-peer profile.')
+        controls, cl = panel(ui_text('pages.manual_peer_controls'), ui_text('pages.existing_v1_net_commands_only_no_automatic_peer_discovery'))
+        self.controls_note = label(ui_text('pages.isolated_regtest_keeps_the_q06_zero_peer_profile'))
         cl.addWidget(self.controls_note)
         self.controls_host = QVBoxLayout()
         cl.addLayout(self.controls_host)
@@ -250,37 +248,37 @@ class NetworkPage(QWidget):
 
     def render(self, *, shared=False, connected=None, peer_count=None, height=None,
                tip=None, coordinator=None, core_alive=None, identity=None):
-        self.mode_value.setText('Shared REGTEST' if shared else 'Isolated REGTEST')
+        self.mode_value.setText(ui_text('pages.shared_regtest') if shared else ui_text('pages.isolated_regtest'))
         if core_alive is True:
-            self.connection_value.setText('Owned Core is alive')
+            self.connection_value.setText(ui_text('pages.owned_core_is_alive'))
         elif core_alive is False:
-            self.connection_value.setText('Owned Core is not running')
+            self.connection_value.setText(ui_text('pages.owned_core_is_not_running'))
         else:
-            self.connection_value.setText('Core connectivity is not verified')
+            self.connection_value.setText(ui_text('pages.core_connectivity_is_not_verified'))
         if type(peer_count) is int:
             self.peer_value.setText(
-                f'{peer_count} connected peer(s)'
-                + ('' if connected is None else (' · connected' if connected else ' · disconnected')))
+                ui_text('pages.value_1_connected_peer_s').format(value_1=peer_count)
+                + ('' if connected is None else (ui_text('pages.connected') if connected else ui_text('pages.disconnected'))))
         elif not shared:
-            self.peer_value.setText('Zero-peer isolated profile')
+            self.peer_value.setText(ui_text('pages.zero_peer_isolated_profile'))
         else:
-            self.peer_value.setText('Peer count is shown only after a verified network check')
+            self.peer_value.setText(ui_text('pages.peer_count_is_shown_only_after_a_verified_network_check'))
         if type(height) is int:
-            self.height_value.setText('Chain height ' + str(height))
+            self.height_value.setText(ui_text('pages.chain_height') + str(height))
         else:
-            self.height_value.setText('Chain height is shown only after a verified snapshot')
+            self.height_value.setText(ui_text('pages.chain_height_is_shown_only_after_a_verified_snapshot'))
         if type(tip) is str and len(tip) >= 14:
-            self.sync_value.setText('Verified tip ' + tip[:14] + '…')
+            self.sync_value.setText(ui_text('pages.verified_tip') + tip[:14] + '…')
         else:
-            self.sync_value.setText('Sync status is unknown until Core is verified')
+            self.sync_value.setText(ui_text('pages.sync_status_is_unknown_until_core_is_verified'))
         if identity:
             self.identity_value.setText(identity)
         elif coordinator is True:
-            self.identity_value.setText('This profile is the mining coordinator')
+            self.identity_value.setText(ui_text('pages.this_profile_is_the_mining_coordinator'))
         elif coordinator is False:
-            self.identity_value.setText('Participant profile · mining disabled')
+            self.identity_value.setText(ui_text('pages.participant_profile_mining_disabled'))
         else:
-            self.identity_value.setText('Shared network identity is shown only for a configured Shared REGTEST profile')
+            self.identity_value.setText(ui_text('pages.shared_network_identity_is_shown_only_for_a_configured_shared_reg'))
         self.controls_note.setText(
-            'Manual connect/disconnect uses the configured Shared REGTEST peer.'
-            if shared else 'Isolated REGTEST keeps the Q06 zero-peer profile.')
+            ui_text('pages.manual_connect_disconnect_uses_the_configured_shared_regtest_peer')
+            if shared else ui_text('pages.isolated_regtest_keeps_the_q06_zero_peer_profile'))
