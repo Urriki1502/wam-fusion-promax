@@ -10,11 +10,12 @@ qualified until native frozen execution on those hosts.
 from pathlib import Path
 
 RUNTIME = frozenset(('''
-__init__ amounts bip39_12 bip39_backup_page bip39_fusion_gui bip39_locale
+__init__ amounts application application.snapshot_projection
+bip39_12 bip39_backup_page bip39_fusion_gui bip39_locale
 bip39_native_checkpoint bip39_owner_backend bip39_owner_gui bip39_reconciliation
 bip39_recovery_proof bip39_scanner_checkpoint bip39_seed_vault bip39_spend_session
 branding build_provenance cli_rpc core core_process core_supervisor custody desktop
-disclosure encrypted_storage external_core external_core_gui external_recovery
+disclosure domain domain.backup_ack encrypted_storage external_core external_core_gui external_recovery
 fusion_motion fusion_pages fusion_status fusion_ui gui_errors history_pages json_rpc
 linux_anchor_witness linux_developer_core linux_official_core linux_private_storage
 linux_runtime managed_gui managed_onboarding managed_wallet_checkpoint managed_wallet_session

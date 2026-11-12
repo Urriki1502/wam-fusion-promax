@@ -530,7 +530,7 @@ class Q06OwnerBackendContracts(unittest.TestCase):
 
     def test_backup_defer_ack_write_failure_is_still_reported(self):
         self._create_and_verify()
-        with (patch("wam_regtest.bip39_owner_backend._ack_write",
+        with (patch("wam_regtest.domain.backup_ack._ack_write",
                     side_effect=OSError("PUBLIC_TEST_WRITE_FAILURE")),
               self.assertRaises(Q06ReadOnlyError) as refused):
             self.backend.execute("backup_defer", (), {})

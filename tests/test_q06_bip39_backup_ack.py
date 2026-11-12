@@ -497,14 +497,16 @@ class BackupAckSourceContract(unittest.TestCase):
         self.assertNotIn("_show_words_once", source)
 
     def test_backend_enforces_authenticated_ack_sidecar(self):
-        path = (Path(__file__).resolve().parents[1]
-                / "src" / "wam_regtest" / "bip39_owner_backend.py")
-        source = path.read_text(encoding="utf8")
+        root = (Path(__file__).resolve().parents[1] / "src" / "wam_regtest")
+        source = (root / "bip39_owner_backend.py").read_text(encoding="utf8")
+        ack = (root / "domain" / "backup_ack.py").read_text(encoding="utf8")
         self.assertIn("backup_verify", source)
         self.assertIn("backup_defer", source)
         self.assertIn("backup_ack_key", source)
         self.assertIn("_q06_write_ack", source)
-        self.assertIn("hmac.compare_digest", source)
+        # MAC compare moved with the sidecar into the domain module.
+        self.assertIn("hmac.compare_digest", ack)
+        self.assertIn("backup_ack_key", ack)
 
     def test_wallet_executor_admits_backup_ack_actions(self):
         from wam_regtest import wallet_executor as _we

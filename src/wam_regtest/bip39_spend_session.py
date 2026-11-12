@@ -97,6 +97,18 @@ class Q06OwnedSpendSession(WalletSession):
         self._q06_uncertain = False
         self._q06_pending_confirm = None
 
+    @property
+    def payment_review(self):
+        return self._review
+
+    @property
+    def payment_signed(self):
+        return self._signed is not None
+
+    @property
+    def pending_confirm_txid(self):
+        return self._q06_pending_confirm
+
     def _rpc(self):
         if self._q06_uncertain:
             raise WalletSessionError("Q06_SPEND_UNCERTAIN_LOCK_RETAINED")

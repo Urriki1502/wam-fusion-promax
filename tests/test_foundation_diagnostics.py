@@ -4,6 +4,7 @@ The public refusal codes are unchanged (see test_characterization_r0). These
 tests prove the new internal record keeps only fixed tokens and classifies the
 underlying failure that fail-closed wrappers drop.
 """
+import ast
 import io
 import os
 import threading
@@ -140,6 +141,73 @@ class FoundationLayerRule(unittest.TestCase):
                 elif isinstance(node, ast.Import):
                     for alias in node.names:
                         self.assertFalse(alias.name.startswith(('wam_regtest', 'PySide6')), path.name)
+
+
+_PRESENTATION = frozenset({
+    'bip39_backup_page', 'bip39_fusion_gui', 'bip39_locale', 'bip39_owner_gui',
+    'branding', 'desktop', 'external_core_gui', 'fusion_motion', 'fusion_pages',
+    'fusion_status', 'fusion_ui', 'gui_errors', 'history_pages', 'managed_gui',
+    'managed_onboarding', 'operational_gui', 'qualification_gui',
+    'shared_regtest_gui', 'windows_read_gui',
+})
+_QUALIFICATION = frozenset({
+    'package_entry', 'linux_package_entry', 'windows_package_entry',
+    'probe_source', 'q_gate', 'q04_fixture', 'q04_miner_loop', 'q04_runner',
+    'q05_packaged', 'qualification_gui', 'release_candidate', 'ui_layout_probe',
+})
+
+
+def _is_qualification(name):
+    stem = name.rsplit('.', 1)[-1]
+    return (stem.endswith('_probe') or stem.endswith('_scenario')
+            or stem in _QUALIFICATION or name in _QUALIFICATION)
+
+
+def _imported_targets(node, package):
+    if isinstance(node, ast.Import):
+        return [alias.name for alias in node.names]
+    if not isinstance(node, ast.ImportFrom):
+        return []
+    module = node.module or ''
+    if node.level == 0:
+        return [module]
+    if node.level == 1:
+        return [package + ('.' + module if module else '')]
+    if node.level >= 2:
+        # Parent of domain/ or application/ is wam_regtest itself.
+        return [module or 'wam_regtest']
+    return ['<unresolved>']
+
+
+class DomainApplicationLayerRule(unittest.TestCase):
+    """domain/ and application/ stay below presentation and qualification."""
+
+    def _targets(self, package):
+        root = Path(__file__).resolve().parents[1] / 'src/wam_regtest' / package
+        found = []
+        for path in sorted(root.rglob('*.py')):
+            tree = ast.parse(path.read_text())
+            for node in ast.walk(tree):
+                for target in _imported_targets(node, package):
+                    found.append((path.name, target))
+        return found
+
+    def test_domain_and_application_do_not_import_qt_or_qualification(self):
+        for package in ('domain', 'application'):
+            for filename, target in self._targets(package):
+                self.assertFalse(target == 'PySide6' or target.startswith('PySide6.'),
+                                 '%s/%s imports %s' % (package, filename, target))
+                stem = target[len('wam_regtest.'):] if target.startswith('wam_regtest.') else target
+                self.assertFalse(_is_qualification(stem) or _is_qualification(target),
+                                 '%s/%s imports qualification %s' % (package, filename, target))
+
+    def test_domain_does_not_import_application_or_presentation(self):
+        for filename, target in self._targets('domain'):
+            stem = target[len('wam_regtest.'):] if target.startswith('wam_regtest.') else target
+            head = stem.split('.', 1)[0]
+            self.assertNotEqual(head, 'application', '%s imports %s' % (filename, target))
+            self.assertNotIn(head, _PRESENTATION, '%s imports %s' % (filename, target))
+            self.assertFalse(head.endswith('_gui'), '%s imports %s' % (filename, target))
 
 
 class ExistingMarkersUnchanged(unittest.TestCase):
