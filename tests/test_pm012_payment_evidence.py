@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import types
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -36,6 +37,38 @@ COMMITMENT = 'cd' * 32
 PRESERVED = 'Q06_PAYMENT_EVIDENCE_PRESERVED_NO_RETRY'
 INVALID = 'Q06_PAYMENT_EVIDENCE_INVALID'
 DIRECTORY_NAME = 'q06-payment-evidence'
+
+
+def _references(root, secret):
+    """True when secret is reachable from root through instance state.
+
+    Callables and modules are not entered. Their globals would make every
+    module-level object look reachable.
+    """
+    seen = set()
+    stack = [root]
+    while stack:
+        obj = stack.pop()
+        marker = id(obj)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        if obj is secret:
+            return True
+        if isinstance(obj, (str, bytes, int, float, bool, type(None),
+                            type, types.ModuleType, types.FunctionType,
+                            types.MethodType, types.BuiltinFunctionType)):
+            continue
+        if isinstance(obj, dict):
+            stack.extend(obj.keys())
+            stack.extend(obj.values())
+        elif isinstance(obj, (list, tuple, set, frozenset)):
+            stack.extend(obj)
+        else:
+            payload = getattr(obj, '__dict__', None)
+            if isinstance(payload, dict):
+                stack.append(payload)
+    return False
 
 
 class _Chain:
@@ -280,3 +313,48 @@ class PaymentEvidenceCharacterization(unittest.TestCase):
         self.assertTrue(directory.is_dir())
         self.assertEqual(list(directory.iterdir()), [])
         self.assertIs(session._signed, self.signed)
+
+    def _lockable(self, session):
+        session._rpc_client = None
+        session.scanner = SimpleNamespace(close=lambda: None)
+        session.vault = SimpleNamespace(
+            anchor=SimpleNamespace(read=lambda: (1, 'aa')), _expected=(1, 'aa'))
+        session._q06_guard = SimpleNamespace(
+            check=lambda: None, remove_owned=lambda: None, close=lambda: None)
+        session.runtime = self.path / 'runtime.sqlite'
+        session._q06_uncertain = False
+        session.faulted = False
+        return session
+
+    def test_lock_leaves_no_reachable_password_reference(self):
+        session = self._lockable(self._session())
+        session._retain_signed_payment('signed')
+        self.assertTrue(_references(session, PASSWORD))
+        session.lock()
+        self.assertIsNone(session._password)
+        self.assertIsNone(session.ring)
+        self.assertFalse(hasattr(session._evidence, 'password'))
+        self.assertFalse(_references(session, PASSWORD))
+
+    def test_evidence_after_lock_fails_closed_without_sealing(self):
+        from wam_regtest.bip39_spend_session import Q06SpendSessionError
+        from wam_sp.keystore import seal, unseal
+        session = self._lockable(self._session())
+        session._retain_signed_payment('signed')
+        session.lock()
+        with patch('wam_sp.keystore.unseal', wraps=unseal) as opened:
+            with self.assertRaises(ValueError) as read_error:
+                session._read_payment_evidence(self.token, 'signed')
+        self.assertEqual(read_error.exception.args, ('PASSPHRASE_LENGTH',))
+        opened.assert_not_called()
+        self.assertFalse(session.faulted)
+        self.assertFalse(session._q06_uncertain)
+        with patch('wam_sp.keystore.seal', wraps=seal) as sealed:
+            with self.assertRaises(Q06SpendSessionError) as write_error:
+                session._retain_signed_payment('signed')
+        self.assertEqual(write_error.exception.args, (PRESERVED,))
+        self.assertIsNone(write_error.exception.__cause__)
+        sealed.assert_not_called()
+        self.assertTrue(session.faulted)
+        self.assertTrue(session._q06_uncertain)
+        self.assertFalse(_references(session, PASSWORD))

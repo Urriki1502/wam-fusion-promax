@@ -96,7 +96,7 @@ class Q06OwnedSpendSession(WalletSession):
         self._q06_guard = guard
         self._q06_uncertain = False
         self._q06_pending_confirm = None
-        self._evidence = PaymentEvidenceStore(owner.directory, password, custody)
+        self._evidence = PaymentEvidenceStore(owner.directory, custody)
 
     @property
     def payment_review(self):
@@ -129,18 +129,11 @@ class Q06OwnedSpendSession(WalletSession):
             raise WalletSessionError("Q06_SPEND_ANCHORED_SAVE_DENIED") from None
 
     def _evidence_store(self):
-        """The composed store, with the password this call will seal under.
-
-        A fixture built with object.__new__ has no store until the first
-        evidence call. The password is copied at the call, not frozen at
-        open, because lock() clears self._password.
-        """
+        """The composed store. An object.__new__ fixture gets one on first use."""
         store = getattr(self, '_evidence', None)
         if store is None:
-            store = PaymentEvidenceStore(self._q06_owner.directory, self._password, custody)
+            store = PaymentEvidenceStore(self._q06_owner.directory, custody)
             self._evidence = store
-        else:
-            store.password = self._password
         return store
 
     def _retain_signed_payment(self, stage, *, signed=None, review=None, token=None, txid=None):
@@ -158,6 +151,7 @@ class Q06OwnedSpendSession(WalletSession):
             token = self._prepared.proposal.token if token is None else token
             self._evidence_store().write(
                 stage, signed=signed, review=review, token=token, txid=txid,
+                password=self._password,
                 owner_binding=lambda: _owner_binding(self._q06_owner),
                 account_id=lambda: self.ring.public_metadata()['account_id'])
         except Exception:
@@ -190,7 +184,7 @@ class Q06OwnedSpendSession(WalletSession):
 
     def _read_payment_evidence(self, token, stage):
         return self._evidence_store().read(
-            token, stage,
+            token, stage, password=self._password,
             owner_binding=lambda: _owner_binding(self._q06_owner),
             account_id=lambda: self.ring.public_metadata()['account_id'])
 
