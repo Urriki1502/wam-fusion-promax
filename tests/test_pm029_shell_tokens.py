@@ -153,7 +153,9 @@ class SidebarBrandFit(unittest.TestCase):
 
     def test_tab_chain_includes_buttons_checks_and_combos(self):
         from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QCheckBox, QComboBox, QPushButton, QScrollArea, QVBoxLayout, QWidget
+        from PySide6.QtWidgets import (
+            QApplication, QCheckBox, QComboBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+        )
         root = QWidget()
         self.addCleanup(root.deleteLater)
         scroll = QScrollArea(root)
@@ -173,6 +175,9 @@ class SidebarBrandFit(unittest.TestCase):
         self.assertEqual(box.focusPolicy(), Qt.FocusPolicy.StrongFocus)
         self.assertEqual(combo.focusPolicy(), Qt.FocusPolicy.StrongFocus)
         self.assertEqual(scroll.focusPolicy(), Qt.FocusPolicy.NoFocus)
+        self.assertEqual(
+            QApplication.styleHints().tabFocusBehavior(),
+            Qt.TabFocusBehavior.TabFocusAllControls)
 
     def test_brand_breaks_on_words_in_every_language(self):
         from PySide6.QtWidgets import QLabel

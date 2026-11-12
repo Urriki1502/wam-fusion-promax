@@ -146,17 +146,22 @@ def enable_shell_tab_focus(root):
     the controls inside them.
     """
     from PySide6.QtWidgets import (
-        QAbstractScrollArea, QCheckBox, QComboBox, QPushButton,
+        QAbstractScrollArea, QApplication, QCheckBox, QComboBox, QPushButton,
     )
+    # Changing a scroll area's policy can re-polish its children back to
+    # TabFocus, which Cocoa then skips. Set the chain membership last.
+    hints = QApplication.styleHints()
+    if hasattr(hints, 'setTabFocusBehavior'):
+        hints.setTabFocusBehavior(Qt.TabFocusBehavior.TabFocusAllControls)
+    for area in root.findChildren(QAbstractScrollArea):
+        if area.objectName() == 'FusionScroll':
+            area.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     for widget in root.findChildren(QPushButton):
         widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
     for widget in root.findChildren(QCheckBox):
         widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
     for widget in root.findChildren(QComboBox):
         widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-    for area in root.findChildren(QAbstractScrollArea):
-        if area.objectName() == 'FusionScroll':
-            area.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
 
 def direction_tone(colors, net):
@@ -293,6 +298,11 @@ def fusion_stylesheet(mode):
 
 class StateSwitch(QCheckBox):
     """Two-position visual switch retaining Qt checkbox focus/key semantics."""
+    def __init__(self, text=''):
+        super().__init__(text)
+        # Cocoa's default Tab cycle skips a checkbox left at TabFocus.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
     def sizeHint(self):
         return QSize(self.fontMetrics().horizontalAdvance(self.text()) + 68, 34)
 
