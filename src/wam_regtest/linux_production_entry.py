@@ -55,6 +55,8 @@ def _desktop(core, source):
     from wam_regtest.linux_runtime import configure
     configure(core, approved.strip(), Path(endpoint), authorized=True)
     from wam_regtest.managed_onboarding import launch
+    from wam_regtest.ui_settings import use_native_store
+    use_native_store()  # the shipped app keeps the owner's real UI preferences
     return launch(core, source)
 
 

@@ -34,6 +34,8 @@ def main():
         if sys.argv[1:] == ['--check-bundle']:
             return 0
         from wam_regtest.managed_onboarding import launch
+        from wam_regtest.ui_settings import use_native_store
+        use_native_store()  # the shipped app keeps the owner's real UI preferences
         return launch(core, source)
     except Exception:
         # No exception text, path, phrase or arbitrary log payload may escape.
