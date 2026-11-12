@@ -1,7 +1,9 @@
 """UI language adapter over the presentation catalog.
 
-System default follows the Qt locale: vi, ja and zh prefixes select those
-catalogs, and every other prefix is English. An explicit ui_language value in
+System default follows the Qt locale: vi and ja prefixes select those
+catalogs. Simplified Chinese is selected only for zh, zh-Hans, zh-CN, zh-SG,
+and zh_Hans* names; Traditional and other Chinese locales use English. An
+explicit ui_language value in
 QSettings("WAM Privacy Wallet", "REGTEST") wins. This does not select the
 BIP39 wordlist language.
 """

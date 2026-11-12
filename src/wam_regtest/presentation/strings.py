@@ -20,10 +20,15 @@ CATALOG = {
 }
 
 
-def resolve_language(choice, system_name=''):
-    """Explicit choice, then system-locale prefix, then English.
+_SIMPLIFIED_CHINESE = frozenset({'zh', 'zh_hans', 'zh_cn', 'zh_sg'})
 
-    ``zh`` prefixes select Simplified Chinese, the only Chinese catalog.
+
+def resolve_language(choice, system_name=''):
+    """Explicit choice, then a supported system locale, then English.
+
+    Simplified Chinese is selected for ``zh``, ``zh-Hans``, ``zh-CN``,
+    ``zh-SG``, and any ``zh_Hans*`` name. Traditional and other Chinese
+    locales fall back to English.
     """
     if choice in SUPPORTED_LANGUAGES:
         return choice
@@ -32,7 +37,7 @@ def resolve_language(choice, system_name=''):
         return 'vi'
     if name.startswith('ja'):
         return 'ja'
-    if name.startswith('zh'):
+    if name in _SIMPLIFIED_CHINESE or name.startswith('zh_hans'):
         return 'zh-Hans'
     return 'en'
 

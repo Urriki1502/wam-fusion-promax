@@ -161,7 +161,9 @@ class CatalogTests(unittest.TestCase):
         from types import SimpleNamespace
         from wam_regtest import bip39_locale
         for name, language in (('vi_VN', 'vi'), ('VI_vn', 'vi'), ('en_US', 'en'),
-                               ('ja_JP', 'ja'), ('zh_CN', 'zh-Hans'), ('zh_TW', 'zh-Hans'),
+                               ('ja_JP', 'ja'), ('zh_CN', 'zh-Hans'), ('zh_Hans_CN', 'zh-Hans'),
+                               ('zh_SG', 'zh-Hans'), ('zh', 'zh-Hans'), ('zh_TW', 'en'),
+                               ('zh_HK', 'en'), ('zh_MO', 'en'), ('zh_Hant', 'en'),
                                ('C', 'en'), ('fr_FR', 'en')):
             with patch.object(bip39_locale, 'stored_language', return_value='system'), \
                     patch.object(bip39_locale.QLocale, 'system',

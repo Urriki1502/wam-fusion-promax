@@ -61,8 +61,12 @@ class LanguageCatalogTests(unittest.TestCase):
         self.assertEqual(resolve_language('zh-Hans', 'en_US'), 'zh-Hans')
         self.assertEqual(resolve_language('vi', 'zh_CN'), 'vi')
         self.assertEqual(resolve_language('system', 'ja_JP'), 'ja')
-        self.assertEqual(resolve_language('system', 'zh_TW'), 'zh-Hans')
-        self.assertEqual(resolve_language('system', 'zh_CN'), 'zh-Hans')
+        for name in ('zh', 'zh_Hans', 'zh-Hans', 'zh_CN', 'zh-CN', 'zh_SG',
+                     'zh-SG', 'zh_Hans_CN', 'zh-Hans-SG'):
+            self.assertEqual(resolve_language('system', name), 'zh-Hans', name)
+        for name in ('zh_Hant', 'zh-Hant', 'zh_TW', 'zh-TW', 'zh_HK', 'zh-HK',
+                     'zh_MO', 'zh-MO', 'zh_Hant_TW', 'zh-Hant-HK'):
+            self.assertEqual(resolve_language('system', name), 'en', name)
         self.assertEqual(resolve_language('system', 'vi_VN'), 'vi')
         self.assertEqual(resolve_language('system', 'fr_FR'), 'en')
         self.assertEqual(resolve_language('system', 'C'), 'en')
@@ -70,6 +74,15 @@ class LanguageCatalogTests(unittest.TestCase):
         self.assertEqual(resolve_language('nope', 'ja_JP'), 'ja')
         self.assertEqual(text('fusion.overview', 'ja'), '概要')
         self.assertEqual(text('fusion.overview', 'de'), 'Overview')
+
+    def test_automatic_wording_is_not_by_oneself(self):
+        for key, english in CATALOG['en'].items():
+            lowered = english.lower()
+            if 'automatic' not in lowered and 'auto-' not in lowered:
+                continue
+            self.assertIn('tự động', CATALOG['vi'][key].lower(), key)
+            self.assertIn('自動', CATALOG['ja'][key], key)
+            self.assertIn('自动', CATALOG['zh-Hans'][key], key)
 
     def test_persisted_choice_round_trip_uses_an_isolated_file(self):
         from PySide6.QtCore import QSettings
