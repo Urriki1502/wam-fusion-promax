@@ -133,22 +133,100 @@ class SharedAndFusion(unittest.TestCase):
                 })
 
 
+def _imported_names(tree, package):
+    """Fully qualified import targets of a module, for `import`, `from` and relatives."""
+    names = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                base = package
+                for _ in range(node.level - 1):
+                    base = base.rpartition('.')[0]
+                stem = base + ('.' + node.module if node.module else '')
+            else:
+                stem = node.module or ''
+            names.append(stem)
+            names.extend(stem + '.' + alias.name for alias in node.names)
+    return names
+
+
 class PresentationLayerRule(unittest.TestCase):
-    def test_action_state_is_pure_and_lower_layers_never_import_presentation(self):
-        pure = ast.parse((ROOT / 'src/wam_regtest/presentation/action_state.py').read_text())
-        for node in ast.walk(pure):
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                names = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or '']
-                for name in names:
-                    self.assertFalse(name.startswith(('PySide6', 'wam_regtest')) or
-                                     (isinstance(node, ast.ImportFrom) and node.level), name)
-        for layer in ('foundation', 'domain', 'application'):
+    """D-PM005-2: covers `import` statements, relative imports and __init__.py."""
+
+    def test_pure_presentation_modules_import_nothing(self):
+        for name in ('__init__.py', 'action_state.py'):
+            tree = ast.parse((ROOT / 'src/wam_regtest/presentation' / name).read_text())
+            for target in _imported_names(tree, 'wam_regtest.presentation'):
+                self.assertFalse(target.startswith(('PySide6', 'wam_regtest')), (name, target))
+
+    def test_lower_layers_never_import_presentation(self):
+        for layer in ('foundation', 'infrastructure', 'domain', 'application'):
             for path in (ROOT / 'src/wam_regtest' / layer).rglob('*.py'):
-                text = path.read_text()
-                self.assertNotIn('presentation', [
-                    part for node in ast.walk(ast.parse(text))
-                    if isinstance(node, ast.ImportFrom)
-                    for part in (node.module or '').split('.')], path)
+                package = 'wam_regtest.' + layer
+                for target in _imported_names(ast.parse(path.read_text()), package):
+                    self.assertFalse(target == 'wam_regtest.presentation'
+                                     or target.startswith('wam_regtest.presentation.'),
+                                     (path.name, target))
+
+
+class FusionWindowSingleWriter(unittest.TestCase):
+    """D-PM005-1: the REAL Fusion window, not the pure function, against an
+    oracle transcribed from bip39_fusion_gui._set_actions at 9687855."""
+
+    def setUp(self):
+        import os
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6.QtWidgets import QApplication
+        from types import SimpleNamespace
+        from wam_regtest.bip39_fusion_gui import Bip39FusionWindow
+        from wam_regtest.wallet_executor import ExecutorState
+        self.app = QApplication.instance() or QApplication([])
+        self.owner = SimpleNamespace(state=ExecutorState(locked=False, faulted=False, core_alive=True),
+                                     busy=False, closed=False)
+        self.window = Bip39FusionWindow(self.owner)
+        self.window._poll.stop()
+
+    def tearDown(self):
+        self.window._poll.stop()
+        self.window.deleteLater()
+        self.app.processEvents()
+
+    def _oracle_go_send(self, w, shared_connected):
+        state = w.executor.state
+        ready = w._ready and not state.faulted and not state.locked
+        idle = w._worker is None and not w.executor.busy and not w._delivering_result
+        return bool(ready and idle and w._spend_enabled and state.core_alive is True
+                    and not state.reauthentication_required
+                    and (w.shared_profile is None or shared_connected))
+
+    def test_go_send_has_one_writer_across_flags(self):
+        import itertools
+        from wam_regtest.wallet_executor import ExecutorState
+        w = self.window
+        for ready, spend, busy, delivering, locked, reauth, faulted, core in itertools.product(
+                (False, True), (False, True), (False, True), (False, True), (False, True),
+                (False, True), (False, True), (True, False, None)):
+            w._ready, w._spend_enabled, w._delivering_result = ready, spend, delivering
+            w.executor.busy = busy
+            w.executor.state = ExecutorState(locked=locked, faulted=faulted,
+                                             reauthentication_required=reauth, core_alive=core)
+            w._set_actions()
+            self.assertEqual(w.overview.go_send.isEnabled(), self._oracle_go_send(w, True),
+                             (ready, spend, busy, delivering, locked, reauth, faulted, core))
+
+    def test_render_verified_no_longer_writes_go_send(self):
+        source = (ROOT / 'src/wam_regtest/bip39_fusion_gui.py').read_text()
+        tree = ast.parse(source)
+        writers = []
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == 'setEnabled'
+                    and isinstance(node.func.value, ast.Attribute)
+                    and node.func.value.attr == 'go_send'):
+                writers.append(node.lineno)
+        self.assertEqual(len(writers), 1, writers)
 
 
 if __name__ == '__main__':

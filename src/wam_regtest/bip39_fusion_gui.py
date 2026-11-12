@@ -892,11 +892,9 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self.status.setText("Q06_FUSION_PRESENTATION_DENIED")
             return
         self._last_verified = snap
-        self.overview.go_send.setEnabled(self._spend_enabled and
-                                         not self.executor.state.locked and
-                                         not self.executor.state.reauthentication_required and
-                                         self.executor.state.core_alive is True and
-                                         not self.executor.state.faulted)
+        # go_send availability has ONE writer: _set_actions via
+        # presentation.action_state.fusion_actions (every caller of this
+        # method reaches _set_actions before _on_ready returns).
 
     def _clear_visuals(self):
         self._last_verified = None
