@@ -194,7 +194,7 @@ class FusionLanguageWindowTests(unittest.TestCase):
             self.assertEqual(window.navigation.item(0).text(), 'Overview')
             window.language.setCurrentIndex(window.language.findData('ja'))
             self.assertEqual(window.navigation.item(0).text(), 'Overview')
-            for language in ('vi', 'ja', 'zh-Hans'):
+            for language in ('vi', 'ja', 'zh-Hans', 'ko', 'id'):
                 with self.subTest(language=language):
                     window.language.setCurrentIndex(window.language.findData(language))
                     rebuilt = self._window()

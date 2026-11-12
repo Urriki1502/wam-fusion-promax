@@ -139,7 +139,7 @@ class MainPathCatalogTests(unittest.TestCase):
 
     def test_no_untranslated_prose_remains(self):
         # Complete allowlist for prose-shaped non-copy constants in these modules.
-        allowed = {'Tiếng Việt', ' (V1-NET)'}
+        allowed = {'Tiếng Việt', 'Bahasa Indonesia', ' (V1-NET)'}
         for module in FIXTURE['modules']:
             tree = ast.parse((ROOT / 'src/wam_regtest' / (module + '.py')).read_text())
             parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}

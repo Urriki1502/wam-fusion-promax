@@ -383,12 +383,14 @@ class Bip39FusionWindow(Bip39TrialWindow):
         for caption, code in (
                 (t("settings.language_system"), "system"),
                 ("English", "en"),
+                ("简体中文", "zh-Hans"),
                 ("Tiếng Việt", "vi"),
-                ("日本語", "ja"),
-                ("简体中文", "zh-Hans")):
+                ("한국어", "ko"),
+                ("Bahasa Indonesia", "id"),
+                ("日本語", "ja")):
             self.language.addItem(caption, code)
         language_choice = ui_settings().value("ui_language", "system")
-        if language_choice not in ("system", "en", "vi", "ja", "zh-Hans"):
+        if language_choice not in ("system", "en", "zh-Hans", "vi", "ko", "id", "ja"):
             language_choice = "system"
         self.language.blockSignals(True)
         language_index = self.language.findData(language_choice)
