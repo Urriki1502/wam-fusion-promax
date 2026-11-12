@@ -352,9 +352,8 @@ class WalletSession:
                         state_counts=tuple(sorted(
                             (row[0],row[1]) for row in wallet.db.execute(
                                 'SELECT state,count(*) FROM reservations GROUP BY state')))
-                        if (any(type(s) is not str or type(n) is not int or n<1 for s,n in state_counts)
-                                or sum(n for _,n in state_counts)!=reservation_count
-                                or tuple(s for s,_ in state_counts)!=tuple(reservation_states)):
+                        from wam_regtest.domain.payment_state import state_counts_match
+                        if not state_counts_match(state_counts,reservation_count,reservation_states):
                             raise ManagedWalletError('MANAGED_WALLET_RESERVATION_INCONSISTENT')
                     except (ManagedWalletError,sqlite3.Error):
                         raise WalletSessionError('WALLET_RESERVATION_INCONSISTENT') from None

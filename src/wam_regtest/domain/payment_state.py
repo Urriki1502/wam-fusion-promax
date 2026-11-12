@@ -54,6 +54,23 @@ def mark_reservations_uncertain_before_submission(db, token, *, signed_rows_only
 ATTENTION_STATES = frozenset((DRAFT, SIGNED, UNCERTAIN))
 
 
+def state_counts_match(state_counts, reservation_count, reservation_states):
+    """True only if per-state counts are well-formed and agree with the fingerprint.
+
+    ``state_counts`` is ((state, rows), ...) sorted by state; every rows value is a
+    positive int, the rows sum to ``reservation_count``, and the states are exactly
+    ``reservation_states`` (the fingerprint's sorted distinct states).
+    """
+    if type(state_counts) is not tuple or type(reservation_count) is not int:
+        return False
+    for entry in state_counts:
+        if (type(entry) is not tuple or len(entry) != 2 or type(entry[0]) is not str
+                or type(entry[1]) is not int or entry[1] < 1):
+            return False
+    return (sum(rows for _, rows in state_counts) == reservation_count
+            and tuple(state for state, _ in state_counts) == tuple(reservation_states))
+
+
 def reserved_rows_needing_attention(reservation_state_counts):
     """Rows that still lock coins for the owner (W-TX-03b): every row not 'broadcast'."""
     return sum(rows for state, rows in reservation_state_counts if state != BROADCAST)

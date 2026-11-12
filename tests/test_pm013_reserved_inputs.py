@@ -42,12 +42,42 @@ class ReservedRows(unittest.TestCase):
 
 
 class SessionCountsAreVerified(unittest.TestCase):
-    def test_snapshot_query_cross_checks_counts_against_the_fingerprint(self):
+    """Codex PEER-053 nit 1: execute the cross-check, not just read its source."""
+
+    def test_counts_must_agree_with_the_fingerprint(self):
+        from wam_regtest.domain.payment_state import state_counts_match as ok
+        self.assertTrue(ok((), 0, []))
+        self.assertTrue(ok((('broadcast', 2), ('signed', 1)), 3, ['broadcast', 'signed']))
+        self.assertFalse(ok((('broadcast', 2),), 3, ['broadcast']))              # total mismatch
+        self.assertFalse(ok((('broadcast', 2),), 2, ['broadcast', 'signed']))   # states mismatch
+        self.assertFalse(ok((('signed', 1), ('broadcast', 2)), 3, ['broadcast', 'signed']))  # order
+        self.assertFalse(ok((('broadcast', 0),), 0, ['broadcast']))             # non-positive
+        self.assertFalse(ok((('broadcast', True),), 1, ['broadcast']))          # bool is not int
+        self.assertFalse(ok(((b'broadcast', 1),), 1, ['broadcast']))           # bytes state
+        self.assertFalse(ok([('broadcast', 1)], 1, ['broadcast']))              # not a tuple
+        self.assertFalse(ok((('broadcast', 1, 'x'),), 1, ['broadcast']))        # malformed entry
+        self.assertFalse(ok((('broadcast', 1),), None, ['broadcast']))          # bad count type
+
+    def test_snapshot_refuses_inconsistent_counts_through_the_real_query(self):
+        """The real SQL on an in-memory reservations table, then the same check."""
+        import sqlite3
+        from wam_regtest.domain.payment_state import state_counts_match
+        db = sqlite3.connect(':memory:')
+        db.execute('CREATE TABLE reservations(txid TEXT, vout INT, token TEXT, state TEXT, created INT)')
+        db.executemany('INSERT INTO reservations VALUES (?,?,?,?,?)',
+                       [('a', 0, 't1', 'broadcast', 1), ('b', 1, 't1', 'broadcast', 1),
+                        ('c', 0, 't2', 'signed', 2)])
+        counts = tuple(sorted((r[0], r[1]) for r in db.execute(
+            'SELECT state,count(*) FROM reservations GROUP BY state')))
+        self.assertEqual(counts, (('broadcast', 2), ('signed', 1)))
+        self.assertTrue(state_counts_match(counts, 3, ['broadcast', 'signed']))
+        self.assertFalse(state_counts_match(counts, 2, ['broadcast', 'signed']))
+
+    def test_wallet_session_uses_the_domain_check_and_the_same_query(self):
         from pathlib import Path
         text = (Path(__file__).resolve().parents[1] / 'src/wam_regtest/wallet_session.py').read_text()
         self.assertIn("SELECT state,count(*) FROM reservations GROUP BY state", text)
-        self.assertIn("sum(n for _,n in state_counts)!=reservation_count", text)
-        self.assertIn("tuple(s for s,_ in state_counts)!=tuple(reservation_states)", text)
+        self.assertIn("state_counts_match(state_counts,reservation_count,reservation_states)", text)
 
 
 if __name__ == '__main__':

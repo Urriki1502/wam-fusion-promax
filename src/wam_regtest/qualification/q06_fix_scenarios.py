@@ -590,7 +590,8 @@ def scenario_unconfirmed_restart(app, adapter, core, source, report):
                                or reservation_warning(after)
                                or displayed_reserved_inputs(after) != 0
                                or "anchored transaction reservations exist"
-                               in window.status.text().lower())
+                               in window.status.text().lower()
+                               or "reserved input" in window.overview.fund_details.text().lower())
         _note(report, "s1", no_stale_reservation_display_after_confirm=not stale_after_confirm)
         if stale_after_confirm:
             raise ValueError("Q06_FIX_S1_STALE_RESERVATION_DISPLAY")
