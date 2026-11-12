@@ -8,10 +8,10 @@ not a painted mockup or a separate demo account.
 import os
 import re
 from PySide6.QtCore import Qt, QSize, QTimer
-from PySide6.QtGui import QFontDatabase, QIcon, QPixmap
+from PySide6.QtGui import QFontDatabase, QIcon, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QFrame, QLabel, QLineEdit,
-    QListWidget, QMessageBox, QDialog, QToolButton,
+    QListWidget, QMenu, QMessageBox, QDialog, QToolButton,
     QCheckBox, QComboBox, QApplication, QSizePolicy,
 )
 
@@ -53,12 +53,69 @@ def displayed_reserved_inputs(result):
 
 
 class _WrappingStatusLabel(QLabel):
+    """Status text that wraps long tokens and copies the exact characters.
+
+    QLabel word wrap does not break an unbroken identifier, and QLabel has no
+    wrap-anywhere option. A read-only editor would stop matching QLabel#FusionMuted.
+    U+200B is only a line-break opportunity. Copy publishes the selection
+    without it; the tooltip keeps the exact message.
+    """
+
+    def __init__(self, text=""):
+        super().__init__(text)
+        # Drag selection and the Copy menu exist only with this flag. These
+        # two labels are constructed directly, not via label(..., selectable=True).
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+
     def setText(self, text):
-        # QLabel WordWrap does not break long identifiers. Optional line breaks
-        # affect presentation only; retain the exact message in the tooltip.
         self.setToolTip(text)
         super().setText(re.sub(r"\S{33,}", lambda match: "\u200b".join(
             match[0][i:i + 24] for i in range(0, len(match[0]), 24)), text))
+
+    def _copy_selection(self, *_args):
+        if not self.hasSelectedText():
+            return
+        QApplication.clipboard().setText(self.selectedText().replace("\u200b", ""))
+
+    def _select_all(self, *_args):
+        self.setSelection(0, len(self.text()))
+
+    def keyPressEvent(self, event):
+        if event.matches(QKeySequence.StandardKey.Copy):
+            self._copy_selection()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def contextMenuEvent(self, event):
+        # QLineEdit's public menu supplies Qt's translated Copy and Select All.
+        # Those labels are not application copy. Copy is rebound so the
+        # clipboard receives the selection without the wrapping marks.
+        field = QLineEdit(self)
+        field.hide()
+        field.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        field.setFixedSize(0, 0)
+        field.setText(self.text())
+        # The menu stays owned by this hidden field so its translated actions
+        # live until the menu closes. Reparenting it cancels popup tracking.
+        menu = field.createStandardContextMenu()
+        menu.aboutToHide.connect(field.deleteLater)
+        by_name = {action.objectName(): action for action in menu.actions()}
+        copy = by_name["edit-copy"]
+        select_all = by_name["select-all"]
+        for action in list(menu.actions()):
+            menu.removeAction(action)
+        menu.addAction(copy)
+        menu.addSeparator()
+        menu.addAction(select_all)
+        copy.triggered.disconnect()
+        copy.triggered.connect(self._copy_selection)
+        copy.setEnabled(self.hasSelectedText())
+        select_all.triggered.disconnect()
+        select_all.triggered.connect(self._select_all)
+        select_all.setEnabled(bool(self.text()))
+        menu.popup(event.globalPos())
+        event.accept()
 
 
 class _AdvancedControlsToggle(QToolButton):
