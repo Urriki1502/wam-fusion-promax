@@ -67,6 +67,11 @@ def main() -> int:
         if sys.argv[1:] == ["--ci-ui-layout"]:
             from wam_regtest.ui_layout_probe import run
             return run()
+        if sys.argv[1:] == ["--ci-ui-gallery"]:
+            # Presentation fixture only: renders screens to ./ui-gallery for
+            # visual review. Starts no backend, Core or wallet operation.
+            from wam_regtest.qualification.ui_gallery import run as gallery
+            return gallery()
         from wam_regtest.qualification.real_core_smoke import smoke_real_core
         # Hidden CI mode: actual signed Core + genuine BIP352 + Qt screen.
         cocoa_mode = sys.argv[1:] == ["--ci-real-core-wallet-cocoa"]
