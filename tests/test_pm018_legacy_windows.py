@@ -237,7 +237,7 @@ class LegacyCatalogTests(unittest.TestCase):
                 'vi': 'Không bao giờ thử lại trong im lặng.',
                 'ja': '通知なしに再試行されることは決してありません。',
                 'zh-Hans': '切勿静默重试。',
-                'ko': '조용히 다시 시도하지 않습니다.',
+                'ko': '알림 없이 절대 다시 시도하지 않습니다.',
                 'id': 'Tidak pernah mencoba ulang secara diam-diam.',
             },
             'operational.linux_experimental': {
