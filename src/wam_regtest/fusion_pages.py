@@ -4,7 +4,7 @@ from .bip39_locale import t as ui_text
 from PySide6.QtCore import Qt, Signal, QRectF, QTimer
 from PySide6.QtGui import QColor,QPainter,QFont,QFontDatabase
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QLineEdit,QComboBox,QCheckBox,QTableWidget,QTableWidgetItem,QHeaderView,QApplication,QDialog,QDialogButtonBox,QFrame
-from .fusion_ui import label,panel,page,action,ResponsiveRow,vector_icon,fusion_palette,activity_by_block,grow_with_wrapped_text
+from .fusion_ui import label,panel,page,action,ResponsiveRow,AdaptiveButtonRow,vector_icon,fusion_palette,activity_by_block,grow_with_wrapped_text
 from .wallet_read import format_wam
 
 
@@ -66,12 +66,31 @@ class HistoryPage(QWidget):
         super().__init__();self.setObjectName('FusionInner');self.rows=();self.mode='dark';self._offset=0;self._total=0;root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
         scroll,layout=page(ui_text('pages.history'),ui_text('pages.history_subtitle'),ui_text('pages.on_chain_history'));root.addWidget(scroll)
         card,cl=panel();toolbar=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText(ui_text('pages.search_placeholder'));self.search.setClearButtonEnabled(True);self.search.setAccessibleName(ui_text('pages.search_confirmed_transactions'));self.filter=QComboBox();self.filter.addItems((ui_text('pages.all_activity'),ui_text('pages.credits'),ui_text('pages.debits')));toolbar.addWidget(self.search,1);toolbar.addWidget(self.filter);cl.addLayout(toolbar)
-        self.table=QTableWidget(0,6);self.table.setObjectName('FusionActivityTable');self.table.setHorizontalHeaderLabels((ui_text('pages.direction'),ui_text('pages.transaction'),ui_text('pages.block'),ui_text('pages.confirmed'),ui_text('pages.credit_wam'),ui_text('pages.debit_wam')));self.table.verticalHeader().hide();self.table.setShowGrid(False);self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows);self.table.horizontalHeader().setSectionResizeMode(1,QHeaderView.ResizeMode.Stretch);self.table.setMinimumHeight(220);self.table.setColumnWidth(0,130);self.table.setColumnWidth(2,65);self.table.setColumnWidth(3,90);self.table.setColumnWidth(4,145);self.table.setColumnWidth(5,145);cl.addWidget(self.table)
-        nav=QHBoxLayout();self.newer=action(ui_text('pages.newer_confirmed_history'),'history');self.older=action(ui_text('pages.older_confirmed_history'),'history');self.newer.setEnabled(False);self.older.setEnabled(False);self.newer.clicked.connect(self._newer);self.older.clicked.connect(self._older);nav.addWidget(self.newer);nav.addWidget(self.older);nav.addStretch();cl.addLayout(nav)
+        self.table=QTableWidget(0,6);self.table.setObjectName('FusionActivityTable');self.table.setHorizontalHeaderLabels((ui_text('pages.direction'),ui_text('pages.transaction'),ui_text('pages.block'),ui_text('pages.confirmed'),ui_text('pages.credit_wam'),ui_text('pages.debit_wam')));self.table.verticalHeader().hide();self.table.setShowGrid(False);self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows);self.table.setMinimumHeight(220);self._size_columns();cl.addWidget(self.table);self.table.viewport().installEventFilter(self)
+        self.newer=action(ui_text('pages.newer_confirmed_history'),'history');self.older=action(ui_text('pages.older_confirmed_history'),'history');self.newer.setEnabled(False);self.older.setEnabled(False);self.newer.clicked.connect(self._newer);self.older.clicked.connect(self._older);cl.addWidget(AdaptiveButtonRow(self.newer,self.older))
         self.scope=label('');cl.addWidget(self.scope)
         self.empty=label(ui_text('pages.history_empty'));cl.addWidget(self.empty);layout.addWidget(card)
         detail,dl=panel(ui_text('pages.transaction_details'),ui_text('pages.select_row'));self.detail_id=label(ui_text('pages.no_transaction_selected'),'ReceiveCode',True);dl.addWidget(self.detail_id);self.detail_values=label('');dl.addWidget(self.detail_values);self.copy_button=action(ui_text('pages.copy_full_transaction_id'),'copy');self.copy_button.setEnabled(False);self.copy_button.clicked.connect(self.copy_txid);dl.addWidget(self.copy_button);layout.addWidget(detail);layout.addStretch()
         self.table.itemSelectionChanged.connect(self.show_details);self.search.textChanged.connect(self.apply_filter);self.filter.currentIndexChanged.connect(self.apply_filter)
+    # Narrow windows (R-5): columns size to their content, the transaction
+    # column stretches, and when everything cannot fit, Block and Confirmed
+    # are hidden first (the detail panel always shows both). Amounts and the
+    # direction are never hidden.
+    _NARROW_HIDDEN = (2, 3)
+    def _size_columns(self):
+        header=self.table.horizontalHeader()
+        for column in range(self.table.columnCount()):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch if column==1 else QHeaderView.ResizeMode.ResizeToContents)
+    def _fit_columns(self):
+        header=self.table.horizontalHeader()
+        full=sum(max(header.sectionSizeHint(c),self.table.sizeHintForColumn(c)) for c in range(self.table.columnCount()))
+        narrow=full>self.table.viewport().width()
+        for column in self._NARROW_HIDDEN:
+            if self.table.isColumnHidden(column)!=narrow:self.table.setColumnHidden(column,narrow)
+    def eventFilter(self,watched,event):
+        from PySide6.QtCore import QEvent
+        if watched is self.table.viewport() and event.type()==QEvent.Type.Resize:self._fit_columns()
+        return super().eventFilter(watched,event)
     def render_snapshot(self,snap):
         self.rows=snap.history if snap else ();self.search.clear();self.table.setRowCount(len(self.rows));self.detail_id.setText(ui_text('pages.no_transaction_selected'));self.detail_values.setText('');self.copy_button.setEnabled(False)
         self._offset=snap.history_offset if snap and type(snap.history_offset) is int else 0
@@ -102,7 +121,7 @@ class HistoryPage(QWidget):
                 if j>=2:item.setTextAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
                 self.table.setItem(i,j,item)
             self.table.setRowHeight(i,48)
-        self.empty.setVisible(not self.rows);self.apply_filter()
+        self.empty.setVisible(not self.rows);self.apply_filter();self._fit_columns()
     def set_theme(self,mode):
         self.mode=mode;c=fusion_palette(mode)
         for i,row in enumerate(self.rows):

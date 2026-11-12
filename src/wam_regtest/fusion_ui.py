@@ -9,7 +9,7 @@ from PySide6.QtGui import (
     QPainterPath, QFont, QFontMetrics, QRadialGradient,
 )
 from PySide6.QtWidgets import (
-    QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea,
+    QBoxLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea,
     QVBoxLayout, QWidget, QToolTip, QSizePolicy, QTableWidget, QTableWidgetItem,
     QPlainTextEdit, QCheckBox, QToolButton, QButtonGroup,
 )
@@ -608,6 +608,43 @@ def confirmed_balance_history(snapshot):
     if points[-1][0] != snapshot.height:
         points.append((snapshot.height, snapshot.confirmed_atoms))
     return tuple(points)
+
+
+class AdaptiveButtonRow(QWidget):
+    """Buttons side by side when they fit, stacked when they do not.
+
+    Unlike a plain QHBoxLayout, its minimum width is the widest button, not
+    the sum, so long translations never force a page to scroll sideways."""
+
+    def __init__(self, *buttons, spacing=12):
+        super().__init__()
+        self.setObjectName('FusionTransparent')
+        self._buttons = buttons
+        self._spacing = spacing
+        self._box = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
+        self._box.setContentsMargins(0, 0, 0, 0)
+        self._box.setSpacing(spacing)
+        self._box.setSizeConstraint(QBoxLayout.SizeConstraint.SetNoConstraint)
+        for button in buttons:
+            self._box.addWidget(button, 0, Qt.AlignmentFlag.AlignLeft)
+        self._box.addStretch()
+
+    def _side_by_side_width(self):
+        return (sum(b.sizeHint().width() for b in self._buttons)
+                + self._spacing * max(0, len(self._buttons) - 1))
+
+    def minimumSizeHint(self):
+        widest = max((b.minimumSizeHint().width() for b in self._buttons), default=0)
+        return QSize(widest, self._box.minimumSize().height())
+
+    def resizeEvent(self, event):
+        direction = (QBoxLayout.Direction.LeftToRight
+                     if self.width() >= self._side_by_side_width()
+                     else QBoxLayout.Direction.TopToBottom)
+        if self._box.direction() != direction:
+            self._box.setDirection(direction)
+            self.updateGeometry()
+        super().resizeEvent(event)
 
 
 class ResponsiveRow(QWidget):
