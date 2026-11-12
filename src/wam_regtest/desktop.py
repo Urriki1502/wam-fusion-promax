@@ -22,6 +22,7 @@ from .branding import brand_image
 from .fusion_ui import FusionOverview, fusion_palette, fusion_stylesheet, nav_icon_for, vector_icon, label, action
 from .fusion_pages import ReceivePage, HistoryPage
 from .infrastructure import core_compat
+from .bip39_locale import t
 
 
 _QT_APPLICATION = None
@@ -38,7 +39,7 @@ def qt_application():
         family=next((f for f in preferred if f in families),None)
         if family:_QT_APPLICATION.setFont(QFont(family,11))
         _QT_APPLICATION.setWindowIcon(QIcon(str(brand_image())))
-        _QT_APPLICATION.setApplicationDisplayName("WAM Privacy Wallet REGTEST")
+        _QT_APPLICATION.setApplicationDisplayName(t("desktop.app_display_name"))
     return _QT_APPLICATION
 
 
@@ -124,7 +125,7 @@ class RegtestWalletWindow(QMainWindow):
         self._worker = None
         self._snapshot = None
         self._history_offset = 0
-        self.setWindowTitle("WAM Privacy Wallet · Real REGTEST")
+        self.setWindowTitle(t("desktop.window_title"))
         self.setWindowIcon(QIcon(str(brand_image())))
         self.setMinimumSize(820,600)
         self.resize(1280,800)
@@ -133,27 +134,27 @@ class RegtestWalletWindow(QMainWindow):
         sidebar=QFrame();sidebar.setObjectName('FusionSidebar');sidebar.setFixedWidth(214)
         side=QVBoxLayout(sidebar);side.setContentsMargins(18,26,18,20);side.setSpacing(20)
         brand=QHBoxLayout();mark=QLabel();dpr=max(1.0,float(self.devicePixelRatioF()));logo=QPixmap(str(brand_image()));logo=logo.scaled(int(44*dpr),int(44*dpr),Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation);logo.setDevicePixelRatio(dpr);mark.setPixmap(logo);mark.setFixedSize(44,44);brand.addWidget(mark)
-        title=QVBoxLayout();title.addWidget(label('WAM','BrandTitle'));title.addWidget(label('FUSION 2.0','FusionKicker'));brand.addLayout(title);brand.addStretch();side.addLayout(brand)
-        side.addWidget(label('WALLET WORKSPACE','FusionKicker'))
+        title=QVBoxLayout();        title.addWidget(label(t('desktop.brand_wam'),'BrandTitle'));title.addWidget(label(t('desktop.brand_version'),'FusionKicker'));brand.addLayout(title);brand.addStretch();side.addLayout(brand)
+        side.addWidget(label(t('desktop.workspace_kicker'),'FusionKicker'))
         self.navigation=QListWidget();self.navigation.setIconSize(__import__('PySide6.QtCore',fromlist=['QSize']).QSize(22,22))
-        self.navigation.addItems(('Overview','Receive','History'));side.addWidget(self.navigation,1)
-        side.addWidget(label('REGTEST','FusionBadge'))
-        self.warning=label('PUBLIC DEMO ACCOUNT / NO REAL FUNDS / SEND & SIGN DISABLED','Warning');side.addWidget(self.warning)
-        side.addWidget(label(core_compat.DISPLAY_NAME + '\nBIP352 · WSP-1','FusionMuted'));shell.addWidget(sidebar)
+        self.navigation.addItems((t('fusion.overview'),t('fusion.receive'),t('fusion.history')));side.addWidget(self.navigation,1)
+        side.addWidget(label(t('desktop.regtest_badge'),'FusionBadge'))
+        self.warning=label(t('desktop.demo_warning'),'Warning');side.addWidget(self.warning)
+        side.addWidget(label(t('desktop.core_standards').format(display_name=core_compat.DISPLAY_NAME),'FusionMuted'));shell.addWidget(sidebar)
         workspace=QWidget();workspace.setObjectName('FusionTransparent');col=QVBoxLayout(workspace);col.setContentsMargins(28,0,22,12);col.setSpacing(18)
         topbar=QFrame();topbar.setObjectName('FusionTopbar');top=QHBoxLayout(topbar);top.setContentsMargins(0,18,0,18)
-        self.workspace_title=label('Privacy wallet','FusionCardTitle');top.addWidget(self.workspace_title);top.addStretch()
-        self.verification_badge=label('Not verified','FusionBadge');top.addWidget(self.verification_badge)
+        self.workspace_title=label(t('desktop.privacy_wallet'),'FusionCardTitle');top.addWidget(self.workspace_title);top.addStretch()
+        self.verification_badge=label(t('fusion.not_verified'),'FusionBadge');top.addWidget(self.verification_badge)
         self.appearance=QComboBox()
-        for text,value in (('Auto · system','auto'),('Signature Light','light'),('Signature Dark','dark')):self.appearance.addItem(text,value)
-        top.addWidget(self.appearance);self.refresh_button=action('Sync live','sync');top.addWidget(self.refresh_button);col.addWidget(topbar)
+        for text,value in ((t('desktop.appearance_auto'),'auto'),(t('desktop.appearance_light'),'light'),(t('desktop.appearance_dark'),'dark')):self.appearance.addItem(text,value)
+        top.addWidget(self.appearance);self.refresh_button=action(t('desktop.sync_live'),'sync');top.addWidget(self.refresh_button);col.addWidget(topbar)
         self.stack=QStackedWidget();col.addWidget(self.stack,1)
         self.dashboard=FusionOverview();self.balance_text=self.dashboard.balance_value;self.utxo_text=self.dashboard.utxo_details;self.stack.addWidget(self.dashboard)
         self.receive_page=ReceivePage();self.receive_code=self.receive_page.receive_code;self.stack.addWidget(self.receive_page)
         self.history_page=HistoryPage();self.history_table=self.history_page.table;self.history_page.page_requested.connect(self._history_page);self.stack.addWidget(self.history_page)
-        self.status=label('Not synced · live Core verification required','StatusText');col.addWidget(self.status);shell.addWidget(workspace,1)
+        self.status=label(t('desktop.not_synced'),'StatusText');col.addWidget(self.status);shell.addWidget(workspace,1)
         self.navigation.currentRowChanged.connect(self.stack.setCurrentIndex)
-        self.navigation.currentRowChanged.connect(lambda i:self.workspace_title.setText(('Overview','Receive','History','Send','Security','Settings')[i] if 0<=i<6 else 'Privacy wallet'))
+        self.navigation.currentRowChanged.connect(lambda i:self.workspace_title.setText((t('fusion.overview'),t('fusion.receive'),t('fusion.history'),t('fusion.send'),t('fusion.security'),t('fusion.settings'))[i] if 0<=i<6 else t('desktop.privacy_wallet')))
         self.navigation.setCurrentRow(0);self.refresh_button.clicked.connect(self.request_sync);self.appearance.currentIndexChanged.connect(self.apply_theme)
         self.dashboard.go_receive.clicked.connect(lambda:self.navigation.setCurrentRow(1));self.dashboard.open_history.clicked.connect(lambda:self.navigation.setCurrentRow(2));self.dashboard.manual_sync.clicked.connect(self.request_sync)
         self.dashboard.transaction_selected.connect(self._open_transaction)
@@ -198,7 +199,7 @@ class RegtestWalletWindow(QMainWindow):
         if self._worker is not None:
             return
         self.refresh_button.setEnabled(False)
-        self.status.setText("Verifying WAM Core REGTEST and WSP-1 SQLite…")
+        self.status.setText(t("desktop.verifying_core"))
         worker = _ReadWorker(self._core_dir, self._datadir, self._source, self.session,
                              history_offset=self._history_offset)
         self._worker = worker
@@ -216,8 +217,8 @@ class RegtestWalletWindow(QMainWindow):
         self._snapshot = None
         self.receive_page.render_snapshot(None)
         self.history_page.render_snapshot(None)
-        self.balance_text.setText('—');self.utxo_text.setText('Unverified · live scan required')
-        self.verification_badge.setText('Not verified')
+        self.balance_text.setText('—');self.utxo_text.setText(t('desktop.unverified_scan'))
+        self.verification_badge.setText(t('fusion.not_verified'))
         self.dashboard.render_snapshot(None, locked=bool(
             self.session is not None and (self.session.locked or self.session.faulted)
         ))
@@ -243,11 +244,10 @@ class RegtestWalletWindow(QMainWindow):
             self.history_page.render_snapshot(snap)
         except (TypeError,ValueError):
             self._sync_failed('FUSION_UNTRUSTED_RECEIVE_DENIED');return
-        self.verification_badge.setText('Core verified · '+str(snap.height))
+        self.verification_badge.setText(t('desktop.core_verified').format(height=str(snap.height)))
         self.status.setText(
-            f"VERIFIED LIVE REGTEST · height {snap.height} · "
-            f"tip {snap.tip[:14]}… · " +
-            ("DISPOSABLE TEST WALLET" if self.session is not None else "READ ONLY"))
+            (t('desktop.verified_disposable') if self.session is not None else t('desktop.verified_readonly')).format(
+                height=snap.height, tip=snap.tip[:14]))
         try:
             self.dashboard.render_snapshot(snap, operational=self.session is not None)
         except (TypeError, ValueError):
@@ -269,7 +269,7 @@ class RegtestWalletWindow(QMainWindow):
         if self._worker is not None:
             # Do not destroy a running QThread while Core RPC is in progress.
             event.ignore()
-            self.status.setText("Waiting for safe scanner shutdown before close")
+            self.status.setText(t("desktop.waiting_shutdown"))
             return
         self._theme_timer.stop()
         self._sync_timer.stop()

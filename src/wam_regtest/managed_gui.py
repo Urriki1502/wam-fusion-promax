@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QInputDialog,QLineEdit,QMenu,QMessageBox,QSystemTr
 from .operational_gui import OperationalWalletWindow,qt_application
 from .wallet_executor import ManagedWalletBackend,ManagedWalletProxy,WalletExecutor
 from .gui_errors import operation_error
+from .bip39_locale import t
 
 
 class ControlWorker(QThread):
@@ -53,14 +54,14 @@ class ManagedWalletWindow(OperationalWalletWindow):
         self._close_requested=self._quit_requested=self._quit_completed=False
         self._after_control=None;self.background_available=False
         super().__init__(proxy)
-        self.setWindowTitle('WAM Fusion · Managed REGTEST')
-        self.warning.setText('REGTEST ONLY · MANAGED CORE · NO REAL FUNDS')
+        self.setWindowTitle(t('managed.window_title'))
+        self.warning.setText(t('managed.warning'))
         # Mining stays an explicit test/advanced tool, never normal onboarding.
         self.mine_button.hide()
         self.mine_notice.hide()
-        menu=self.menuBar().addMenu('Managed Core')
-        menu.addAction('Verify and restart owned Core',self.request_core_restart)
-        menu.addAction('Stop managed Core and quit',self.request_quit)
+        menu=self.menuBar().addMenu(t('managed.menu'))
+        menu.addAction(t('managed.verify_restart'),self.request_core_restart)
+        menu.addAction(t('managed.stop_quit'),self.request_quit)
         self._executor_poll=QTimer(self);self._executor_poll.setInterval(100)
         self._executor_poll.timeout.connect(self._poll_owner);self._executor_poll.start()
 
@@ -96,7 +97,7 @@ class ManagedWalletWindow(OperationalWalletWindow):
 
     def _control_ready(self,action,result):
         if action=='open':
-            self.apply_snapshot(result);self.status.setText('Managed wallet ready · REGTEST')
+            self.apply_snapshot(result);self.status.setText(t('managed.ready'))
         elif action=='lock' and self._close_requested:
             self._close_requested=False
             self.review=None;self.signed=False;self._submitted_txid=None
@@ -106,11 +107,11 @@ class ManagedWalletWindow(OperationalWalletWindow):
         elif action=='quit':self._quit_completed=True
         elif action=='core_restart':
             self.review=None;self.signed=False;self._submitted_txid=None
-            self._clear_balance();self.status.setText('Owned Core restarted · wallet locked · unlock to verify')
+            self._clear_balance();self.status.setText(t('managed.core_restarted'))
         elif action=='recovery_status':
             self._after_control=lambda:self._approve_recovery(result['pending_action'])
         elif action in ('recover','complete_recovery'):
-            self._clear_balance();self.status.setText('Recovery completed · unlock to verify the live wallet')
+            self._clear_balance();self.status.setText(t('managed.recovery_completed'))
         self._update_controls()
 
     def _control_denied(self,reason):
@@ -140,7 +141,7 @@ class ManagedWalletWindow(OperationalWalletWindow):
             event.accept();return
         event.ignore()
         self._close_requested=True
-        self.status.setText('Locking wallet safely · managed Core stays running')
+        self.status.setText(t('managed.locking'))
         self._poll_owner()
 
     def reopen(self):
@@ -149,7 +150,7 @@ class ManagedWalletWindow(OperationalWalletWindow):
 
     def request_quit(self):
         self._quit_requested=True;self._close_requested=False
-        self.status.setText('Finishing wallet operation before explicit managed-Core shutdown')
+        self.status.setText(t('managed.finishing_shutdown'))
         self._poll_owner()
 
     def recover_wallet(self):
@@ -160,10 +161,8 @@ class ManagedWalletWindow(OperationalWalletWindow):
         if self._worker is not None or self.session.executor.busy or self._approval_open:return False
         self._approval_open=True
         try:
-            answer=QMessageBox.question(self,'Verify original managed Core',
-                'Lock the wallet and explicitly restart only this owned REGTEST Core?\n'
-                'The original profile and datadir must verify. Unknown/orphan processes '
-                'are refused; no transaction will be retried.',
+            answer=QMessageBox.question(self,t('managed.restart_title'),
+                t('managed.restart_body'),
                 QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
         finally:self._approval_open=False
@@ -173,11 +172,11 @@ class ManagedWalletWindow(OperationalWalletWindow):
     def _approve_recovery(self,action):
         self._approval_open=True
         try:
-            text=('Complete the authenticated pending recovery transaction?' if action else
-                  'Recover the current anchored wallet into a fresh container?\nExisting recovery data will be preserved.')
-            if QMessageBox.question(self,'Managed wallet recovery',text,
+            text=(t('managed.recovery_complete_prompt') if action else
+                  t('managed.recovery_fresh_prompt'))
+            if QMessageBox.question(self,t('managed.recovery_title'),text,
                     QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No)!=QMessageBox.StandardButton.Yes:return
-            password=self._passphrase('Authenticate the existing wallet checkpoint')
+            password=self._passphrase(t('managed.authenticate_checkpoint'))
             if password is None:return
         finally:self._approval_open=False
         if action:self._control('complete_recovery',password,action)
@@ -195,16 +194,16 @@ def launch_managed(root,core,source,*,authorized=False,create=False,keychain=Non
     tray=None
     if QSystemTrayIcon.isSystemTrayAvailable():
         tray=QSystemTrayIcon(window.windowIcon(),window);menu=QMenu()
-        menu.addAction('Open REGTEST wallet',window.reopen)
-        menu.addAction('Stop managed Core and quit',window.request_quit)
+        menu.addAction(t('managed.open_wallet'),window.reopen)
+        menu.addAction(t('managed.stop_quit'),window.request_quit)
         tray.setContextMenu(menu);tray.show();window.background_available=True
     window.show()
     if _window_hook is not None:_window_hook(window)
     while True:
-        password,ok=QInputDialog.getText(window,'Managed REGTEST wallet',
-            'Wallet passphrase (12+ characters)',QLineEdit.EchoMode.Password)
+        password,ok=QInputDialog.getText(window,t('managed.passphrase_title'),
+            t('managed.passphrase_prompt'),QLineEdit.EchoMode.Password)
         if not ok or 12<=len(password.encode())<=1024:break
-        QMessageBox.warning(window,'Wallet passphrase','Use a passphrase of 12–1024 bytes.')
+        QMessageBox.warning(window,t('managed.passphrase_warning_title'),t('managed.passphrase_warning'))
     if ok:window.open_wallet(password.encode(),create=create)
     else:window.request_quit()
     password=''

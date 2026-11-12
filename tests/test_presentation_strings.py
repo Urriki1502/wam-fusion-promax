@@ -137,7 +137,8 @@ class CatalogTests(unittest.TestCase):
         # PM-017 additions have their own source-transcribed English fixture.
         pm017_keys = set(json.loads((ROOT / 'tests/pm017_english_literals.json').read_text())['new_keys'])
         status_keys = set(json.loads((ROOT / 'tests/pm017_status_english_literals.json').read_text())['new_keys'])
-        self.assertEqual(set(CATALOG['en']) - SETTINGS_KEYS, expected | pm017_keys | status_keys)
+        pm018_keys = set(json.loads((ROOT / 'tests/pm018_english_literals.json').read_text())['new_keys'])
+        self.assertEqual(set(CATALOG['en']) - SETTINGS_KEYS, expected | pm017_keys | status_keys | pm018_keys)
 
     def test_public_error_mapping_and_codes_unchanged(self):
         from wam_regtest.gui_errors import _MESSAGES, error_text, public_code
