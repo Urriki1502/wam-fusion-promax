@@ -568,7 +568,7 @@ def qualify(core, source):
                 data['profile_retained'] = str(root)
                 # Fixed stage/category tokens only (F-05): classifies a refusal
                 # such as WALLET_UNLOCK_REFUSED without any exception text.
-                from .application import diagnostics
+                from .foundation import diagnostics
                 data['internal_diagnostics'] = [
                     {'stage': r.stage, 'category': r.category, 'open_stage': r.open_stage}
                     for r in diagnostics.records()]

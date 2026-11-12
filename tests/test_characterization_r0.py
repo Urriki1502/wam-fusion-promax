@@ -66,8 +66,8 @@ RUNTIME_SNAPSHOT = frozenset({
     'supervisor_client', 'supervisor_identity', 'supervisor_journal',
     'supervisor_protocol', 'supervisor_store', 'telemetry', 'vault',
     'wallet_executor', 'wallet_read', 'wallet_recovery', 'wallet_session',
-    # PM-003: first application-layer subpackage module (dotted names).
-    'application', 'application.diagnostics',
+    # PM-003: first layered subpackage module (dotted names).
+    'foundation', 'foundation.diagnostics',
     'windows_checkpoint_anchor', 'windows_core_files', 'windows_core_transport',
     'windows_private_storage', 'windows_release_preflight', 'wsp_import',
     'wsp_live',

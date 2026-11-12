@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from . import custody
-from .application import diagnostics
+from .foundation import diagnostics
 from .bip39_seed_vault import (
     Bip39SeedCustodyError, _exact_namespace, _folder, _owner_binding,
     _owned_password, _record, open_owned_seed_container,

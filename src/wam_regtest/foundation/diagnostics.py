@@ -33,8 +33,12 @@ import threading
 import time
 
 STAGE_RE = re.compile(r'[A-Z][A-Z0-9_]{0,63}\Z')
-CODE_RE = re.compile(r'[A-Z][A-Z0-9_]{0,95}\Z')
-_CLASS_RE = re.compile(r'[A-Za-z_][A-Za-z0-9_]{0,63}\Z')
+# A code token is an upper-case identifier WITH an underscore (all wallet codes
+# are), so a lone all-caps word such as a password cannot pass. Any run of 16+
+# hex digits (TXIDs, hashes, keys in any case) is rejected everywhere.
+CODE_RE = re.compile(r'[A-Z][A-Z0-9]*_[A-Z0-9_]{1,94}\Z')
+_CLASS_RE = re.compile(r'[A-Z][A-Za-z0-9_]{0,47}\Z')
+_HEX_RUN = re.compile(r'[0-9A-Fa-f]{16}')
 _RING_SIZE = 64
 _ENV_EMIT = 'WAM_INTERNAL_DIAGNOSTICS'
 
@@ -61,14 +65,16 @@ def category_of(error):
         return 'NONE'
     args = getattr(error, 'args', ())
     if (type(args) is tuple and len(args) == 1 and type(args[0]) is str
-            and CODE_RE.match(args[0])):
+            and CODE_RE.match(args[0]) and not _HEX_RUN.search(args[0])):
         return args[0]
     name = type(error).__name__
-    return name if _CLASS_RE.match(name) else 'INTERNAL'
+    return name if (type(name) is str and _CLASS_RE.match(name)
+                    and not _HEX_RUN.search(name)) else 'INTERNAL'
 
 
 def _fixed_stage(value):
-    return value if type(value) is str and STAGE_RE.match(value) else None
+    return (value if type(value) is str and STAGE_RE.match(value)
+            and not _HEX_RUN.search(value) else None)
 
 
 def record(stage, error=None, open_stage=None):
@@ -80,7 +86,9 @@ def record(stage, error=None, open_stage=None):
     ``INVALID_STAGE`` / ``None``. When ``error`` wraps another exception (``__cause__``
     or an unsuppressed ``__context__``), the innermost category is the one
     recorded; a fixed ``open_stage`` attribute anywhere in that chain is kept.
-    Never raises.
+    Never raises an ``Exception`` (a ``BaseException`` such as
+    ``KeyboardInterrupt`` still propagates; the caller then fails without
+    reporting success, so nothing fails open).
     """
     try:
         token = _fixed_stage(stage) or 'INVALID_STAGE'

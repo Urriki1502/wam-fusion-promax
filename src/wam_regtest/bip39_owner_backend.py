@@ -13,7 +13,7 @@ import stat
 import sys
 import time
 
-from .application import diagnostics
+from .foundation import diagnostics
 from .wallet_executor import ManagedWalletBackend, WalletExecutorError
 
 

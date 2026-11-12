@@ -15,7 +15,7 @@ import stat
 import sys
 
 from . import custody
-from .application import diagnostics
+from .foundation import diagnostics
 from .managed_wallet_checkpoint import _owned, _runtime
 from .managed_wallet_session import RuntimeGuard
 from .wallet_session import WalletSession, WalletSessionError, WalletCoreCli

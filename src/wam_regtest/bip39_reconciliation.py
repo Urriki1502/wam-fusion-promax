@@ -13,7 +13,7 @@ import secrets
 import sqlite3
 
 from . import custody
-from .application import diagnostics
+from .foundation import diagnostics
 from .bip39_native_checkpoint import (
     _directory,_native,_scanner_anchor_record,_checkpoint_filename,_checkpoint_names,
     _read_authenticated_candidate,_owned_tip,_require_confirmed_descendant,

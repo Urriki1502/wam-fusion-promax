@@ -12,7 +12,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from wam_regtest.application import diagnostics
+from wam_regtest.foundation import diagnostics
 
 SECRETS = (
     'abandon ability able about above absent absorb abstract absurd abuse access accident',
@@ -42,6 +42,17 @@ class TokenRules(unittest.TestCase):
                 self.assertEqual(diagnostics.category_of(OSError(5, secret)), 'OSError')
         # Two args (even if the first is a code) never pass text through.
         self.assertEqual(diagnostics.category_of(ValueError('CODE', SECRETS[0])), 'ValueError')
+        # PEER-039 hardening: all-caps password-shaped words, upper-case hex and
+        # hex-bearing class names never pass as categories.
+        for raw in ('HUNTER2', 'PASSWORD', 'B88F3D262F285E38E184F50BF3EEA1C8E615486AE67D3D9EAF0976FBD6D3D30D',
+                    'TX_B88F3D262F285E38E184', '12345678', 'A_0123456789ABCDEF0'):
+            with self.subTest(raw=raw):
+                self.assertEqual(diagnostics.category_of(ValueError(raw)), 'ValueError')
+        hexname = type('b88f3d262f285e38e184f50bf3eea1c8e615486ae67d3d9eaf0976fbd6d3d30d', (Exception,), {})
+        self.assertEqual(diagnostics.category_of(hexname()), 'INTERNAL')
+        lower = type('custom_error', (Exception,), {})
+        self.assertEqual(diagnostics.category_of(lower()), 'INTERNAL')
+        self.assertEqual(diagnostics.record('STAGE_0123456789ABCDEF').stage, 'INVALID_STAGE')
 
     def test_stage_must_be_a_literal_token(self):
         self.assertEqual(diagnostics.record('UNLOCK_ACTIVATION').stage, 'UNLOCK_ACTIVATION')
@@ -114,6 +125,21 @@ class TokenRules(unittest.TestCase):
                                      'WAM_DIAG stage=UNLOCK_ACTIVATION category=ValueError open_stage=SEED_AUTH\n')
                 for secret in SECRETS:
                     self.assertNotIn(secret, err.getvalue())
+
+
+class FoundationLayerRule(unittest.TestCase):
+    def test_foundation_imports_nothing_from_wam_regtest_and_no_qt(self):
+        import ast
+        root = Path(__file__).resolve().parents[1] / 'src/wam_regtest/foundation'
+        for path in sorted(root.rglob('*.py')):
+            tree = ast.parse(path.read_text())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom):
+                    self.assertFalse(node.level > 0 or (node.module or '').startswith(('wam_regtest', 'PySide6')),
+                                     '%s: %s' % (path.name, node.module))
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        self.assertFalse(alias.name.startswith(('wam_regtest', 'PySide6')), path.name)
 
 
 class ExistingMarkersUnchanged(unittest.TestCase):
@@ -212,17 +238,17 @@ class WiredSites(unittest.TestCase):
         policy = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(policy)
         names = policy.wallet_module_names(root)
-        self.assertIn('application', names)
-        self.assertIn('application.diagnostics', names)
+        self.assertIn('foundation', names)
+        self.assertIn('foundation.diagnostics', names)
         for platform in ('macos', 'windows', 'linux-desktop'):
-            self.assertIn('application.diagnostics', policy.runtime_modules(platform))
-        self.assertEqual(policy.module_path(root, 'application.diagnostics'),
-                         root / 'src/wam_regtest/application/diagnostics.py')
-        self.assertEqual(policy.module_path(root, 'application'),
-                         root / 'src/wam_regtest/application/__init__.py')
+            self.assertIn('foundation.diagnostics', policy.runtime_modules(platform))
+        self.assertEqual(policy.module_path(root, 'foundation.diagnostics'),
+                         root / 'src/wam_regtest/foundation/diagnostics.py')
+        self.assertEqual(policy.module_path(root, 'foundation'),
+                         root / 'src/wam_regtest/foundation/__init__.py')
         args = policy.arguments(root)
-        self.assertIn('wam_regtest.application.diagnostics', args)
-        self.assertNotIn('PySide6', (root / 'src/wam_regtest/application/diagnostics.py').read_text())
+        self.assertIn('wam_regtest.foundation.diagnostics', args)
+        self.assertNotIn('PySide6', (root / 'src/wam_regtest/foundation/diagnostics.py').read_text())
 
 
 if __name__ == '__main__':

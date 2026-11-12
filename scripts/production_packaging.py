@@ -22,7 +22,7 @@ network_policy official_core_v013 operational_gui payjoin_safety private_directo
 production_entry q05_platforms regtest_funding release rpc_contention rpc_credentials rpc_scope
 shared_regtest shared_regtest_gui supervisor_client supervisor_identity supervisor_journal
 supervisor_protocol supervisor_store telemetry vault wallet_executor wallet_read wallet_recovery
-application application.diagnostics
+foundation foundation.diagnostics
 wallet_session windows_checkpoint_anchor windows_core_files windows_core_transport
 windows_private_storage windows_release_preflight
 wsp_import wsp_live
@@ -48,7 +48,7 @@ def wallet_module_names(root):
     """Dotted wam_regtest module names under <root>/src/wam_regtest.
 
     The package itself is '__init__'; a subpackage is its dotted path
-    ('application') and its modules are 'application.diagnostics'. Flat
+    ('foundation') and its modules are 'foundation.diagnostics'. Flat
     modules keep their plain stem, exactly as before subpackages existed.
     """
     package = Path(root) / 'src' / 'wam_regtest'
@@ -149,7 +149,7 @@ def audit_loose_files(app):
     source = Path(__file__).resolve().parents[1]
     wallet_modules = {p.stem for package in WALLET_PACKAGES
                       for p in (source / 'src' / package).rglob('*.py')}
-    wallet_modules |= {p.stem for p in (source / 'wsp-upstream/src/wam_sp').glob('*.py')}
+    wallet_modules |= {p.stem for p in (source / 'wsp-upstream/src/wam_sp').rglob('*.py')}
     for p in app.rglob('*'):
         if p.is_dir():
             continue
