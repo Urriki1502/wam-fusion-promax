@@ -1,6 +1,7 @@
 """Fusion Black & Gold Qt presentation: verified snapshots, never wallet authority."""
 from __future__ import annotations
 from .bip39_locale import t as ui_text
+from .presentation.strings import CATALOG
 
 from PySide6.QtCore import QEvent, Qt, QRectF, QPointF, QSize, Signal, Property, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import (
@@ -20,15 +21,28 @@ from .infrastructure import core_compat
 
 SPACING = (4, 8, 12, 16, 24, 32)
 TYPE = {'display': 48, 'heading': 26, 'section': 17, 'body': 14, 'caption': 12}
+# Stable English compatibility view; widgets resolve their labels at construction.
 FUSION_NAV_PAGES = (
-    (ui_text('fusion.overview'), 'overview'),
-    (ui_text('fusion.receive'), 'receive'),
-    (ui_text('fusion.history'), 'history'),
-    (ui_text('fusion.send'), 'send'),
-    (ui_text('fusion.security'), 'security'),
-    (ui_text('fusion.network'), 'network'),
-    (ui_text('fusion.settings'), 'settings'),
+    (CATALOG['en']['fusion.overview'], 'overview'),
+    (CATALOG['en']['fusion.receive'], 'receive'),
+    (CATALOG['en']['fusion.history'], 'history'),
+    (CATALOG['en']['fusion.send'], 'send'),
+    (CATALOG['en']['fusion.security'], 'security'),
+    (CATALOG['en']['fusion.network'], 'network'),
+    (CATALOG['en']['fusion.settings'], 'settings'),
 )
+
+
+def fusion_nav_pages():
+    return (
+        (ui_text('fusion.overview'), 'overview'),
+        (ui_text('fusion.receive'), 'receive'),
+        (ui_text('fusion.history'), 'history'),
+        (ui_text('fusion.send'), 'send'),
+        (ui_text('fusion.security'), 'security'),
+        (ui_text('fusion.network'), 'network'),
+        (ui_text('fusion.settings'), 'settings'),
+    )
 
 
 def fusion_palette(mode):
@@ -374,7 +388,9 @@ def panel(title=None, subtitle=None, *, inset=False):
     return obj, layout
 
 
-def page(title, subtitle, kicker=ui_text('fusion.wam_fusion_regtest')):
+def page(title, subtitle, kicker=None):
+    if kicker is None:
+        kicker = ui_text('fusion.wam_fusion_regtest')
     scroll = QScrollArea()
     scroll.setObjectName('FusionScroll')
     scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -503,7 +519,7 @@ def fusion_nav_icons(tone):
 
 
 def nav_icon_for(title, tone, dpr=2):
-    lookup = dict(FUSION_NAV_PAGES)
+    lookup = dict(fusion_nav_pages())
     return vector_icon(lookup.get(title, 'overview'), tone, dpr)
 
 

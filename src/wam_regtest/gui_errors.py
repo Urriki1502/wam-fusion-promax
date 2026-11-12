@@ -2,7 +2,6 @@
 INPUT_ERRORS=frozenset(('WALLET_INPUT_AMOUNT_INVALID','WALLET_INPUT_FEE_INVALID',
                         'WALLET_INPUT_RECIPIENT_INVALID','WALLET_INPUT_FUNDS_UNAVAILABLE'))
 from .presentation.strings import CATALOG
-from .bip39_locale import t as ui_text
 
 # Public codes remain identifiers; English compatibility mapping is derived.
 _MESSAGES = {key.removeprefix('errors.'): value
@@ -13,6 +12,7 @@ def public_code(code,*,fallback='WALLET_OPERATION_DENIED_STATE_RETAINED'):
     return code if type(code) is str and code in _MESSAGES else safe
 
 def error_text(code,*,fallback='WALLET_OPERATION_DENIED_STATE_RETAINED'):
+    from .bip39_locale import t as ui_text
     # No arbitrary reason, path, RPC error, address, passphrase or traceback.
     return ui_text('errors.' + public_code(code,fallback=fallback))
 

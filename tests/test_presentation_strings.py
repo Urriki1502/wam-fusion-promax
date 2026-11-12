@@ -25,9 +25,38 @@ def english_source_fingerprint(source, catalog):
         def visit_ImportFrom(self, node):
             if node.module == 'bip39_locale' and any(a.asname == 'ui_text' for a in node.names):
                 return None
+            if node.module == 'presentation.strings' and [a.name for a in node.names] == ['CATALOG']:
+                return None
             return node
 
+        def visit_Subscript(self, node):
+            if (isinstance(node.value, ast.Subscript)
+                    and isinstance(node.value.value, ast.Name)
+                    and node.value.value.id == 'CATALOG'
+                    and isinstance(node.value.slice, ast.Constant)
+                    and node.value.slice.value == 'en'):
+                return ast.Constant(catalog[node.slice.value])
+            return self.generic_visit(node)
+
+        def visit_FunctionDef(self, node):
+            # Late lookup is covered by test_pm014_lazy_locale. Compare the
+            # original English executable shape without replacing its hashes.
+            if node.name == 'fusion_nav_pages':
+                return None
+            if (node.name == 'page' and len(node.args.defaults) == 1
+                    and isinstance(node.args.defaults[0], ast.Constant)
+                    and node.args.defaults[0].value is None):
+                guard = node.body[0]
+                assert ast.dump(guard.test) == ast.dump(ast.parse('kicker is None', mode='eval').body)
+                assert ast.dump(guard.body[0]) == ast.dump(ast.parse(
+                    "kicker = ui_text('fusion.wam_fusion_regtest')").body[0])
+                node.args.defaults = [guard.body[0].value]
+                node.body = node.body[1:]
+            return self.generic_visit(node)
+
         def visit_Call(self, node):
+            if isinstance(node.func, ast.Name) and node.func.id == 'fusion_nav_pages':
+                return ast.Name(id='FUSION_NAV_PAGES', ctx=ast.Load())
             if isinstance(node.func, ast.Name) and node.func.id == 'ui_text':
                 return ast.Constant(catalog[node.args[0].value])
             return self.generic_visit(node)

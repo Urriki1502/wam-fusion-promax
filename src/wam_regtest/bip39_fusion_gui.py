@@ -24,7 +24,7 @@ from .desktop import resolve_theme
 from .gui_errors import operation_error
 from .fusion_ui import (
     FusionOverview, fusion_stylesheet, fusion_palette, page, panel,
-    label, ResponsiveRow, vector_icon, nav_icon_for, FUSION_NAV_PAGES,
+    label, ResponsiveRow, vector_icon, nav_icon_for, FUSION_NAV_PAGES, fusion_nav_pages,
     StateSwitch, action, ThemeSlider,
 )
 from .fusion_motion import fade_widget, PressFeedback, TransitionHost, STAGGER_MS, STANDARD_MS, motion_reduced
@@ -137,7 +137,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.navigation.setSpacing(2)
         self.navigation.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.navigation.setAccessibleName("WAM Fusion wallet navigation")
-        self.navigation.addItems(tuple(title for title, _icon in FUSION_NAV_PAGES))
+        self.navigation.addItems(tuple(title for title, _icon in fusion_nav_pages()))
         side.addWidget(self.navigation, 1)
         notice = label('WAM Fusion  ·  Qt  ·  WAM Core (REGTEST)\nNo real funds or mainnet keys.', 'FusionMuted')
         notice.setMinimumWidth(0)
@@ -519,7 +519,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
     def _navigate(self, index):
         if not 0 <= index < len(FUSION_NAV_PAGES):
             return
-        self.page_title.setText(FUSION_NAV_PAGES[index][0])
+        self.page_title.setText(self.navigation.item(index).text())
         reduced = self.reduce_motion.isChecked() or motion_reduced(self)
         self.stack.set_current(index, reduced=reduced)
         self._apply_fusion_theme()
