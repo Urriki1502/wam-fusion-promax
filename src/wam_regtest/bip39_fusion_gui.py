@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from .bip39_owner_gui import Bip39TrialWindow
+from .presentation.action_state import SharedInputs, apply_shared_profile, available_actions, fusion_actions
 from .bip39_locale import t
 from .desktop import resolve_theme
 from .gui_errors import operation_error
@@ -597,31 +598,27 @@ class Bip39FusionWindow(Bip39TrialWindow):
         )
 
     def _set_actions(self):
-        super()._set_actions()
-        if getattr(self,'shared_profile',None) is not None:
-            if not self.shared_profile.coordinator:
-                self.fund.setEnabled(False)
-                self.confirm.setEnabled(False)
-            if not self._shared_connected:
-                for control in (self.fund,self.confirm,self.send,self.broadcast):
-                    control.setEnabled(False)
+        inputs = self._action_inputs()
+        profile = getattr(self, 'shared_profile', None)
+        shared = (None if profile is None else
+                  SharedInputs(coordinator=bool(profile.coordinator),
+                               connected=bool(self._shared_connected)))
+        actions = apply_shared_profile(available_actions(inputs), shared)
+        self._apply_actions(actions)
         if hasattr(self, "overview"):
-            ready = (self._ready and not self.executor.state.faulted
-                     and not self.executor.state.locked)
-            idle = (self._worker is None and not self.executor.busy
-                    and not self._delivering_result)
+            extra = fusion_actions(inputs, actions, shared)
+            idle = not inputs.busy
             if hasattr(self,'reconcile_button'):
-                self.reconcile_button.setEnabled(idle and not self._quit_requested and self.executor.state.core_alive is True)
+                self.reconcile_button.setEnabled(extra['reconcile'])
             if hasattr(self, 'custody_switch'):
-                unlocked = not self.executor.state.locked and self._ready
+                unlocked = extra['custody_unlocked']
                 for switch in (self.custody_switch, self.overview.custody_switch):
                     switch.setToolTip('Click to lock this wallet.' if unlocked else
                                       'Click to unlock with the original wallet password.')
                     switch.blockSignals(True)
                     switch.setChecked(unlocked)
                     switch.setText('Unlocked' if unlocked else 'Locked')
-                    switch.setEnabled(idle and not self._quit_requested
-                        and (self.lock.isEnabled() or self.unlock.isEnabled()))
+                    switch.setEnabled(extra['custody_switch'])
                     switch.blockSignals(False)
                 self.overview.security_card.apply(*classify(
                     'security',
@@ -633,11 +630,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
                     busy=not idle,
                     network=self._network_view(self._last_verified),
                 ), animate=False)
-            self.overview.go_send.setEnabled(ready and idle and self._spend_enabled
-                and self.executor.state.core_alive is True
-                and not self.executor.state.reauthentication_required
-                and (self.shared_profile is None or self._shared_connected))
-            self.overview.open_security.setEnabled(not self._quit_requested)
+            self.overview.go_send.setEnabled(extra['go_send'])
+            self.overview.open_security.setEnabled(extra['open_security'])
             if hasattr(self, "security_state"):
                 self.security_state.setText(
                     "Faulted · original reservations preserved"

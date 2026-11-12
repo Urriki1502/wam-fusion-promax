@@ -18,6 +18,7 @@ from .wallet_executor import WalletExecutor
 from .bip39_owner_backend import Bip39ReadOnlyBackend
 from .bip39_12 import normalize_phrase
 from .bip39_locale import t
+from .presentation.action_state import ActionInputs, BASE_CONTROLS, available_actions
 from .fusion_ui import label, action
 
 
@@ -358,40 +359,31 @@ class Bip39TrialWindow(QWidget):
         self.cancel.setToolTip("Cancel requires an authenticated unsigned draft. Signed or uncertain reservations cannot be released.")
         self._set_actions()
 
+    def _action_inputs(self):
+        """Explicit inputs for presentation.action_state (no authority; F-08)."""
+        state = self.executor.state
+        return ActionInputs(
+            ready=self._ready, spend_enabled=self._spend_enabled,
+            signed_ready=self._signed_ready,
+            pending_confirm=self._pending_confirm_txid is not None,
+            approved_commitment=self._approved_commitment is not None,
+            recovered_unsigned_cancel=self._recovered_unsigned_cancel,
+            resumable_intent=self._resumable_intent is not None,
+            unlock_allowed=self._unlock_allowed, test_funded=self._test_funded,
+            quit_requested=self._quit_requested,
+            busy=(self._worker is not None or self.executor.busy
+                  or self._delivering_result),
+            executor_closed=self.executor.closed, faulted=state.faulted,
+            locked=state.locked,
+            reauthentication_required=state.reauthentication_required,
+            core_alive=state.core_alive)
+
+    def _apply_actions(self, actions):
+        for name in BASE_CONTROLS:
+            getattr(self, name).setEnabled(actions[name])
+
     def _set_actions(self):
-        busy=self._worker is not None or self.executor.busy or self._delivering_result
-        safe=not self.executor.state.faulted
-        spend_safe=(safe and not self.executor.state.locked
-                    and not self.executor.state.reauthentication_required
-                    and self.executor.state.core_alive is True)
-        self.sync.setEnabled(self._ready and safe and not busy and not self._quit_requested)
-        self.fund.setEnabled(self._ready and safe and not self._test_funded and not self._spend_enabled
-                             and not busy and not self._quit_requested)
-        self.activate.setEnabled(self._ready and safe and not self._spend_enabled and not busy and not self._quit_requested)
-        self.send.setEnabled(spend_safe and self._spend_enabled and self._approved_commitment is None
-                             and not self._recovered_unsigned_cancel and not busy and not self._quit_requested)
-        self.broadcast.setEnabled(spend_safe and self._spend_enabled and self._signed_ready
-                                  and not busy and not self._quit_requested)
-        self.cancel.setEnabled(spend_safe and self._spend_enabled
-                               and (self._approved_commitment is not None or self._recovered_unsigned_cancel)
-                               and not self._signed_ready and not busy and not self._quit_requested)
-        self.confirm.setEnabled(spend_safe and self._spend_enabled and self._pending_confirm_txid is not None
-                                and not busy and not self._quit_requested)
-        self.recovery.setEnabled(spend_safe and self._spend_enabled and self._pending_confirm_txid is None
-                                 and not busy and not self._quit_requested)
-        self.inspect.setEnabled(spend_safe and self._spend_enabled
-                                and not busy and not self._quit_requested)
-        idle_payment=(self._approved_commitment is None and not self._signed_ready
-                      and self._pending_confirm_txid is None)
-        self.intents.setEnabled(spend_safe and self._spend_enabled and idle_payment
-                                and not busy and not self._quit_requested)
-        self.resume.setEnabled(spend_safe and self._spend_enabled and idle_payment
-                               and self._resumable_intent is not None
-                               and not busy and not self._quit_requested)
-        self.lock.setEnabled(self._ready and not busy and not self._quit_requested)
-        self.unlock.setEnabled(self._unlock_allowed and not self._ready and not busy
-                                and not self._quit_requested)
-        self.quit.setEnabled(not busy and not self.executor.closed)
+        self._apply_actions(available_actions(self._action_inputs()))
 
     def _command(self, action, *args):
         if (self._worker is not None or self.executor.busy or self.executor.closed
