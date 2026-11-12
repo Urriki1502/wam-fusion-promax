@@ -65,11 +65,14 @@ class QuitLifetimeTests(unittest.TestCase):
     def setUp(self):
         from wam_regtest.bip39_fusion_gui import Bip39FusionWindow
         self.backend = None
+        self.window = None
         self.executor = WalletExecutor(self._factory)
+        # Registered before anything else can raise: the owner thread is
+        # non-daemon and must always be closed, or the test process hangs.
+        self.addCleanup(self._cleanup)
         self.executor.request('snapshot', timeout=10)  # owner open, like a real session
         self.window = Bip39FusionWindow(self.executor)
         self.window.show()
-        self.addCleanup(self._cleanup)
 
     def _factory(self):
         self.backend = _Backend()
@@ -77,8 +80,9 @@ class QuitLifetimeTests(unittest.TestCase):
 
     def _cleanup(self):
         backend = self.backend
-        backend.busy_s = 0
-        backend.refuse_quit = None
+        if backend is not None:
+            backend.busy_s = 0
+            backend.refuse_quit = None
         deadline = time.monotonic() + 10
         while not self.executor.closed and time.monotonic() < deadline:
             if not self.executor.busy:
@@ -88,9 +92,10 @@ class QuitLifetimeTests(unittest.TestCase):
                     pass
             time.sleep(0.02)
         self.executor.join(5)
-        self.window._poll.stop()
-        self.window.close()
-        self.window.deleteLater()
+        if self.window is not None:
+            self.window._poll.stop()
+            self.window.close()
+            self.window.deleteLater()
         # A delivered Quit leaves Qt's "quit now" flag set for this shared
         # QApplication; spin one empty loop to reset it for the next test.
         QTimer.singleShot(0, self.app.quit)
@@ -144,11 +149,32 @@ class QuitLifetimeTests(unittest.TestCase):
         self.assertEqual(self.backend.quits(), 1)
 
     def test_two_quits_make_one_owner_shutdown(self):
-        QTimer.singleShot(50, _post_quit)
-        QTimer.singleShot(60, _post_quit)
+        from PySide6.QtCore import QObject
+        executor = self.executor
+        delivered = []
+
+        class Count(QObject):
+            def eventFilter(self, watched, event):
+                if watched is QApplication.instance() and event.type() == QEvent.Type.Quit:
+                    delivered.append(executor.closed)
+                return False
+
+        counter = Count()
+        self.app.installEventFilter(counter)
+        self.addCleanup(self.app.removeEventFilter, counter)
+        # Owner busy, so both Quits arrive while shutdown is still pending.
+        self.backend.busy_s = 0.5
+        self.executor.submit('snapshot')
+
+        # Qt compresses duplicate *posted* Quit events, so post the second one
+        # only after the first was delivered, still inside the busy window.
+        # Context object = the window: neither timer outlives this test.
+        QTimer.singleShot(50, self.window, _post_quit)
+        QTimer.singleShot(200, self.window, _post_quit)
         seen = self._exec(6)
         self.assertNotIn('watchdog', seen)
         self.assertTrue(seen['closed_at_return'])
+        self.assertEqual(delivered[:2], [False, False])  # both user Quits reached the app
         self.assertEqual(self.backend.quits(), 1)
 
     # W-QUIT-02 fix ----------------------------------------------------------
