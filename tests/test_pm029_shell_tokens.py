@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from wam_regtest.fusion_ui import (
-    FOCUS, QR, SHELL, SPACING, TYPE, direction_tone, install_keyboard_focus_mark,
+    FOCUS, QR, SHELL, SPACING, TYPE, direction_tone,
     fusion_palette, fusion_stylesheet, present_brand_title, page, StateSwitch,
 )
 from wam_regtest.presentation.strings import CATALOG
@@ -197,26 +197,27 @@ class SidebarBrandFit(unittest.TestCase):
     def test_focus_ring_follows_keyboard_and_not_the_mouse(self):
         from PySide6.QtCore import QEvent, Qt
         from PySide6.QtGui import QFocusEvent
-        from PySide6.QtWidgets import QApplication, QPushButton
-        install_keyboard_focus_mark(None)
+        from PySide6.QtWidgets import QPushButton
+        from wam_regtest.fusion_ui import _KeyboardFocusMark
         button = QPushButton('Refresh')
         self.addCleanup(button.deleteLater)
-        button.show()
+        marker = _KeyboardFocusMark(button)
+        self.addCleanup(marker.deleteLater)
 
-        def deliver(reason):
-            QApplication.sendEvent(button, QFocusEvent(QEvent.Type.FocusIn, reason))
+        def deliver(kind, reason):
+            self.assertFalse(marker.eventFilter(button, QFocusEvent(kind, reason)))
 
-        deliver(Qt.FocusReason.MouseFocusReason)
+        deliver(QEvent.Type.FocusIn, Qt.FocusReason.MouseFocusReason)
         self.assertFalse(bool(button.property('keyboardFocus')))
-        deliver(Qt.FocusReason.OtherFocusReason)
+        deliver(QEvent.Type.FocusIn, Qt.FocusReason.OtherFocusReason)
         self.assertFalse(bool(button.property('keyboardFocus')))
-        deliver(Qt.FocusReason.ActiveWindowFocusReason)
+        deliver(QEvent.Type.FocusIn, Qt.FocusReason.ActiveWindowFocusReason)
         self.assertFalse(bool(button.property('keyboardFocus')))
-        deliver(Qt.FocusReason.TabFocusReason)
+        deliver(QEvent.Type.FocusIn, Qt.FocusReason.TabFocusReason)
         self.assertTrue(bool(button.property('keyboardFocus')))
-        deliver(Qt.FocusReason.BacktabFocusReason)
+        deliver(QEvent.Type.FocusIn, Qt.FocusReason.BacktabFocusReason)
         self.assertTrue(bool(button.property('keyboardFocus')))
-        QApplication.sendEvent(button, QFocusEvent(QEvent.Type.FocusOut, Qt.FocusReason.MouseFocusReason))
+        deliver(QEvent.Type.FocusOut, Qt.FocusReason.MouseFocusReason)
         self.assertFalse(bool(button.property('keyboardFocus')))
 
     def test_brand_breaks_on_words_in_every_language(self):
