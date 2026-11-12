@@ -31,6 +31,8 @@ FONT_NAMES = {
     'Segoe UI', 'Arial', 'Helvetica Neue', 'Avenir Next',
     'Noto Sans', 'DejaVu Sans', 'Liberation Sans',
 }
+# OS application name (menu, Dock, window manager). Product identity, not a sentence.
+APPLICATION_NAME = 'WAM Privacy Wallet REGTEST'
 
 
 def shape(node):
@@ -170,13 +172,13 @@ class LegacyCatalogTests(unittest.TestCase):
                     continue
                 if isinstance(parents.get(node), ast.Expr):
                     continue
-                self.assertIn(value, FONT_NAMES, f'{module}:{node.lineno}:{value!r}')
+                self.assertIn(value, FONT_NAMES | {APPLICATION_NAME}, f'{module}:{node.lineno}:{value!r}')
 
     def test_safety_prohibitions_stay_independent(self):
         expectations = {
             'operational.signing_warning': {
                 'vi': 'Không bao giờ thử lại trong im lặng.',
-                'ja': '静かに再試行しないでください。',
+                'ja': '通知なしに再試行されることは決してありません。',
                 'zh-Hans': '切勿静默重试。',
             },
             'operational.linux_experimental': {
@@ -204,6 +206,9 @@ class LegacyCatalogTests(unittest.TestCase):
                 value = text(key, language)
                 for clause in clauses:
                     self.assertIn(clause, value, (key, language, clause))
+        warning = text('operational.signing_warning', 'ja')
+        self.assertNotIn('しないでください', warning)
+        self.assertIn('決してありません', warning)
 
     def test_japanese_one_block_title_uses_confirm(self):
         # D-PM017-1: the confirm-one-block dialog title matches its confirm button.
@@ -214,6 +219,18 @@ class LegacyCatalogTests(unittest.TestCase):
 
 
 class LegacyWindowTests(unittest.TestCase):
+    def test_qt_application_does_not_read_ui_settings(self):
+        from wam_regtest import desktop
+
+        def denied(*_args, **_kwargs):
+            raise AssertionError('qt_application read UI settings')
+
+        with patch('wam_regtest.bip39_locale.ui_settings', denied), \
+                patch('wam_regtest.ui_settings.ui_settings', denied):
+            desktop._QT_APPLICATION = None
+            app = desktop.qt_application()
+        self.assertEqual(app.applicationDisplayName(), APPLICATION_NAME)
+
     def test_operational_window_translates_labels_and_keeps_identifiers(self):
         from PySide6.QtCore import QSettings
         from PySide6.QtWidgets import QCheckBox

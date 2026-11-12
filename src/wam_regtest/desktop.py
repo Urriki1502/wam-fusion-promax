@@ -39,7 +39,7 @@ def qt_application():
         family=next((f for f in preferred if f in families),None)
         if family:_QT_APPLICATION.setFont(QFont(family,11))
         _QT_APPLICATION.setWindowIcon(QIcon(str(brand_image())))
-        _QT_APPLICATION.setApplicationDisplayName(t("desktop.app_display_name"))
+        _QT_APPLICATION.setApplicationDisplayName("WAM Privacy Wallet REGTEST")
     return _QT_APPLICATION
 
 

@@ -570,7 +570,6 @@ EN = {
     "managed.passphrase_prompt": "Wallet passphrase (12+ characters)",
     "managed.passphrase_warning_title": "Wallet passphrase",
     "managed.passphrase_warning": "Use a passphrase of 12–1024 bytes.",
-    "desktop.app_display_name": "WAM Privacy Wallet REGTEST",
     "desktop.window_title": "WAM Privacy Wallet · Real REGTEST",
     "desktop.brand_wam": "WAM",
     "desktop.brand_version": "FUSION 2.0",

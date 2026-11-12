@@ -572,7 +572,6 @@ ZH_HANS = {
     "managed.passphrase_prompt": "钱包密码（12 个字符以上）",
     "managed.passphrase_warning_title": "钱包密码",
     "managed.passphrase_warning": "请使用 12–1024 字节的密码。",
-    "desktop.app_display_name": "WAM 隐私钱包 REGTEST",
     "desktop.window_title": "WAM 隐私钱包 · 真实 REGTEST",
     "desktop.brand_wam": "WAM",
     "desktop.brand_version": "FUSION 2.0",

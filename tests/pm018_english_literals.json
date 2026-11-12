@@ -1,7 +1,6 @@
 {
   "source": "371f10e36fad8c6122998179658b407f7cddff4a",
   "new_keys": [
-    "desktop.app_display_name",
     "desktop.appearance_auto",
     "desktop.appearance_dark",
     "desktop.appearance_light",
@@ -203,7 +202,6 @@
     "managed.passphrase_prompt": "Wallet passphrase (12+ characters)",
     "managed.passphrase_warning_title": "Wallet passphrase",
     "managed.passphrase_warning": "Use a passphrase of 12–1024 bytes.",
-    "desktop.app_display_name": "WAM Privacy Wallet REGTEST",
     "desktop.window_title": "WAM Privacy Wallet · Real REGTEST",
     "desktop.brand_wam": "WAM",
     "desktop.brand_version": "FUSION 2.0",
@@ -1516,13 +1514,6 @@
     "desktop": {
       "fingerprint": "100c4c32e7bb3dcba45e43e2b4eaf1fc775f8aaf185c0f80987054285a854cde",
       "moved": [
-        {
-          "keys": [
-            "desktop.app_display_name"
-          ],
-          "original": "'WAM Privacy Wallet REGTEST'",
-          "replacement": "t('desktop.app_display_name')"
-        },
         {
           "keys": [
             "desktop.window_title"

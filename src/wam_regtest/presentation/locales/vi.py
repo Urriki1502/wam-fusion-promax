@@ -572,7 +572,6 @@ VI = {
     "managed.passphrase_prompt": "Mật khẩu ví (12 ký tự trở lên)",
     "managed.passphrase_warning_title": "Mật khẩu ví",
     "managed.passphrase_warning": "Hãy dùng mật khẩu dài 12–1024 byte.",
-    "desktop.app_display_name": "Ví riêng tư WAM REGTEST",
     "desktop.window_title": "Ví riêng tư WAM · REGTEST thật",
     "desktop.brand_wam": "WAM",
     "desktop.brand_version": "FUSION 2.0",
