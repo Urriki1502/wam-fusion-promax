@@ -143,71 +143,93 @@ class FoundationLayerRule(unittest.TestCase):
                         self.assertFalse(alias.name.startswith(('wam_regtest', 'PySide6')), path.name)
 
 
-_PRESENTATION = frozenset({
-    'bip39_backup_page', 'bip39_fusion_gui', 'bip39_locale', 'bip39_owner_gui',
-    'branding', 'desktop', 'external_core_gui', 'fusion_motion', 'fusion_pages',
-    'fusion_status', 'fusion_ui', 'gui_errors', 'history_pages', 'managed_gui',
-    'managed_onboarding', 'operational_gui', 'qualification_gui',
-    'shared_regtest_gui', 'windows_read_gui',
-})
-_QUALIFICATION = frozenset({
-    'package_entry', 'linux_package_entry', 'windows_package_entry',
-    'probe_source', 'q_gate', 'q04_fixture', 'q04_miner_loop', 'q04_runner',
-    'q05_packaged', 'qualification_gui', 'release_candidate', 'ui_layout_probe',
+# Explicit wam_regtest import allowlist. Anything else, including
+# PySide6, presentation, qualification, bip39_owner_backend and
+# wallet_executor, fails. Stdlib imports are not layer edges.
+_DOMAIN_EXACT = frozenset({
+    'private_directory',
+    'linux_private_storage',
+    'windows_private_storage',
+    'bip39_seed_vault',
 })
 
 
-def _is_qualification(name):
-    stem = name.rsplit('.', 1)[-1]
-    return (stem.endswith('_probe') or stem.endswith('_scenario')
-            or stem in _QUALIFICATION or name in _QUALIFICATION)
-
-
-def _imported_targets(node, package):
+def _layer_modules(node, package):
+    """wam_regtest module names (and any PySide6 import) from one statement."""
+    found = []
     if isinstance(node, ast.Import):
-        return [alias.name for alias in node.names]
-    if not isinstance(node, ast.ImportFrom):
-        return []
-    module = node.module or ''
-    if node.level == 0:
-        return [module]
-    if node.level == 1:
-        return [package + ('.' + module if module else '')]
-    if node.level >= 2:
-        # Parent of domain/ or application/ is wam_regtest itself.
-        return [module or 'wam_regtest']
-    return ['<unresolved>']
+        names = [alias.name for alias in node.names]
+        relative = False
+        modules = names
+    elif isinstance(node, ast.ImportFrom):
+        relative = node.level > 0
+        module = node.module or ''
+        if node.level == 0 and module == 'wam_regtest':
+            modules = [alias.name.split('.')[0] for alias in node.names]
+        elif node.level == 1:
+            modules = [package + ('.' + module if module else '')]
+        elif node.level > 1:
+            modules = [module or '__init__']
+        else:
+            modules = [module]
+    else:
+        return found
+    for name in modules:
+        if not name:
+            continue
+        if name == 'PySide6' or name.startswith('PySide6.'):
+            found.append(name)
+        elif name.startswith('wam_regtest.'):
+            found.append(name.split('.', 1)[1])
+        elif relative or name.startswith(('domain.', 'application.', 'foundation.')) or name in (
+                'domain', 'application', 'foundation'):
+            found.append(name)
+    return found
+
+
+def _prefix_allowed(name, root):
+    return name == root or name.startswith(root + '.')
+
+
+def _domain_import_allowed(name):
+    if _prefix_allowed(name, 'foundation') or _prefix_allowed(name, 'domain'):
+        return True
+    return name in _DOMAIN_EXACT
+
+
+def _application_import_allowed(name):
+    return (_prefix_allowed(name, 'foundation') or _prefix_allowed(name, 'domain')
+            or _prefix_allowed(name, 'application'))
 
 
 class DomainApplicationLayerRule(unittest.TestCase):
-    """domain/ and application/ stay below presentation and qualification."""
+    """domain/ and application/ may import only their allowlisted layers."""
 
-    def _targets(self, package):
+    def _modules(self, package):
         root = Path(__file__).resolve().parents[1] / 'src/wam_regtest' / package
         found = []
         for path in sorted(root.rglob('*.py')):
             tree = ast.parse(path.read_text())
             for node in ast.walk(tree):
-                for target in _imported_targets(node, package):
-                    found.append((path.name, target))
+                for name in _layer_modules(node, package):
+                    found.append((path.name, name))
         return found
 
-    def test_domain_and_application_do_not_import_qt_or_qualification(self):
-        for package in ('domain', 'application'):
-            for filename, target in self._targets(package):
-                self.assertFalse(target == 'PySide6' or target.startswith('PySide6.'),
-                                 '%s/%s imports %s' % (package, filename, target))
-                stem = target[len('wam_regtest.'):] if target.startswith('wam_regtest.') else target
-                self.assertFalse(_is_qualification(stem) or _is_qualification(target),
-                                 '%s/%s imports qualification %s' % (package, filename, target))
+    def test_domain_imports_only_the_allowlist(self):
+        for filename, name in self._modules('domain'):
+            self.assertTrue(_domain_import_allowed(name),
+                            'domain/%s imports %s' % (filename, name))
 
-    def test_domain_does_not_import_application_or_presentation(self):
-        for filename, target in self._targets('domain'):
-            stem = target[len('wam_regtest.'):] if target.startswith('wam_regtest.') else target
-            head = stem.split('.', 1)[0]
-            self.assertNotEqual(head, 'application', '%s imports %s' % (filename, target))
-            self.assertNotIn(head, _PRESENTATION, '%s imports %s' % (filename, target))
-            self.assertFalse(head.endswith('_gui'), '%s imports %s' % (filename, target))
+    def test_application_imports_only_the_allowlist(self):
+        for filename, name in self._modules('application'):
+            self.assertTrue(_application_import_allowed(name),
+                            'application/%s imports %s' % (filename, name))
+
+    def test_owner_backend_reexports_the_domain_error(self):
+        from wam_regtest.bip39_owner_backend import Q06ReadOnlyError as exported
+        from wam_regtest.domain.errors import Q06ReadOnlyError as defined
+        self.assertIs(exported, defined)
+        self.assertTrue(issubclass(defined, ValueError))
 
 
 class ExistingMarkersUnchanged(unittest.TestCase):

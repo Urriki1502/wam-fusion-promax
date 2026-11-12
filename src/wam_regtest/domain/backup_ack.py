@@ -15,10 +15,7 @@ import secrets
 import stat
 import sys
 
-
-def _error(code):
-    from wam_regtest.bip39_owner_backend import Q06ReadOnlyError
-    return Q06ReadOnlyError(code)
+from wam_regtest.domain.errors import Q06ReadOnlyError
 
 
 # ---- Backup-acknowledgement sidecar storage (CUR-003 + CDX-AUD-003) -------
@@ -41,7 +38,7 @@ _ACK_DENIED = "Q06_GUI_BACKUP_ACK_STORAGE_DENIED"
 def _ack_name(folder):
     if (type(folder) is not type(Path())
             or re.fullmatch(r"bip39-12-[0-9a-f]{32}", folder.name) is None):
-        raise _error(_ACK_DENIED)
+        raise Q06ReadOnlyError(_ACK_DENIED)
     return folder.name + ".json"
 
 
@@ -74,7 +71,7 @@ def _ack_read(directory, name):
         if _ack_absent(component):
             return None
         if not stat.S_ISDIR(os.lstat(component).st_mode):
-            raise _error(_ACK_DENIED)  # symlink/junction or file
+            raise Q06ReadOnlyError(_ACK_DENIED)  # symlink/junction or file
     if _ack_absent(directory / name):
         return None
     if sys.platform == "win32":
@@ -82,11 +79,11 @@ def _ack_read(directory, name):
         with directory_guard(directory):
             before = os.lstat(directory / name)
             if getattr(before, "st_file_attributes", 0) & 0x400 or not _ack_file_ok(before):
-                raise _error(_ACK_DENIED)
+                raise Q06ReadOnlyError(_ACK_DENIED)
             with open(directory / name, "rb") as handle:
                 info = os.fstat(handle.fileno())
                 if (info.st_ino, info.st_dev) != (before.st_ino, before.st_dev):
-                    raise _error(_ACK_DENIED)
+                    raise Q06ReadOnlyError(_ACK_DENIED)
                 raw = handle.read(_ACK_LIMIT + 1)
     else:
         dfd = _ack_posix_directory(directory)
@@ -99,18 +96,18 @@ def _ack_read(directory, name):
                 return None
             before = os.fstat(fd)
             if not _ack_file_ok(before) or not 1 <= before.st_size <= _ACK_LIMIT:
-                raise _error(_ACK_DENIED)
+                raise Q06ReadOnlyError(_ACK_DENIED)
             raw = os.read(fd, _ACK_LIMIT + 1)
             after = os.fstat(fd)
             if ((before.st_ino, before.st_size, before.st_mtime_ns)
                     != (after.st_ino, after.st_size, after.st_mtime_ns)):
-                raise _error(_ACK_DENIED)
+                raise Q06ReadOnlyError(_ACK_DENIED)
         finally:
             if fd is not None:
                 os.close(fd)
             os.close(dfd)
     if not 1 <= len(raw) <= _ACK_LIMIT:
-        raise _error(_ACK_DENIED)
+        raise Q06ReadOnlyError(_ACK_DENIED)
     return raw
 
 
@@ -130,7 +127,7 @@ def _ack_create_private_directory(directory):
         from wam_regtest.windows_private_storage import create_private_directory
         create_private_directory(directory)
     else:
-        raise _error(_ACK_DENIED)
+        raise Q06ReadOnlyError(_ACK_DENIED)
 
 
 def _ack_ensure_directories(root):
@@ -157,7 +154,7 @@ def _ack_write(root, name, payload):
             existing = None
         if existing is not None and (getattr(existing, "st_file_attributes", 0) & 0x400
                                      or not _ack_file_ok(existing)):
-            raise _error(_ACK_DENIED)
+            raise Q06ReadOnlyError(_ACK_DENIED)
         fd = os.open(directory / stage, os.O_WRONLY | os.O_CREAT | os.O_EXCL
                      | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOINHERIT", 0), 0o600)
         try:
@@ -166,7 +163,7 @@ def _ack_write(root, name, payload):
                 while offset < len(payload):
                     count = os.write(fd, payload[offset:])
                     if count <= 0:
-                        raise _error(_ACK_DENIED)
+                        raise Q06ReadOnlyError(_ACK_DENIED)
                     offset += count
                 os.fsync(fd)
             finally:
@@ -189,19 +186,19 @@ def _ack_write(root, name, payload):
         except FileNotFoundError:
             existing = None
         if existing is not None and not _ack_file_ok(existing):
-            raise _error(_ACK_DENIED)
+            raise Q06ReadOnlyError(_ACK_DENIED)
         fd = os.open(stage, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
                      | os.O_CLOEXEC, 0o600, dir_fd=dfd)
         staged = True
         os.fchmod(fd, 0o600)
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.geteuid():
-            raise _error(_ACK_DENIED)
+            raise Q06ReadOnlyError(_ACK_DENIED)
         offset = 0
         while offset < len(payload):
             count = os.write(fd, payload[offset:])
             if count <= 0:
-                raise _error(_ACK_DENIED)
+                raise Q06ReadOnlyError(_ACK_DENIED)
             offset += count
         os.fsync(fd)
         os.close(fd)
@@ -279,7 +276,7 @@ def write_ack(root, folder, acknowledged, deferred=False, secret=None):
         _ack_write(root, name, json.dumps(data, separators=(',', ':')).encode())
     except Exception:
         # Not recorded: the caller fails closed and onboarding asks again.
-        raise _error(_ACK_DENIED) from None
+        raise Q06ReadOnlyError(_ACK_DENIED) from None
 
 
 def ack_authenticated(root, folder, password, open_owner, source, keychain):
@@ -310,7 +307,7 @@ def invalidate_backup_challenge(epoch):
 def new_backup_challenge(epoch, secret, seed_folder, clock):
     # Serialized owner-session memory only. No mnemonic/answers persisted.
     if secret is None or seed_folder is None:
-        raise _error('Q06_GUI_BACKUP_VERIFY_LOCKED')
+        raise Q06ReadOnlyError('Q06_GUI_BACKUP_VERIFY_LOCKED')
     positions = tuple(sorted(secrets.SystemRandom().sample(range(1, 13), 3)))
     identifier = secrets.token_hex(32)
     challenge = (identifier, positions, seed_folder, epoch, clock() + 120)
@@ -327,11 +324,11 @@ def defer_unless_authenticated(is_authenticated, write_deferred):
 def verify_backup_challenge(challenge, identifier, answers, *, seed_folder, epoch,
                             secret, open_owner, source, keychain, clock, write_ack):
     if seed_folder is None or secret is None:
-        raise _error('Q06_GUI_BACKUP_VERIFY_LOCKED')
+        raise Q06ReadOnlyError('Q06_GUI_BACKUP_VERIFY_LOCKED')
     if (challenge is None or not hmac.compare_digest(identifier, challenge[0])
             or challenge[2] != seed_folder or challenge[3] != epoch
             or clock() >= challenge[4]):
-        raise _error('Q06_GUI_BACKUP_CHALLENGE_DENIED')
+        raise Q06ReadOnlyError('Q06_GUI_BACKUP_CHALLENGE_DENIED')
     positions = challenge[1]
     from wam_regtest.bip39_seed_vault import (
         _owner_binding, open_owned_seed_container, read_seed_phrase)
@@ -344,7 +341,7 @@ def verify_backup_challenge(challenge, identifier, answers, *, seed_folder, epoc
     phrase = None
     try:
         if len(words) != 12:
-            raise _error("Q06_GUI_BACKUP_VERIFY_PHRASE_DENIED")
+            raise Q06ReadOnlyError("Q06_GUI_BACKUP_VERIFY_PHRASE_DENIED")
         normalized = [a.strip().lower() for a in answers]
         if any(normalized[i] != words[positions[i] - 1].lower()
                for i in range(len(positions))):
@@ -355,8 +352,8 @@ def verify_backup_challenge(challenge, identifier, answers, *, seed_folder, epoc
                 keychain=keychain) as keys:
             ack_secret = keys.backup_ack_key()
         if clock() >= challenge[4]:
-            raise _error('Q06_GUI_BACKUP_CHALLENGE_DENIED')
+            raise Q06ReadOnlyError('Q06_GUI_BACKUP_CHALLENGE_DENIED')
         write_ack(seed_folder, True, secret=ack_secret)
         return True
     except Exception:
-        raise _error("Q06_GUI_BACKUP_VERIFY_DENIED") from None
+        raise Q06ReadOnlyError("Q06_GUI_BACKUP_VERIFY_DENIED") from None

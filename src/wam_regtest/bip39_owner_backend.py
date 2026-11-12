@@ -17,12 +17,9 @@ from .domain.backup_ack import (
     invalidate_backup_challenge, new_backup_challenge, read_ack,
     verify_backup_challenge, write_ack,
 )
+from .domain.errors import Q06ReadOnlyError
 from .foundation import diagnostics
 from .wallet_executor import ManagedWalletBackend, WalletExecutorError
-
-
-class Q06ReadOnlyError(ValueError):
-    pass
 
 
 class Bip39ReadOnlyBackend(ManagedWalletBackend):
