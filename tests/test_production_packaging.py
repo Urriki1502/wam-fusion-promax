@@ -11,7 +11,7 @@ policy=importlib.util.module_from_spec(spec);spec.loader.exec_module(policy)
 
 class ProductionPackaging(unittest.TestCase):
  def test_all_developer_entrypoints_denied_before_resources_even_ci_environment(self):
-  for args in (['--ci-q06-bip39-spend'],['--ci-q05-managed-wallet','native'],['smoke'],['-m','wam_regtest.cli'],['--check-bundle','--ci-ui-layout'],['--core-dir=/tmp'],['--ci-v1-net-shared-regtest']):
+  for args in (['--ci-q06-bip39-spend'],['--ci-q06-fix-scenarios'],['--ci-q05-managed-wallet','native'],['smoke'],['-m','wam_regtest.cli'],['--check-bundle','--ci-ui-layout'],['--core-dir=/tmp'],['--ci-v1-net-shared-regtest']):
    with self.subTest(args=args),patch.object(sys,'argv',['wallet',*args]),patch.dict('os.environ',{'CI':'true','WAM_QUALIFICATION':'1'}),patch.object(production_entry,'checked_resources') as check:
     self.assertEqual(production_entry.main(),64);check.assert_not_called()
  def test_positive_allowlist_excludes_every_probe_and_legacy_dispatch(self):

@@ -914,6 +914,7 @@ class RuntimeLayering(unittest.TestCase):
                          if name == 'qualification' or name.startswith('qualification.')}
         self.assertIn('qualification', qualification)
         self.assertIn('qualification.real_core_smoke', qualification)
+        self.assertIn('qualification.q06_fix_scenarios', qualification)
         for platform in ('macos', 'windows', 'linux-desktop'):
             runtime = policy.runtime_modules(platform)
             self.assertFalse(qualification & runtime, platform)

@@ -59,6 +59,7 @@ python -I -m PyInstaller --noconfirm --clean --onedir --windowed \
   --add-data "$SOURCE_STAGE/Q05_BUILD_SOURCE.json:." \
   --collect-submodules wam_regtest \
   --hidden-import wam_regtest.qualification.real_core_smoke \
+  --hidden-import wam_regtest.qualification.q06_fix_scenarios \
   --collect-submodules wam_sp \
   --copy-metadata coincurve \
   --hidden-import coincurve._cffi_backend \
@@ -241,6 +242,20 @@ else:
         shutil.copytree(Path(clean)/'fusion-ui-review',
                         out/'q06-ui-review')
     print("MACOS_APP_STAGE=FROZEN_Q06_BIP39_SPEND_PASS", flush=True)
+    print("MACOS_APP_STAGE=FROZEN_Q06_FIX_SCENARIOS_START", flush=True)
+    with nullcontext(tempfile.mkdtemp(prefix='q06-fix-frozen-', dir=runs)) as clean:
+        subprocess.run([str(Path(binary).resolve()), '--ci-q06-fix-scenarios'],
+                       cwd=clean, env=spend_env, timeout=600, check=True)
+        report = Path(clean)/'q06-fix-scenarios-evidence.json'
+        data = loads(report.read_text())
+        assert (data['status'] == 'PASS'
+                and data['mainnet_allowed'] is False
+                and data['scenarios']['S1'] == 'PASS'
+                and data['scenarios']['S2'] == 'PASS'
+                and data['scenarios']['S3'] == 'PASS'
+                and data.get('diagnostics') is None)
+        shutil.copyfile(report, out/'q06-fix-scenarios-evidence.json')
+    print("MACOS_APP_STAGE=FROZEN_Q06_FIX_SCENARIOS_PASS", flush=True)
     print("MACOS_APP_STAGE=FROZEN_V1_NET_START", flush=True)
     with nullcontext(tempfile.mkdtemp(prefix='shared-frozen-',dir=runs)) as clean:
         subprocess.run([str(Path(binary).resolve()),'--ci-v1-net-shared-regtest'],
