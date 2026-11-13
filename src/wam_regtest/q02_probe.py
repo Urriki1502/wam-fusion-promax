@@ -303,6 +303,30 @@ def _fault(method,mutate):
     finally:cli_rpc.decode=original
 
 
+def _exact_json(value):
+    """JSON bytes for a decoded RPC reply, writing Decimal as an exact number.
+
+    Fee-rate replies (and getnetworkinfo) are decoded with parse_float=Decimal
+    since FEE-1, and json.dumps cannot encode Decimal. Fault injection must
+    re-emit the genuine reply unchanged apart from the injected field, so each
+    Decimal is written back as its exact decimal text, never via float.
+    """
+    from decimal import Decimal
+    numbers = {}
+
+    def default(item):
+        if isinstance(item, Decimal) and item.is_finite():
+            token = '__Q02_DECIMAL_%d__' % len(numbers)
+            numbers[token] = format(item, 'f')
+            return token
+        raise TypeError('Q02_FAULT_REPLY_NOT_JSON')
+
+    text = json.dumps(value, default=default)
+    for token, number in numbers.items():
+        text = text.replace('"%s"' % token, number)
+    return text.encode()
+
+
 def probe(core):
     node,cli,receipt=verified_core_paths(core)
     originals={p.name:sha256(p.read_bytes()).hexdigest() for p in (node,cli)}
@@ -329,7 +353,7 @@ def probe(core):
             assert (version['version'],version['subversion'],version['protocolversion'])==(113,'/WAM:0.1.13/',70016)
             def version_faults():
                 for key,bad in (('version',112),('version',113.0),('subversion','/WAM:0.1.12/'),('protocolversion',0)):
-                    fault_attest('getnetworkinfo',lambda raw,v:json.dumps({**v,key:bad}).encode(),'WSP_LIVE_VERSION_DENIED')
+                    fault_attest('getnetworkinfo',lambda raw,v:_exact_json({**v,key:bad}),'WSP_LIVE_VERSION_DENIED')
             case('RPC-VERSION',version_faults,fault=True)
             case('PEERS',lambda:fault_attest('getconnectioncount',lambda *_:b'1','WSP_LIVE_PEERS_DENIED'),fault=True)
             def wrong_auth(key):
