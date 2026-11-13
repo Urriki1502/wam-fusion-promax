@@ -8,24 +8,63 @@ coins, fee overrides, frozen entrypoint or production module edits.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import Future
 from contextlib import ExitStack
 from datetime import datetime, timezone
 from decimal import localcontext
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from unittest.mock import patch
 
+from ..wallet_executor import COMMANDS, WalletExecutor, WalletExecutorError
 from .fee_regtest import (
-    FIXTURES, aggregate_status, assertions_pass, assert_tma, exact_atoms,
-    json_capture, proposal_trace_holds, write_artifact,
-    valid_pass_result,
+    CHARACTERIZATION_PENDING_STATUS, FIXTURES, INSUFFICIENT_DATA_ERROR_SHA256,
+    OUTSIDE_STEP, aggregate_status, assertions_pass, assert_tma, exact_atoms,
+    json_capture, proposal_trace_holds, sign_order_holds,
+    valid_characterization_result, valid_pass_result, write_artifact,
 )
+
+QUALIFICATION_COMMANDS = frozenset((
+    "fee_fixture", "fee_inspect", "fee_baseline", "fee_observe", "fee_preflight",
+))
+
+
+class QualificationFeeExecutor(WalletExecutor):
+    """Qualification-only executor admitting the 5 harness actions alongside COMMANDS."""
+
+    ALLOWED_COMMANDS = COMMANDS | QUALIFICATION_COMMANDS
+
+    def submit(self, action, *args, **kwargs):
+        future = Future()
+        with self._guard:
+            if (action not in self.ALLOWED_COMMANDS or self._closed
+                    or self._pending is not None
+                    or threading.get_ident() == self._thread.ident):
+                future.set_exception(WalletExecutorError("WALLET_EXECUTOR_BUSY_OR_CLOSED"))
+                return future
+            self._pending = future
+            self._queue.put_nowait((action, args, kwargs, future))
+        return future
+
+
+def resolve_actor(explicit=None):
+    """Resolve the active run actor from CLI option or environment context."""
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip()
+    for key in ("WAM_QUALIFICATION_ACTOR", "PEER_AGENT", "USER", "LOGNAME"):
+        value = os.environ.get(key, "").strip()
+        if value:
+            return value
+    return "operator"
 
 
 def utc():
@@ -108,6 +147,7 @@ def source_identity():
 def backend_type():
     """Late import keeps --help and pure tests free of native wallet startup."""
     from ..bip39_owner_backend import Bip39ReadOnlyBackend
+    from ..gui_errors import operation_error
     from ..wallet_session import WalletCoreCli
     from wam_sp.wallet import Wallet, Signer
 
@@ -150,7 +190,7 @@ def backend_type():
                 return super().execute(action, args, kwargs)
             with ExitStack() as stack:
                 o["events"].append("ACTION_" + action.upper())
-                def wrap(cls, method, before=None, after=None):
+                def wrap(cls, method, before=None, after=None, on_error=None):
                     original = getattr(cls, method)
 
                     def observed(obj, *a, **kw):
@@ -159,7 +199,15 @@ def backend_type():
                                 before(obj, a, kw)
                             except Exception:
                                 o.setdefault("observer_errors", []).append("BEFORE_CAPTURE_DENIED")
-                        result = original(obj, *a, **kw)
+                        try:
+                            result = original(obj, *a, **kw)
+                        except Exception as exc:
+                            if on_error:
+                                try:
+                                    on_error(obj, a, exc)
+                                except Exception:
+                                    o.setdefault("observer_errors", []).append("ERROR_CAPTURE_DENIED")
+                            raise
                         if after:
                             try:
                                 after(obj, a, result)
@@ -169,9 +217,17 @@ def backend_type():
 
                     stack.enter_context(patch.object(cls, method, observed))
 
-                def proposal(_obj, a, _kw):
+                def proposal_built(_obj, a, _result):
                     o["proposals"].append(a[1])
                     o["events"].append("PROPOSE")
+
+                def proposal_refused(_obj, a, error):
+                    o["proposals"].append({
+                        "fee": a[1],
+                        "refused": True,
+                        "code": operation_error("prepare_auto", error),
+                    })
+                    o["events"].append("PROPOSE_REFUSED")
 
                 def release(_obj, a, _result):
                     o["releases"].append(sha256(a[0].encode()).hexdigest())
@@ -190,7 +246,7 @@ def backend_type():
                         o["policy"].append({"method": a[0], "result": json_capture(result)})
                         o["events"].append("POLICY_READ")
 
-                wrap(Wallet, "propose", before=proposal)
+                wrap(Wallet, "propose", after=proposal_built, on_error=proposal_refused)
                 wrap(Wallet, "release_draft", after=release)
                 wrap(Wallet, "mark_signed", before=lambda *a: o["events"].append("MARK_SIGNED"))
                 wrap(Signer, "sign", before=lambda *a: o["events"].append("SIGN"))
@@ -323,10 +379,98 @@ def review_evidence(review):
     return values
 
 
-def approve_payment(app, window, button, caption, done, wait, checks, result, kind):
-    """Inspect the visible native dialog BEFORE its separate approval click."""
+_SPEED_CHOICE_WORD_RE = re.compile(
+    r"\b(?:fast|normal|slow|nhanh|bình thường|thường|chậm|cepat|lambat)\b",
+    re.IGNORECASE,
+)
+_SPEED_CHOICE_TERMS = (
+    "快速", "普通", "慢速",
+    "빠름", "보통", "일반", "느림",
+    "高速", "速い", "通常", "低速", "遅い",
+)
+
+
+def _has_speed_choice_text(text):
+    if not text:
+        return False
+    return bool(_SPEED_CHOICE_WORD_RE.search(text)) or any(term in text for term in _SPEED_CHOICE_TERMS)
+
+
+def no_manual_fee_controls(window, dialog=None):
+    """Verify no manual fee widgets or Fast/Normal/Slow choices across all 6 catalog languages."""
+    from PySide6.QtWidgets import (
+        QAbstractButton, QCheckBox, QComboBox, QDoubleSpinBox, QGroupBox,
+        QLabel, QLineEdit, QPlainTextEdit, QPushButton, QRadioButton, QSlider,
+        QSpinBox,
+    )
+
+    forbidden_attr_words = ("fee", "speed", "priority", "tier")
+    input_or_choice_types = (
+        QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QSlider, QRadioButton, QAbstractButton,
+    )
+    for host in (window, dialog):
+        if host is None:
+            continue
+        if any(any(w in name.lower() for w in forbidden_attr_words) and isinstance(val, input_or_choice_types)
+               for name, val in vars(host).items()):
+            return False
+
+    extra_choice_types = (QComboBox, QRadioButton, QSlider, QSpinBox, QDoubleSpinBox, QCheckBox)
+    send_page = window.stack.widget(3) if hasattr(window, "stack") and window.stack.count() > 3 else None
+    send_scopes = []
+    for candidate in (
+        send_page,
+        getattr(window.recipient_input, "parentWidget", lambda: None)(),
+        getattr(window.broadcast, "parentWidget", lambda: None)(),
+    ):
+        if candidate is not None and candidate not in send_scopes:
+            send_scopes.append(candidate)
+    if send_scopes:
+        line_edits = {w for scope in send_scopes for w in scope.findChildren(QLineEdit)}
+        if line_edits != {window.recipient_input, window.amount_input}:
+            return False
+        if any(scope.findChildren(kind) for scope in send_scopes for kind in extra_choice_types):
+            return False
+
+    if dialog is not None:
+        if dialog.findChildren(QLineEdit) or any(dialog.findChildren(kind) for kind in extra_choice_types):
+            return False
+        if {btn.text() for btn in dialog.findChildren(QPushButton)} != {dialog.cancel.text(), dialog.approve.text()}:
+            return False
+
+    text_hosts = []
+    inspect_scopes = list(send_scopes)
+    if dialog is not None:
+        inspect_scopes.append(dialog)
+    for scope in inspect_scopes:
+        for cls in (QLabel, QAbstractButton, QGroupBox, QLineEdit, QPlainTextEdit):
+            for widget in scope.findChildren(cls):
+                if widget.objectName() == "ReceiveCode":
+                    continue
+                if isinstance(widget, QLineEdit):
+                    text_hosts.extend((widget.text(), widget.placeholderText()))
+                elif isinstance(widget, QPlainTextEdit):
+                    text_hosts.append(widget.toPlainText())
+                elif isinstance(widget, QGroupBox):
+                    text_hosts.append(widget.title())
+                else:
+                    text_hosts.append(widget.text())
+        for combo in scope.findChildren(QComboBox):
+            text_hosts.extend(combo.itemText(i) for i in range(combo.count()))
+    for cls in (QAbstractButton, QComboBox):
+        for control in window.findChildren(cls):
+            if isinstance(control, QComboBox):
+                text_hosts.extend(control.itemText(i) for i in range(control.count()))
+            else:
+                text_hosts.append(control.text())
+    return not any(_has_speed_choice_text(text) for text in text_hosts)
+
+
+def approve_payment(app, window, button, caption, done, wait, checks, result, kind,
+                    decision="approve", captured=None):
+    """Inspect the visible native dialog BEFORE clicking Approve or Cancel."""
     from PySide6.QtCore import QTimer
-    from PySide6.QtWidgets import QLabel, QLineEdit
+    from PySide6.QtWidgets import QLabel, QWidget
     from ..fusion_pages import PaymentApproval
     from ..bip39_locale import t
     from ..qualification_gui import click_visible_approval
@@ -334,46 +478,67 @@ def approve_payment(app, window, button, caption, done, wait, checks, result, ki
     timer = QTimer()
     timer.setInterval(150)
     failed = []
+    acted = []
 
     def money(value):
         return "%d.%08d" % divmod(value, 100_000_000)
 
     def inspect():
+        if acted or failed:
+            return
         for dialog in app.allWidgets():
             if not isinstance(dialog, PaymentApproval) or not dialog.isVisible():
                 continue
             if dialog.approve.text() != caption:
                 continue
             review = window._last_review
-            values = dict(amount=money(review.atoms), fee=money(review.fee),
+            source_text = t("fee.source." + review.rate_source)
+            fee_text = money(review.fee)
+            total_text = money(review.atoms + review.fee)
+            avail_before_text = money(review.available_before)
+            avail_after_text = money(review.available_after)
+            values = dict(amount=money(review.atoms), fee=fee_text,
                           rate=money(review.rate_atoms_per_kvb),
-                          source=t("fee.source." + review.rate_source),
+                          source=source_text,
                           classification=review.rate_classification,
-                          total=money(review.atoms + review.fee),
-                          available_before=money(review.available_before),
-                          available_after=money(review.available_after),
+                          total=total_text,
+                          available_before=avail_before_text,
+                          available_after=avail_after_text,
                           change=money(review.change_atoms), inputs=review.input_count,
                           input_count=review.input_count)
             expected = t("pages.payment_review_auto").format(**values)
             labels = [label.text() for label in dialog.findChildren(QLabel)]
-            checks["gui_" + kind + "_review"] = expected in labels and review.code in labels
+            joined_labels = "\n".join(labels)
+            receive_widget = dialog.findChild(QWidget, "ReceiveCode")
+            recipient_visible = (receive_widget is not None
+                                 and hasattr(receive_widget, "toPlainText")
+                                 and receive_widget.toPlainText() == review.code)
+            has_fields = all(text in joined_labels for text in (
+                fee_text, source_text, total_text, avail_before_text, avail_after_text,
+            ))
+            checks["gui_" + kind + "_review"] = expected in labels and has_fields and recipient_visible
             checks["gui_" + kind + "_cancel_default"] = (dialog.isModal()
                 and dialog.cancel.isDefault() and not dialog.approve.isDefault())
-            checks["gui_no_manual_fee_field"] = not any(
-                "fee" in name.lower() and isinstance(value, QLineEdit)
-                for name, value in vars(window).items())
+            checks["gui_no_manual_fee_field"] = no_manual_fee_controls(window, dialog)
+            if captured is not None:
+                captured["review"] = review
             result.setdefault("gui", {})[kind] = {
                 "amount_text_sha256": sha256(expected.encode()).hexdigest(),
                 "recipient_sha256": sha256(review.code.encode()).hexdigest(),
                 "observed_before_approval": True,
+                "decision": decision,
             }
+            timer.stop()
+            acted.append(True)
             if not all(checks[k] is True for k in (
                     "gui_" + kind + "_review", "gui_" + kind + "_cancel_default", "gui_no_manual_fee_field")):
                 failed.append(True)
-                timer.stop()
                 dialog.cancel.click()
                 return
-            click_visible_approval(app, caption)
+            if decision == "cancel":
+                click_visible_approval(app, dialog.cancel.text())
+            else:
+                click_visible_approval(app, caption)
             return
 
     def guarded_inspect():
@@ -396,15 +561,16 @@ def approve_payment(app, window, button, caption, done, wait, checks, result, ki
         timer.stop()
 
 
-def run_fixture(fixture, app, adapter, core, source, result):
+def run_fixture(fixture, app, adapter, core, source, result, actor=None):
     from ..bip39_fusion_gui import Bip39FusionWindow
     from ..bip39_12 import Bip39Regtest12Keys
-    from ..wallet_executor import WalletExecutor
+    from ..bip39_locale import t
     from mnemonic import Mnemonic
     from .q06_fix_scenarios import (
         _profile, _bind, _finish_backup, _shutdown, _PASSWORD, _open_owner,
     )
     from .q06_fix_scenarios import failure_code
+    actor_name = resolve_actor(actor)
     observations = {}
     state = {"app": app, "window": None, "executor": None}
     checks = result["assertions"]
@@ -414,7 +580,7 @@ def run_fixture(fixture, app, adapter, core, source, result):
         "profile_fixture_id": result["profile_fixture_id"],
         "case_id": fixture.case, "fixture": fixture.name})
     try:
-        executor = WalletExecutor(lambda: backend_type()(
+        executor = QualificationFeeExecutor(lambda: backend_type()(
             root, core, source, _anchor_factory=adapter.make_anchor, observations=observations))
         state["executor"] = executor
 
@@ -451,33 +617,47 @@ def run_fixture(fixture, app, adapter, core, source, result):
                                source=source, authorized_disposable=True) as payee:
             destination = payee.public_metadata()["receive_code"]
         request("fee_observe")
-        if fixture.refusal or fixture.case == "F3-01":
+        if fixture.refusal:
             refusal = None
             try:
-                review = request("prepare_auto", destination, fixture.amount, timeout=240)
+                request("prepare_auto", destination, fixture.amount, timeout=240)
             except Exception as error:
                 refusal = failure_code(error)
             result["refusal"] = refusal
             after = request("fee_inspect", timeout=240)
-            if fixture.refusal:
-                expected = "WALLET_INPUT_AMOUNT_INVALID" if fixture.amount == 329 else "WALLET_INPUT_FUNDS_UNAVAILABLE"
-                checks["exact_refusal"] = refusal == expected
-                checks["original_refusal"] = observations.get("original_refusal") == (
-                    "PAYMENT_AMOUNT" if fixture.amount == 329 else "INSUFFICIENT_SINGLE_CLUSTER_FUNDS")
-                checks["no_state_change"] = (after["reservation_sha256"] == before["reservation_sha256"]
-                    and after["anchor_sha256"] == before["anchor_sha256"]
-                    and after["balance"] == before["balance"]
-                    and not after["prepared"] and not after["signed"] and not after["faulted"])
-            else:
-                require(refusal is None, "F3_FLOOR_PREPARE")
-                result["review"] = review_evidence(review)
-                checks.update(quote_checks(review, fixture, observations))
-                request("cancel")
-                cancelled = request("fee_inspect", timeout=240)
-                checks["unsigned_cancel_releases"] = cancelled["reservation_sha256"] == before["reservation_sha256"]
+            expected = "WALLET_INPUT_AMOUNT_INVALID" if fixture.amount == 329 else "WALLET_INPUT_FUNDS_UNAVAILABLE"
+            checks["exact_refusal"] = refusal == expected
+            checks["original_refusal"] = observations.get("original_refusal") == (
+                "PAYMENT_AMOUNT" if fixture.amount == 329 else "INSUFFICIENT_SINGLE_CLUSTER_FUNDS")
+            checks["no_state_change"] = (after["reservation_sha256"] == before["reservation_sha256"]
+                and after["anchor_sha256"] == before["anchor_sha256"]
+                and after["balance"] == before["balance"]
+                and not after["prepared"] and not after["signed"] and not after["faulted"])
             checks["no_sign_or_submit"] = not any(e in observations["events"]
                                                    for e in ("SIGN", "MARK_SIGNED", "SENDRAWTRANSACTION"))
             checks["no_mempool_change"] = after["mempool"] == before["mempool"]
+        elif fixture.case == "F3-01":
+            window.recipient_input.setText(destination)
+            window.amount_input.setText("%d.%08d" % divmod(fixture.amount, 100_000_000))
+            captured = {}
+            approve_payment(
+                app, window, window.send, t("pages.approve_sign"),
+                lambda: idle() and window.status.text() == t("owner.draft_cancelled"),
+                wait, checks, result, "sign", decision="cancel", captured=captured,
+            )
+            review = captured.get("review")
+            require(review is not None, "F3_FLOOR_PREPARE")
+            result["review"] = review_evidence(review)
+            checks.update(quote_checks(review, fixture, observations))
+            cancelled = request("fee_inspect", timeout=240)
+            checks["unsigned_cancel_releases"] = (
+                cancelled["reservation_sha256"] == before["reservation_sha256"]
+                and cancelled["reservations"] == 0
+                and not cancelled["prepared"] and not cancelled["signed"] and not cancelled["faulted"]
+            )
+            checks["no_sign_or_submit"] = not any(e in observations["events"]
+                                                   for e in ("SIGN", "MARK_SIGNED", "SENDRAWTRANSACTION"))
+            checks["no_mempool_change"] = cancelled["mempool"] == before["mempool"]
         else:
             window.recipient_input.setText(destination)
             window.amount_input.setText("%d.%08d" % divmod(fixture.amount, 100_000_000))
@@ -530,9 +710,7 @@ def run_fixture(fixture, app, adapter, core, source, result):
             events = observations["events"]
             checks["one_sign_one_mark_one_submission"] = all(events.count(e) == 1
                 for e in ("SIGN", "MARK_SIGNED", "SENDRAWTRANSACTION"))
-            checks["sign_order"] = (events.index("MARK_SIGNED") < events.index("SIGN")
-                < events.index("SENDRAWTRANSACTION") and "POLICY_READ" in
-                events[events.index("ACTION_SIGN"):events.index("MARK_SIGNED")])
+            checks["sign_order"] = sign_order_holds(events)
             # Reopen only after verified original-owner shutdown.
             require(_shutdown(state) is False, "F3_PRE_REOPEN_SHUTDOWN")
             executor, window = _open_owner(state, root, core, source, adapter, "reopen",
@@ -543,11 +721,15 @@ def run_fixture(fixture, app, adapter, core, source, result):
                 and reopened["available_atoms"] == after["confirmed_atoms"]
                 and reopened["reservation_count"] == 0 and reopened["payment_review"] is None
                 and not reopened["payment_signed"])
-        result["status"] = "PASS" if assertions_pass(checks) else "FAIL"
+        passed = assertions_pass(checks)
+        result["status"] = (
+            (CHARACTERIZATION_PENDING_STATUS if fixture.characterization else "PASS")
+            if passed else "FAIL"
+        )
     except Blocked as error:
         result["status"] = "BLOCKED"
         result["failure_code"] = failure_code(error)
-        result["blocker"] = {"actor": "Cursor", "action": "provide the specified fixture prerequisites",
+        result["blocker"] = {"actor": actor_name, "action": "provide the specified fixture prerequisites",
                              "code": failure_code(error)}
     except Exception as error:
         result["status"] = "FAIL"
@@ -557,12 +739,13 @@ def run_fixture(fixture, app, adapter, core, source, result):
         uncertain = _shutdown(state)
         checks["observer_integrity"] = not observations.get("observer_errors")
         result["cleanup"] = {"verified_original_owner_shutdown": not uncertain,
-                             "profile_retained": True, "actor": "Cursor",
+                             "profile_retained": True, "actor": actor_name,
                              "action": "inspect retained original owner" if uncertain else "none"}
         if uncertain:
             result["status"] = "FAIL"
             result["failure_code"] = "F3_SHUTDOWN_UNCERTAIN"
-        elif result["status"] == "PASS" and not checks["observer_integrity"]:
+        elif (result["status"] in ("PASS", CHARACTERIZATION_PENDING_STATUS)
+              and not checks["observer_integrity"]):
             result["status"] = "FAIL"
             result["failure_code"] = "F3_OBSERVER_CAPTURE_DENIED"
 
@@ -581,8 +764,22 @@ def quote_checks(review, fixture, observations):
     floor = max(exact_atoms(Decimal(v)) for v in
                 (network["relayfee"], mempool["mempoolminfee"], mempool["minrelaytxfee"]))
     fees = observations["proposals"]
+    built = [f for f in fees if type(f) is int]
+    events = observations.get("events", [])
+    if "ACTION_CANCEL" in events:
+        release_count = events[:events.index("ACTION_CANCEL")].count("RELEASE_DRAFT")
+    else:
+        release_count = len(observations["releases"])
     return {
-        "unavailable_smart": bool(smart) and all("feerate" not in r for r in smart),
+        "unavailable_smart": (
+            len(smart) == 3
+            and all(
+                "feerate" not in r
+                and r.get("blocks") == 0
+                and r.get("errors") == [{"text_sha256": INSUFFICIENT_DATA_ERROR_SHA256}]
+                for r in smart
+            )
+        ),
         "floor_quote": q.estimator == "UNAVAILABLE" and q.source == "NETWORK_FLOOR"
             and q.rate_atoms_per_kvb == q.floor_atoms_per_kvb == floor == 1000,
         "structure": review.input_count == fixture.inputs and review.vsize == fixture.vsize,
@@ -590,7 +787,7 @@ def quote_checks(review, fixture, observations):
         "fee_covers_quote": review.fee >= need and review.overpay_atoms == review.fee - need,
         "bounded_overpay": review.overpay_atoms == (43 if fixture.change == 0 else 0),
         "bounded_proposals": proposal_trace_holds(fees),
-        "released_unsaved_drafts": len(observations["releases"]) == len(fees)-1,
+        "released_unsaved_drafts": len(built) >= 1 and release_count == len(built) - 1,
         "exact_change": review.change_atoms == selected - fixture.amount - review.fee
             and (fixture.change is None or review.change_atoms == fixture.change)
             and (review.change_atoms == 0 or review.change_atoms >= 330),
@@ -609,8 +806,10 @@ def main(argv=None):
     parser.add_argument("--wsp-source", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path, help="new run directory (must not exist)")
     parser.add_argument("--gpg", default="gpg")
+    parser.add_argument("--actor", default=None, help="actor name recorded in blocker/cleanup metadata")
     parser.add_argument("--consent-disposable-regtest", action="store_true", required=True)
     args = parser.parse_args(argv)
+    actor = resolve_actor(args.actor)
     if getattr(sys, "frozen", False):
         parser.error("source-only qualification; frozen mode is not implemented")
     for value in (args.core, args.core_archive, args.signed_manifest_dir, args.wsp_source, args.output):
@@ -653,25 +852,29 @@ def main(argv=None):
                   "safe_startup_flags": [], "assertions": {}, "artifacts": {},
                   "profile_fixture_id": None, "cleanup": {"not_started": True}}
         if setup:
-            result["blocker"] = {"actor": "Cursor", "action": "provide native host and authenticated inputs",
+            result["blocker"] = {"actor": actor, "action": "provide native host and authenticated inputs",
                                  "code": setup}
         else:
             try:
-                run_fixture(fixture, app, adapter, args.core, args.wsp_source, result)
+                run_fixture(fixture, app, adapter, args.core, args.wsp_source, result, actor=actor)
             except Exception as error:
                 # An exception outside the scenario's protected lifetime must
                 # never permit a second owner or erase the failed receipt.
                 result.update(status="FAIL", failure_code=failure_code(error), cleanup={
                     "verified_original_owner_shutdown": False, "profile_retained": True,
-                    "actor": "Cursor", "action": "inspect unverified setup/owner before continuing"})
+                    "actor": actor, "action": "inspect unverified setup/owner before continuing"})
         result["ended_utc"] = utc()
-        result["exit_code"] = 0 if result["status"] == "PASS" else 2
+        expected_ok_status = CHARACTERIZATION_PENDING_STATUS if fixture.characterization else "PASS"
+        result["exit_code"] = 0 if result["status"] == expected_ok_status else 2
         observations = result.pop("observations", {})
         for name, payload in (("policy.json", observations.get("policy", [])),
                               ("events.json", {k: v for k, v in observations.items() if k != "policy"}),
                               ("tma.json", result.pop("tma", {}))):
             result["artifacts"][name] = write_artifact(folder / name, payload)
-        if result["status"] == "PASS" and not valid_pass_result(result):
+        if fixture.characterization:
+            if result["status"] == CHARACTERIZATION_PENDING_STATUS and not valid_characterization_result(result):
+                result.update(status="FAIL", exit_code=2, failure_code="F3_REPORT_CONTRACT_INCOMPLETE")
+        elif result["status"] == "PASS" and not valid_pass_result(result):
             result.update(status="FAIL", exit_code=2, failure_code="F3_REPORT_CONTRACT_INCOMPLETE")
         digests[fixture.name] = write_artifact(folder / "result.json", result)
         results[fixture.name] = result["status"]
@@ -684,12 +887,7 @@ def main(argv=None):
     write_artifact(args.output / "manifest.json", {
         "schema": "wam-fee3-source-run/v1", "status": status, "cases": results,
         "result_sha256": digests, "source_unchanged": unchanged, "exit_code": 0 if status == "PASS" else 2,
-        "outside_step": {"F3-07": "BLOCKED_STARTUP_SEAM_NOT_IMPLEMENTED",
-                         "F3-08": "BLOCKED_STARTUP_FILLER_SEAM_NOT_IMPLEMENTED",
-                         "F3-10": "BLOCKED_FILLER_SEAM_NOT_IMPLEMENTED",
-                         "F3-09-low-fee": "BLOCKED_OUTSIDE_STEP_POSITIVE_ONLY",
-                         "frozen": "BLOCKED_NO_FROZEN_MODE",
-                         "Windows/Linux": "BLOCKED_NATIVE_ADAPTER_NOT_IMPLEMENTED"},
+        "outside_step": dict(OUTSIDE_STEP),
         "accepted": False, "engineering_handoff": False,
     })
     return 0 if status == "PASS" else 2

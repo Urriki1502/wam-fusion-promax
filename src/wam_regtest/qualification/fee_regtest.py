@@ -13,6 +13,22 @@ from pathlib import Path
 import re
 
 
+CHARACTERIZATION_PENDING_STATUS = "OWNER DECISION PENDING (absorb sub-dust remainder vs refuse)"
+INSUFFICIENT_DATA_ERROR_SHA256 = sha256(b"Insufficient data or no feerate found").hexdigest()
+OUTSIDE_STEP = {
+    "F3-07": "BLOCKED_STARTUP_SEAM_NOT_IMPLEMENTED",
+    "F3-08": "BLOCKED_STARTUP_FILLER_SEAM_NOT_IMPLEMENTED",
+    "F3-10": "BLOCKED_FILLER_SEAM_NOT_IMPLEMENTED",
+    "F3-09-low-fee": "BLOCKED_OUTSIDE_STEP_POSITIVE_ONLY",
+    "F3-11": "BLOCKED_OUTSIDE_STEP_RESTART_LOCK_SEAM_NOT_IMPLEMENTED",
+    "F3-12": "BLOCKED_OUTSIDE_STEP_CORRUPTION_SEAM_NOT_IMPLEMENTED",
+    "F3-13": "BLOCKED_OUTSIDE_STEP_REORG_SEAM_NOT_IMPLEMENTED",
+    "F3-14": "BLOCKED_OUTSIDE_STEP_LOG_LEAK_AUDIT_NOT_IN_STEP1",
+    "frozen": "BLOCKED_NO_FROZEN_MODE",
+    "Windows/Linux": "BLOCKED_NATIVE_ADAPTER_NOT_IMPLEMENTED",
+}
+
+
 @dataclass(frozen=True)
 class Fixture:
     case: str
@@ -23,6 +39,7 @@ class Fixture:
     inputs: int = 1
     vsize: int = 155
     change: int | None = None
+    characterization: bool = False
 
 
 # The 155 initial fee is the reviewed FEE-2 contract, NOT a policy override.
@@ -43,6 +60,10 @@ FIXTURES = (
     Fixture("F3-06", "fee-unaffordable", (100_000,), 100_000, refusal=True),
     Fixture("F3-06", "affordable-control", (100_000,), 50_000),
     Fixture("F3-09", "positive", (1_000_000,), 100_000),
+    # D-FEE2-2 characterization: 100_000 + 155 < 100_200 < 100_000 + 155 + 330
+    # and no exact-remainder fee. Manifest must report OWNER DECISION PENDING, never PASS.
+    Fixture("D-FEE2-2", "subdust-sweep-characterization", (100_200,), 100_000,
+            refusal=True, characterization=True),
 )
 
 
@@ -109,22 +130,78 @@ def assertions_pass(checks):
 
 
 def aggregate_status(results):
-    if set(results) != {f.name for f in FIXTURES}:
+    expected = {
+        f.name: (CHARACTERIZATION_PENDING_STATUS if f.characterization else "PASS")
+        for f in FIXTURES
+    }
+    if set(results) != set(expected):
         return "BLOCKED"
     if "FAIL" in results.values():
         return "FAIL"
-    return "PASS" if all(v == "PASS" for v in results.values()) else "BLOCKED"
+    return "PASS" if all(results[name] == status for name, status in expected.items()) else "BLOCKED"
 
 
 def proposal_trace_holds(fees):
-    if not 1 <= len(fees) <= 6 or any(type(f) is not int or f <= 0 for f in fees):
+    """Accept monotone built traces, a single built drop, or one refused lower fee followed by restoration."""
+    if not 1 <= len(fees) <= 6:
+        return False
+    refused = [i for i, item in enumerate(fees) if isinstance(item, dict)]
+    if refused:
+        if len(refused) != 1:
+            return False
+        i = refused[0]
+        entry = fees[i]
+        if (not 1 <= i <= 4 or len(fees) != i + 2
+                or set(entry) != {"fee", "refused", "code"}
+                or entry["refused"] is not True
+                or entry["code"] != "WALLET_INPUT_FUNDS_UNAVAILABLE"
+                or type(entry["fee"]) is not int or entry["fee"] <= 0):
+            return False
+        prefix = fees[:i]
+        restored = fees[i + 1]
+        if (any(type(f) is not int or f <= 0 for f in prefix)
+                or any(prefix[k] < prefix[k - 1] for k in range(1, len(prefix)))
+                or entry["fee"] >= prefix[-1]
+                or type(restored) is not int or restored != prefix[-1]):
+            return False
+        return True
+    if any(type(f) is not int or f <= 0 for f in fees):
         return False
     drops = [i for i in range(1, len(fees)) if fees[i] < fees[i-1]]
     if not drops:
         return len(fees) <= 4
     i = drops[0]
-    return (len(drops) == 1 and i <= 4 and len(fees) <= i + 2
+    return (len(drops) == 1 and 1 <= i <= 4 and len(fees) <= i + 2
             and (len(fees) == i + 1 or fees[-1] == fees[i-1]))
+
+
+def sign_order_holds(events):
+    """Verify durable draft save before sign, POLICY_READ -> MARK_SIGNED -> SAVE -> SIGN, and broadcast."""
+    if not isinstance(events, list):
+        return False
+    try:
+        sign_action = events.index("ACTION_SIGN")
+        mark = events.index("MARK_SIGNED")
+        sign = events.index("SIGN")
+        broadcast_action = events.index("ACTION_BROADCAST")
+        tma = events.index("TESTMEMPOOLACCEPT")
+        send = events.index("SENDRAWTRANSACTION")
+    except ValueError:
+        return False
+    if not (sign_action < mark < sign < broadcast_action < tma < send):
+        return False
+    if "SAVE" not in events[:sign_action]:
+        return False
+    pre_mark = events[sign_action:mark]
+    if "POLICY_READ" not in pre_mark:
+        return False
+    sign_window = [e for e in events[sign_action:broadcast_action]
+                   if e in ("MARK_SIGNED", "SAVE", "SIGN")]
+    if sign_window != ["MARK_SIGNED", "SAVE", "SIGN"]:
+        return False
+    broadcast_window = [e for e in events[broadcast_action:]
+                        if e in ("TESTMEMPOOLACCEPT", "SAVE", "SENDRAWTRANSACTION")]
+    return broadcast_window[:3] == ["TESTMEMPOOLACCEPT", "SAVE", "SENDRAWTRANSACTION"]
 
 
 def assert_tma(response, vsize, fee, txid, wtxid):
@@ -176,12 +253,15 @@ def required_assertions(fixture):
         return common | {"exact_refusal", "original_refusal", "no_state_change",
                          "no_sign_or_submit", "no_mempool_change"}
     if fixture.case == "F3-01":
-        return common | QUOTE_ASSERTIONS | {"unsigned_cancel_releases", "no_sign_or_submit", "no_mempool_change"}
+        return common | QUOTE_ASSERTIONS | {
+            "gui_sign_review", "gui_sign_cancel_default", "gui_no_manual_fee_field",
+            "unsigned_cancel_releases", "no_sign_or_submit", "no_mempool_change",
+        }
     return common | QUOTE_ASSERTIONS | POSITIVE_ASSERTIONS
 
 
-def valid_pass_result(result):
-    """Fail-closed PASS report contract, independent of runner control flow."""
+def _valid_result_with_status(result, expected_status, expect_characterization):
+    """Fail-closed report contract, independent of runner control flow."""
     def digest(value, length=64):
         return type(value) is str and re.fullmatch("[0-9a-f]{%d}" % length, value) is not None
 
@@ -191,7 +271,8 @@ def valid_pass_result(result):
         required = required_assertions(fixture)
         from datetime import datetime
         start, end = (datetime.fromisoformat(result[k]) for k in ("started_utc", "ended_utc"))
-        return (result["schema"] == "wam-fee3-source/v1" and result["status"] == "PASS"
+        return (fixture.characterization is expect_characterization
+            and result["schema"] == "wam-fee3-source/v1" and result["status"] == expected_status
             and result["test_layer"] == "REAL_CORE" and result["network"] == "regtest"
             and result["mainnet_allowed"] is False and result["exit_code"] == 0
             and start.tzinfo is not None and end.tzinfo is not None and end >= start
@@ -215,3 +296,13 @@ def valid_pass_result(result):
             and all(digest(v) for v in result["artifacts"].values()))
     except (KeyError, TypeError, ValueError, AttributeError, StopIteration):
         return False
+
+
+def valid_pass_result(result):
+    """Fail-closed PASS report contract, rejecting characterization fixtures."""
+    return _valid_result_with_status(result, "PASS", False)
+
+
+def valid_characterization_result(result):
+    """Fail-closed characterization contract, never allowing PASS."""
+    return _valid_result_with_status(result, CHARACTERIZATION_PENDING_STATUS, True)
