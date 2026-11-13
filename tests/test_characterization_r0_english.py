@@ -22,6 +22,7 @@ ENGLISH_GUI_ERRORS = {'FEE_ABSOLUTE_LIMIT': 'The fee exceeds 0.01 WAM. Nothing w
                                      'signed evidence and reservations are preserved. Verify the '
                                      'original profile, password and chain; do not remove runtime '
                                      'files.',
+ 'RBF_SIGNALLING_MISSING': 'This payment is missing explicit BIP125 replaceability. Nothing was signed.',
  'SHARED_CONFIRMED_PEER_REQUIRED': 'The configured Core peer is disconnected or not yet verified. '
                                    'Reconnect and verify the shared chain; signed and pending '
                                    'payments remain preserved.',
