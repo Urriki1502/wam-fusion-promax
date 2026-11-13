@@ -10,12 +10,15 @@ pins the review label's full visibility with the gallery's own measurement in
 every locale and window size.
 """
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from wam_regtest import bip39_locale
 from wam_regtest.presentation.strings import SUPPORTED_LANGUAGES
 
 SIZES = ((900, 630), (1100, 720), (1440, 900))
+RESHOW_WIDE = (1000, 1000)
+RESHOW_SIZES_ID = ((900, 630), (1100, 720), (1440, 900))
 
 
 class BroadcastDialogReviewLabelFits(unittest.TestCase):
@@ -24,15 +27,8 @@ class BroadcastDialogReviewLabelFits(unittest.TestCase):
         from wam_regtest.desktop import qt_application
         cls.app = qt_application()
 
-    def test_rate_source_label_fully_visible_in_six_locales_and_three_sizes(self):
-        from types import SimpleNamespace
-
-        from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QLabel
-
+    def _window(self):
         from wam_regtest.bip39_fusion_gui import Bip39FusionWindow
-        from wam_regtest.fusion_pages import PaymentApproval, approval_amount_text
-        from wam_regtest.qualification.ui_gallery import _label_text_size, _review
         from wam_regtest.wallet_executor import ExecutorState
 
         executor = SimpleNamespace(state=ExecutorState(locked=False, faulted=False, core_alive=True),
@@ -43,6 +39,33 @@ class BroadcastDialogReviewLabelFits(unittest.TestCase):
         window.reduce_motion.setChecked(True)
         window.appearance_buttons[1].click()  # light theme, as in the gallery
         window.show()
+        return window
+
+    def _review_label(self, dialog, review):
+        from PySide6.QtWidgets import QLabel
+
+        from wam_regtest.fusion_pages import approval_amount_text
+
+        expected = approval_amount_text(review)
+        return next(w for w in dialog.findChildren(QLabel)
+                    if w.objectName() == 'FusionMuted' and w.text() == expected)
+
+    def _assert_review_label_fits(self, dialog, review, language, size):
+        from wam_regtest.qualification.ui_gallery import _label_text_size
+
+        label = self._review_label(dialog, review)
+        rect = label.contentsRect()
+        _need_w, need_h = _label_text_size(label, rect.width())
+        self.assertLessEqual(need_h, rect.height() + 1,
+                             f'{language} {size}: review label clipped')
+
+    def test_rate_source_label_fully_visible_in_six_locales_and_three_sizes(self):
+        from PySide6.QtCore import Qt
+
+        from wam_regtest.fusion_pages import PaymentApproval
+        from wam_regtest.qualification.ui_gallery import _review
+
+        window = self._window()
         for language in SUPPORTED_LANGUAGES:
             for width, height in SIZES:
                 with self.subTest(language=language, size=(width, height)), \
@@ -54,14 +77,45 @@ class BroadcastDialogReviewLabelFits(unittest.TestCase):
                     dialog.show()
                     for _ in range(3):
                         self.app.processEvents()
-                    expected = approval_amount_text(review)
-                    label = next(w for w in dialog.findChildren(QLabel)
-                                 if w.objectName() == 'FusionMuted' and w.text() == expected)
-                    self.assertTrue(label.wordWrap())
-                    rect = label.contentsRect()
-                    _need_w, need_h = _label_text_size(label, rect.width())
-                    self.assertLessEqual(need_h, rect.height() + 1,
-                                         f'{language} {width}x{height}: review label clipped')
+                    self.assertTrue(self._review_label(dialog, review).wordWrap())
+                    self._assert_review_label_fits(dialog, review, language, (width, height))
+                    dialog.reject()
+                    dialog.deleteLater()
+                    self.app.processEvents()
+
+    def test_reshow_after_visible_wide_resize_keeps_review_label_fully_visible(self):
+        """CODEX PEER-155: hide/re-show after a visible wide resize must re-fit
+        at the applied 640 width using its settled layout metrics, not the
+        stale wide sizeHint."""
+        from PySide6.QtCore import Qt
+
+        from wam_regtest.fusion_pages import PaymentApproval
+        from wam_regtest.qualification.ui_gallery import _review
+
+        window = self._window()
+        for language in SUPPORTED_LANGUAGES:
+            sizes = RESHOW_SIZES_ID if language == 'id' else (RESHOW_WIDE,)
+            for wide in sizes:
+                with self.subTest(language=language, wide=wide), \
+                        patch.object(bip39_locale, '_lang', return_value=language):
+                    review = _review()
+                    dialog = PaymentApproval(review, 'broadcast', window)
+                    dialog.setWindowModality(Qt.WindowModality.NonModal)
+                    dialog.show()
+                    for _ in range(3):
+                        self.app.processEvents()
+                    dialog.resize(*wide)  # visible resize to a wide size
+                    for _ in range(3):
+                        self.app.processEvents()
+                    dialog.hide()
+                    for _ in range(3):
+                        self.app.processEvents()
+                    dialog.show()
+                    for _ in range(4):
+                        self.app.processEvents()
+                    self.assertEqual(640, dialog.width(),
+                                     f'{language} {wide}: re-show did not re-fit width')
+                    self._assert_review_label_fits(dialog, review, language, wide)
                     dialog.reject()
                     dialog.deleteLater()
                     self.app.processEvents()

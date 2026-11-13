@@ -321,8 +321,13 @@ class PaymentApproval(QDialog):
         # The __init__ fit predates the stylesheet polish; polished metrics can
         # need more height, and the layout then squeezes the wrapped review
         # label below its measured text (FE002-GALLERY-ID-CLIP). Re-fit once
-        # the polished metrics are in effect.
+        # the polished metrics are in effect. sizeHint() only reflects the
+        # width the layout last laid out at: after a visible resize wider
+        # than the applied 640, the first fit here can still be a few pixels
+        # short, so re-fit once the show's own layout pass has settled the
+        # dialog at the applied width.
         self._fit_height()
+        QTimer.singleShot(0, self._fit_height)
 
 
 def describe_broadcast_result(txid, inspect=None):
