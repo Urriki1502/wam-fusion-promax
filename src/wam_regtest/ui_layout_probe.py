@@ -67,7 +67,7 @@ def check_layouts(output=None):
                 settle()
                 description = window.backup_page._success_description
                 text_fits(description, 'backup')
-                scroll = window.backup_page.findChild(QScrollArea)
+                scroll = window.backup_page._success_page
                 assert scroll.horizontalScrollBar().maximum() == 0
                 assert scroll.viewport().rect().contains(description.mapTo(scroll.viewport(), QPoint(0, 0)))
                 snapshot(f'backup-{width}-{theme}')

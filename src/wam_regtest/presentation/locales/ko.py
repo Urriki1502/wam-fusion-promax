@@ -2,6 +2,10 @@
 # Needs native-speaker review before this copy is treated as final.
 """Korean UI copy. Data only; no imports."""
 KO = {
+    'backup.preparing': '백업 확인 준비 중…',
+    'backup.checking': '백업 확인 중…',
+    'backup.scroll_accessible': '백업 및 복구 내용',
+
     "app_name": "WAM Fusion",
     "regtest_preview": "REGTEST 미리보기",
     "backup_title": "지갑을 백업하십시오",

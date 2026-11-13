@@ -1,5 +1,9 @@
 """English UI copy. Data only; no imports."""
 EN = {
+    'backup.preparing': 'Preparing your backup check…',
+    'backup.checking': 'Checking backup…',
+    'backup.scroll_accessible': 'Backup and recovery content',
+
     "app_name": "WAM Fusion",
     "regtest_preview": "REGTEST PREVIEW",
     "backup_title": "Back up your wallet",

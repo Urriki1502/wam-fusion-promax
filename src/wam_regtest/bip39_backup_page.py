@@ -8,14 +8,14 @@ from PySide6.QtGui import QFontDatabase, QKeySequence
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFrame, QLabel,
     QLineEdit, QPlainTextEdit, QPushButton, QCheckBox, QStackedWidget,
-    QScrollArea, QProgressBar, QSizePolicy, QDialog, QDialogButtonBox,
+    QScrollArea, QSizePolicy, QDialog, QDialogButtonBox,
     QInputDialog,
 )
 
 from .bip39_locale import t
 from .fusion_ui import (
     label, panel, action, fusion_palette, ResponsiveRow, TYPE, WEIGHT,
-    grow_with_wrapped_text,
+    grow_with_wrapped_text, SPACING, keep_focus_visible,
 )
 
 
@@ -351,7 +351,7 @@ class _WordCard(QFrame):
         super().__init__(parent)
         self.setObjectName("FusionInset")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setContentsMargins(SPACING["md"], SPACING["sm"], SPACING["md"], SPACING["sm"])
         layout.setSpacing(4)
         number_label = QLabel(f"{number}")
         number_label.setObjectName("FusionMuted")
@@ -359,6 +359,8 @@ class _WordCard(QFrame):
             "font-size:%dpx;font-weight:%d;" % (TYPE['caption'], WEIGHT['semibold']))
         word_label = QLabel(word)
         word_label.setObjectName("FusionCardValue")
+        word_label.setWordWrap(False)
+        word_label.setTextFormat(Qt.TextFormat.PlainText)
         word_label.setStyleSheet(
             "font-size:%dpx;font-weight:%d;" % (TYPE['word'], WEIGHT['semibold']))
         # Recovery words are written down by hand. Never selectable/copyable:
@@ -434,123 +436,103 @@ class Bip39BackupPage(QWidget):
         root.setSpacing(0)
 
         self._stack = QStackedWidget()
-        scroll = QScrollArea()
-        scroll.setObjectName("FusionScroll")
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setWidget(self._stack)
-        scroll.viewport().setAutoFillBackground(False)
-        self._stack.setAutoFillBackground(False)
         self._normal_stack_policy = self._stack.sizePolicy()
-        root.addWidget(scroll, 1)
+        root.addWidget(self._stack, 1)
+        self._busy = False
 
-        # --- Phrase grid page ---
-        self._phrase_page = QWidget()
-        self._phrase_page.setObjectName("FusionInner")
-        pl = QVBoxLayout(self._phrase_page)
-        pl.setContentsMargins(4, 4, 12, 16)
-        pl.setSpacing(18)
-
-        pl.addWidget(label(t("backup_title"), "PageTitle"))
-        pl.addWidget(label(t("backup_subtitle")))
-        warning = grow_with_wrapped_text(label(t("backup_warning"), "Warning"))
-        pl.addWidget(warning)
-
-        grid_card, gcl = panel(t("phrase_grid_title"))
-        self._grid = QGridLayout()
-        self._grid.setSpacing(12)
-        self._grid.setColumnStretch(0, 1)
-        self._grid.setColumnStretch(1, 1)
-        self._grid.setColumnStretch(2, 1)
-        gcl.addLayout(self._grid)
-        pl.addWidget(grid_card)
-
-        controls = QHBoxLayout()
-        # V0-A2: the confirmation checkbox has its own row. On one row with
-        # both buttons it forced a ~717 px minimum page width, so at the
-        # 900x630 minimum window the seed warning and word grid overflowed.
+        self._phrase_page, pl, self._phrase_scroll, gcl, footer = self._task_page(
+            t('backup_title'), t('backup_subtitle'), 1)
+        self._phrase_preparing = label(t('backup.preparing'))
+        self._phrase_preparing.setAccessibleName(t('backup.preparing'))
+        gcl.addWidget(self._phrase_preparing)
+        gcl.addWidget(label(t('phrase_grid_title'), 'FusionCardTitle'))
+        self._grid_host = QWidget()
+        self._grid_host.installEventFilter(self)
+        self._grid = QGridLayout(self._grid_host)
+        self._grid.setContentsMargins(0, 0, 0, 0)
+        self._grid.setSpacing(SPACING['md'])
+        gcl.addWidget(self._grid_host)
+        self._grid_host.hide()
+        self._columns = None
+        footer.addWidget(grow_with_wrapped_text(label(t('backup_warning'), 'Warning')))
         written_row = QHBoxLayout()
-        written_row.addStretch()
-        self._written_check = QCheckBox(t("written_checkbox"))
+        self._written_check = QCheckBox()
+        self._written_check.setAccessibleName(t('written_checkbox'))
+        written_text = grow_with_wrapped_text(label(t('written_checkbox')))
+        written_text.setBuddy(self._written_check)
         written_row.addWidget(self._written_check)
-        pl.addLayout(written_row)
-        controls.addStretch()
-        self._back_up_now = action(t("back_up_now"), "check", primary=True)
+        written_row.addWidget(written_text, 1)
+        footer.addLayout(written_row)
+        self._back_up_now = action(t('back_up_now'), 'check', primary=True)
         self._back_up_now.setEnabled(False)
         self._back_up_now.clicked.connect(self._on_back_up_now)
-        controls.addWidget(self._back_up_now)
-        self._back_up_later = action(t("back_up_later"), "backup")
+        self._back_up_later = action(t('back_up_later'), 'backup')
         self._back_up_later.clicked.connect(self._on_back_up_later)
-        controls.addWidget(self._back_up_later)
-        pl.addLayout(controls)
-        pl.addStretch()
-
+        self._phrase_buttons = self._buttons(footer, self._back_up_later, self._back_up_now)
         self._stack.addWidget(self._phrase_page)
 
-        # --- Verification page (STEP 2 OF 2 backup confirmation) ---
-        self._verify_page = QWidget()
-        self._verify_page.setObjectName("FusionInner")
-        vl = QVBoxLayout(self._verify_page)
-        vl.setContentsMargins(4, 4, 12, 16)
-        vl.setSpacing(18)
-
-        vl.addWidget(label(t("backup_flow_kicker"), "FusionKicker"))
-        self._step_label = label(t("backup_step_progress").format(step=2, total=2), "FusionKicker")
-        vl.addWidget(self._step_label)
-        self._step_progress = QProgressBar()
-        self._step_progress.setRange(0, 2)
-        self._step_progress.setValue(2)
-        self._step_progress.setToolTip(t('backup.verify_step_tooltip'))
-        self._step_progress.setTextVisible(False)
-        vl.addWidget(self._step_progress)
-        vl.addWidget(label(t("confirm_title"), "PageTitle"))
-        vl.addWidget(label(t("confirm_subtitle")))
-        vl.addWidget(label(t("backup_privacy_note"), "FusionMuted"))
-
+        self._verify_page, vl, self._verify_scroll, vcl, vfooter = self._task_page(
+            t('confirm_title'), t('confirm_subtitle'), 2)
+        self._verify_preparing = label(t('backup.preparing'))
+        self._verify_preparing.setAccessibleName(t('backup.preparing'))
+        vcl.addWidget(self._verify_preparing)
         self._verify_cards = []
         for _ in range(3):
             card = QWidget()
-            card.setObjectName("FusionInset")
+            card.setObjectName('FusionInset')
             card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(12, 14, 12, 14)
-            card_layout.setSpacing(8)
-            title = label("", "FusionCardTitle")
+            card_layout.setContentsMargins(*([SPACING['md']] * 4))
+            card_layout.setSpacing(SPACING['sm'])
+            title = label('', 'FusionCardTitle')
             edit = SecretLineEdit()
-            edit.setEchoMode(QLineEdit.EchoMode.Password)
+            edit.setMinimumHeight(36)
             edit.setMaxLength(16)
-            edit.setPlaceholderText(t("word_label"))
+            edit.setPlaceholderText(t('word_label'))
             edit.returnPressed.connect(self._on_verify)
+            title.setBuddy(edit)
             card_layout.addWidget(title)
             card_layout.addWidget(edit)
             self._verify_cards.append((card, title, edit))
+        # Stack at narrow widths; the breakpoint is recalculated from all
+        # localized position labels rather than assuming English fits.
         self._verify_cards_row = ResponsiveRow(
-            self._verify_cards[0][0], self._verify_cards[1][0],
-            self._verify_cards[2][0], weights=[1, 1, 1])
-        for index, (card, title, edit) in enumerate(self._verify_cards):
+            *(card for card, _, _ in self._verify_cards), weights=[1, 1, 1])
+        for index, (card, _, _) in enumerate(self._verify_cards):
             self._verify_cards_row.addWidget(card, index, 0)
-        vl.addWidget(self._verify_cards_row)
-
-        self._verify_error = label("", "FusionGold")
+        vcl.addWidget(self._verify_cards_row)
+        self._verify_cards_row.hide()
+        self._verify_error = grow_with_wrapped_text(label('', 'FusionGold'))
         self._verify_error.hide()
-        vl.addWidget(self._verify_error)
-
-        self._verify_back = action(t("backup_back"), "backup")
+        vcl.addWidget(self._verify_error)
+        vfooter.addWidget(grow_with_wrapped_text(label(t('backup_privacy_note'))))
+        self._verify_back = action(t('backup_back'), 'backup')
         self._verify_back.clicked.connect(self._on_verify_back)
-        self._verify_button = action(t("verify_backup"), "check", primary=True)
+        self._verify_button = action(t('verify_backup'), 'check', primary=True)
         self._verify_button.clicked.connect(self._on_verify)
-        fcontrols = QHBoxLayout()
-        fcontrols.addWidget(self._verify_back)
-        fcontrols.addStretch()
-        fcontrols.addWidget(self._verify_button)
-        vl.addLayout(fcontrols)
-        vl.addStretch()
-
+        self._verify_button.setEnabled(False)
+        self._verify_buttons = self._buttons(vfooter, self._verify_back, self._verify_button)
         self._stack.addWidget(self._verify_page)
+        self.setTabOrder(self._written_check, self._back_up_later)
+        self.setTabOrder(self._back_up_later, self._back_up_now)
+        chain = [edit for _, _, edit in self._verify_cards] + [self._verify_back, self._verify_button]
+        for first, second in zip(chain, chain[1:]):
+            self.setTabOrder(first, second)
+        for control in [self._written_check, self._back_up_later, self._back_up_now, *chain]:
+            control.installEventFilter(self)
 
         # --- Success page ---
-        self._success_page = QWidget()
-        self._success_page.setObjectName("FusionInner")
-        sl = QVBoxLayout(self._success_page)
+        # Preserve scene 14's original scrolling/centered success surface;
+        # scenes 12/13 have their own scroll areas and persistent bands.
+        self._success_page = QScrollArea()
+        self._success_page.setObjectName('FusionScroll')
+        self._success_page.setFrameShape(QFrame.Shape.NoFrame)
+        self._success_page.setWidgetResizable(True)
+        success_content = QWidget()
+        success_content.setObjectName('FusionInner')
+        self._success_page.setWidget(success_content)
+        success_content.setAutoFillBackground(False)
+        self._success_page.viewport().setAutoFillBackground(False)
+        sl = QVBoxLayout(success_content)
         sl.setContentsMargins(4, 4, 12, 16)
         sl.setSpacing(18)
         sl.addStretch()
@@ -573,7 +555,129 @@ class Bip39BackupPage(QWidget):
         self._stack.addWidget(self._success_page)
         self._stack.currentChanged.connect(self._fit_success_page)
 
-        self._written_check.toggled.connect(self._back_up_now.setEnabled)
+        self._written_check.toggled.connect(
+            lambda checked: self._back_up_now.setEnabled(checked and bool(self._phrase_words) and not self._busy))
+
+    def _task_page(self, title, subtitle, step):
+        page = QWidget()
+        page.setObjectName('FusionInner')
+        page.installEventFilter(self)
+        page.setAccessibleName(title)
+        page.setAccessibleDescription(t('backup_step_progress').format(step=step, total=2)
+                                      + ('. ' + t('backup.verify_step_tooltip') if step == 2 else ''))
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        content = QWidget()
+        content.setMaximumWidth(760)
+        content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        outer.addWidget(content, 1)
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(*([SPACING['lg']] * 4))
+        layout.setSpacing(SPACING['md'])
+        layout.addWidget(grow_with_wrapped_text(label(title, 'PageTitle')))
+        layout.addWidget(grow_with_wrapped_text(label(t('welcome.regtest_preview_no_real_funds'))))
+        scroll = QScrollArea()
+        scroll.setObjectName('FusionScroll')
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidgetResizable(True)
+        scroll.viewport().setAutoFillBackground(False)
+        scroll.viewport().installEventFilter(self)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        keep_focus_visible(scroll, t('backup.scroll_accessible'))
+        body = QWidget()
+        body.setAutoFillBackground(False)
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        card, card_layout = panel()
+        card_layout.setContentsMargins(*([SPACING['md']] * 4))
+        card_layout.addWidget(grow_with_wrapped_text(label(subtitle)))
+        body_layout.addWidget(card)
+        body_layout.addStretch()
+        scroll.setWidget(body)
+        # QScrollArea.setWidget enables auto-fill on its child; restore the
+        # transparent D1 surface after installing it (including dark mode).
+        body.setAutoFillBackground(False)
+        scroll.viewport().setAutoFillBackground(False)
+        layout.addWidget(scroll, 1)
+        band = QWidget()
+        footer = QVBoxLayout(band)
+        footer.setContentsMargins(0, 0, 0, 0)
+        footer.setSpacing(SPACING['sm'])
+        layout.addWidget(band)
+        return page, layout, scroll, card_layout, footer
+
+    def _buttons(self, layout, secondary, primary):
+        buttons = QDialogButtonBox()
+        buttons.addButton(secondary, QDialogButtonBox.ButtonRole.RejectRole)
+        buttons.addButton(primary, QDialogButtonBox.ButtonRole.AcceptRole)
+        for button in (secondary, primary):
+            button.setAccessibleName(button.text())
+            button.setAutoDefault(False)
+            button.setMinimumHeight(36)
+        primary.setDefault(True)
+        layout.addWidget(buttons)
+        return buttons
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.KeyPress and event.key() in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
+            # Keep the documented task order under Qt styles that otherwise
+            # redirect entry into a button box to its default button.
+            controls = ([self._written_check, self._back_up_later, self._back_up_now]
+                        if self._stack.currentWidget() is self._phrase_page else
+                        [edit for _, _, edit in self._verify_cards] + [self._verify_back, self._verify_button])
+            controls = [control for control in controls if control.isVisible() and control.isEnabled()]
+            if watched in controls:
+                backwards = event.key() == Qt.Key.Key_Backtab or bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                index = controls.index(watched) + (-1 if backwards else 1)
+                if 0 <= index < len(controls):
+                    controls[index].setFocus(Qt.FocusReason.BacktabFocusReason if backwards else Qt.FocusReason.TabFocusReason)
+                    event.accept()
+                    return True
+        if event.type() == QEvent.Type.Resize:
+            if watched in (getattr(self, '_phrase_page', None), getattr(self, '_verify_page', None)):
+                width = self.window().width()
+                inset = SPACING['xxl'] if width >= 1440 else SPACING['xl'] if width >= 1100 else SPACING['lg']
+                watched.layout().itemAt(0).widget().layout().setContentsMargins(*([inset] * 4))
+            scroll = getattr(self, '_phrase_scroll', None)
+            if watched is getattr(self, '_grid_host', None) or (scroll is not None and watched is scroll.viewport()):
+                self._reflow_words()
+        return super().eventFilter(watched, event)
+
+    def _reflow_words(self):
+        cards = [self._grid.itemAt(i).widget() for i in range(self._grid.count())]
+        needed = max((card.minimumSizeHint().width() for card in cards), default=140)
+        available = self._phrase_scroll.viewport().width() - 2 * SPACING['md']
+        columns = 3 if available >= 3 * needed + 2 * SPACING['md'] else 2
+        if columns == self._columns:
+            return
+        self._columns = columns
+        for i, card in enumerate(cards):
+            self._grid.addWidget(card, i // columns, i % columns)
+        for column in range(3):
+            self._grid.setColumnStretch(column, 1 if column < columns else 0)
+
+    def _set_busy(self, key):
+        self._busy = True
+        self._verify_button.setText(t(key))
+        self._verify_button.setAccessibleName(t(key))
+        self._verify_button.setEnabled(False)
+        self._back_up_now.setEnabled(False)
+        self._verify_back.setEnabled(False)
+        self._verify_cards_row.setEnabled(False)
+        self._verify_preparing.setText(t(key))
+        self._verify_preparing.setAccessibleName(t(key))
+        self._verify_preparing.show()
+
+    def _finish_busy(self):
+        self._busy = False
+        self._verify_button.setText(t('verify_backup'))
+        self._verify_button.setAccessibleName(t('verify_backup'))
+        self._verify_button.setEnabled(True)
+        self._verify_back.setEnabled(True)
+        self._verify_cards_row.setEnabled(True)
+        self._back_up_now.setEnabled(bool(self._phrase_words) and self._written_check.isChecked())
+        self._verify_preparing.hide()
 
     def _fit_success_page(self, *_):
         # Hidden phrase/verification pages must not impose their minimum size
@@ -595,6 +699,11 @@ class Bip39BackupPage(QWidget):
         for i, word in enumerate(self._phrase_words):
             card = _WordCard(i + 1, word)
             self._grid.addWidget(card, i // 3, i % 3)
+        self._columns = None
+        self._grid_host.show()
+        self._phrase_preparing.hide()
+        self._reflow_words()
+        self._finish_busy()
         self._written_check.setChecked(False)
         self._back_up_now.setEnabled(False)
         self._clear_challenge()
@@ -608,6 +717,8 @@ class Bip39BackupPage(QWidget):
         self._clear_challenge()
         self._verify_error.hide()
         self._stack.setCurrentWidget(self._verify_page)
+        self._verify_back.hide()
+        self._set_busy('backup.preparing')
         self.challenge_requested.emit()
 
     def _clear_grid(self):
@@ -643,6 +754,10 @@ class Bip39BackupPage(QWidget):
             raise ValueError('Q06_BACKUP_PAGE_CHALLENGE_DENIED')
         self._challenge_id = identifier
         self._build_verify_inputs(positions)
+        self._finish_busy()
+        self._verify_cards_row.show()
+        self._verify_back.setVisible(bool(self._phrase_words))
+        self._verify_inputs[0].setFocus()
 
     def _build_verify_inputs(self, positions):
         # Clear old inputs.
@@ -653,16 +768,21 @@ class Bip39BackupPage(QWidget):
         for index, position in enumerate(self._challenge_positions):
             card, title, edit = self._verify_cards[index]
             title.setText(t('recovery_word_position').format(position=position))
+            edit.setAccessibleName(title.text())
+            edit.setAccessibleDescription(self._verify_error.text() if not self._verify_error.isHidden() else '')
             edit.clear()
             self._verify_inputs.append(edit)
+        label_width = max(title.fontMetrics().horizontalAdvance(title.text()) for _, title, _ in self._verify_cards)
+        self._verify_cards_row._break = max(620, 3 * (label_width + 2 * SPACING['md']) + 2 * SPACING['lg'])
 
     def _on_back_up_now(self):
-        if not self._written_check.isChecked():
+        if self._busy or not self._phrase_words or not self._written_check.isChecked():
             return
         self._clear_challenge()
+        self._stack.setCurrentWidget(self._verify_page)
+        self._verify_cards_row.hide()
+        self._set_busy('backup.preparing')
         self.challenge_requested.emit()
-        if self._challenge_id is not None:
-            self._stack.setCurrentWidget(self._verify_page)
 
     def holds_unverified_phrase(self):
         """True while this page still holds the only display of the phrase."""
@@ -700,13 +820,18 @@ class Bip39BackupPage(QWidget):
         self.deferred_requested.emit()
 
     def _on_verify_back(self):
+        if self._busy:
+            return
         self._clear_challenge()
         self.challenge_cancelled.emit()
         if self._phrase_words:
             self._stack.setCurrentWidget(self._phrase_page)
 
     def _on_verify(self):
+        if self._busy:
+            return
         if self._challenge_id is None:
+            self._set_busy('backup.preparing')
             self.challenge_requested.emit()
             return
         answers = [edit.text().strip() for edit in self._verify_inputs]
@@ -716,11 +841,14 @@ class Bip39BackupPage(QWidget):
             return
         identifier = self._challenge_id
         self._clear_challenge()
+        self._set_busy('backup.checking')
         self.verify_requested.emit(identifier, answers)
 
     def show_verification_error(self, key="verify_error"):
         # "verify_error" only for answers the backend compared and rejected;
         # "verify_unavailable" when the backend refused before judging words.
+        self._finish_busy()
+        self._verify_cards_row.hide()
         self._verify_error.setText(t(key))
         self._verify_error.show()
         self._clear_challenge()
@@ -734,6 +862,8 @@ class Bip39BackupPage(QWidget):
         self._clear_challenge()
         self._phrase_words = []
         self._clear_grid()
+        self._grid_host.hide()
+        self._phrase_preparing.show()
         self._written_check.setChecked(False)
 
     def keyPressEvent(self, event):

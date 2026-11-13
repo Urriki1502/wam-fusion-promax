@@ -258,14 +258,12 @@ class BackupPageContract(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(self.window.backup_page._stack.currentWidget(), self.window.backup_page._phrase_page)
 
-    def test_backup_verify_page_shows_step_2_of_2_progress_and_three_cards(self):
+    def test_backup_verify_page_announces_step_2_of_2_and_three_cards(self):
         self._show_required()
         self.window.backup_page.findChildren(QCheckBox)[0].setChecked(True)
         _find_button(self.window.backup_page, "Confirm backup").click()
         self.app.processEvents()
-        self.assertIn("STEP 2 OF 2", self.window.backup_page._step_label.text())
-        self.assertEqual(self.window.backup_page._step_progress.value(), 2)
-        self.assertEqual(self.window.backup_page._step_progress.maximum(), 2)
+        self.assertIn("STEP 2 OF 2", self.window.backup_page._verify_page.accessibleDescription())
         self.assertEqual(len(self.window.backup_page._verify_inputs), 3)
         positions = self.window.backup_page._challenge_positions
         self.assertEqual(len(positions), 3)
@@ -660,8 +658,8 @@ class RecoveryUxSourceContract(unittest.TestCase):
 
     def test_backup_page_uses_owner_approved_step_ui(self):
         source = self._read_source("bip39_backup_page.py")
-        self.assertIn("_step_label", source)
-        self.assertIn("_step_progress", source)
+        self.assertIn("setAccessibleDescription", source)
+        self.assertNotIn('t("backup_flow_kicker")', source)
         self.assertIn("_verify_cards_row", source)
         self.assertIn("ResponsiveRow", source)
 

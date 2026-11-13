@@ -180,7 +180,7 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(set(CATALOG['en']) - SETTINGS_KEYS,
                          expected | pm017_keys | status_keys | pm018_keys
                          | set(pm021['english']) | set(fe002['english']) | set(pm041['english'])
-                         | set(fe003['english']))
+                         | set(fe003['english']) | {'backup.preparing', 'backup.checking', 'backup.scroll_accessible'})
 
     def test_public_error_mapping_and_codes_unchanged(self):
         from wam_regtest.gui_errors import _MESSAGES, error_text, public_code

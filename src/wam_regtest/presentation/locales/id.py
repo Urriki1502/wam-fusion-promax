@@ -2,6 +2,10 @@
 # Needs native-speaker review before this copy is treated as final.
 """Indonesian UI copy. Data only; no imports."""
 ID = {
+    'backup.preparing': 'Menyiapkan pemeriksaan cadangan…',
+    'backup.checking': 'Memeriksa cadangan…',
+    'backup.scroll_accessible': 'Konten pencadangan dan pemulihan',
+
     "app_name": "WAM Fusion",
     "regtest_preview": "PRATINJAU REGTEST",
     "backup_title": "Cadangkan dompet Anda",

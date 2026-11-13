@@ -2,6 +2,10 @@
 # Needs native-speaker review before this copy is treated as final.
 """Japanese UI copy. Data only; no imports."""
 JA = {
+    'backup.preparing': 'バックアップ確認を準備中…',
+    'backup.checking': 'バックアップを確認中…',
+    'backup.scroll_accessible': 'バックアップと復元の内容',
+
     "app_name": "WAM Fusion",
     "regtest_preview": "REGTEST プレビュー",
     "backup_title": "ウォレットをバックアップ",

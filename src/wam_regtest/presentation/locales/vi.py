@@ -2,6 +2,10 @@
 # Needs native-speaker review before this copy is treated as final.
 """Vietnamese UI copy. Data only; no imports."""
 VI = {
+    'backup.preparing': 'Đang chuẩn bị kiểm tra bản sao lưu…',
+    'backup.checking': 'Đang kiểm tra bản sao lưu…',
+    'backup.scroll_accessible': 'Nội dung sao lưu và khôi phục',
+
     "app_name": "WAM Fusion",
     "regtest_preview": "BẢN XEM TRƯỚC REGTEST",
     "backup_title": "Sao lưu ví của bạn",

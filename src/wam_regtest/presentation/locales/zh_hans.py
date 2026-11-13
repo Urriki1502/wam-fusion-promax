@@ -2,6 +2,10 @@
 # Needs native-speaker review before this copy is treated as final.
 """Simplified Chinese UI copy. Data only; no imports."""
 ZH_HANS = {
+    'backup.preparing': '正在准备备份检查…',
+    'backup.checking': '正在检查备份…',
+    'backup.scroll_accessible': '备份与恢复内容',
+
     "app_name": "WAM Fusion",
     "regtest_preview": "REGTEST 预览",
     "backup_title": "备份您的钱包",

@@ -53,13 +53,23 @@ class SafetyTextLayout(unittest.TestCase):
     def test_backup_checkbox_is_not_on_the_button_row(self):
         page = self.window.backup_page
         check, now, later = page._written_check, page._back_up_now, page._back_up_later
-        row_of = lambda w: next(l for l in _layouts(page._phrase_page.layout()) if l.indexOf(w) >= 0)
-        self.assertIsNot(row_of(check), row_of(now))
-        self.assertIs(row_of(now), row_of(later))
+        from PySide6.QtCore import QPoint
+        from PySide6.QtWidgets import QDialogButtonBox
+        self.assertIs(now.parentWidget(), later.parentWidget())
+        self.assertIsInstance(now.parentWidget(), QDialogButtonBox)
+        self.assertIsNot(check.parentWidget(), now.parentWidget())
         page.set_phrase(('abandon',) * 11 + ('about',))
-        need = page._phrase_page.minimumSizeHint().width()
-        self.assertLess(need, check.minimumSizeHint().width() + now.minimumSizeHint().width()
-                        + later.minimumSizeHint().width())
+        self.window.resize(900, 630)
+        self.window.stack.setCurrentWidget(page)
+        self.window.show()
+        for _ in range(6):
+            self.app.processEvents()
+        self.assertLess(check.mapTo(page, QPoint(0, check.height())).y(),
+                        now.mapTo(page, QPoint(0, 0)).y())
+        for button in (now, later):
+            self.assertLessEqual(button.mapTo(page, QPoint(button.width(), button.height())).x(), page.width())
+            self.assertLessEqual(button.mapTo(page, QPoint(0, button.height())).y(), page.height())
+        self.window.hide()
 
 
 def _layouts(layout):
