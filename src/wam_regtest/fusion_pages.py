@@ -316,18 +316,37 @@ class PaymentApproval(QDialog):
     def _fit_height(self):
         self.resize(640, max(440, self.sizeHint().height() + 8))
 
+    def _sync_layouts(self):
+        if self.layout() is not None:
+            self.layout().invalidate()
+            self.layout().activate()
+        for child in self.findChildren(QWidget):
+            if child.layout() is not None:
+                child.layout().invalidate()
+                child.layout().activate()
+
     def showEvent(self,event):
         super().showEvent(event)
         # The __init__ fit predates the stylesheet polish; polished metrics can
         # need more height, and the layout then squeezes the wrapped review
-        # label below its measured text (FE002-GALLERY-ID-CLIP). Re-fit once
-        # the polished metrics are in effect. sizeHint() only reflects the
-        # width the layout last laid out at: after a visible resize wider
-        # than the applied 640, the first fit here can still be a few pixels
-        # short, so re-fit once the show's own layout pass has settled the
-        # dialog at the applied width.
+        # label below its measured text (FE002-GALLERY-ID-CLIP). Re-fit with
+        # the polished metrics. sizeHint() only reflects the width the layout
+        # last laid out at: after a visible resize wider than the applied 640
+        # it is stale until the children are laid out at 640, because
+        # ReadableText fixes its height only in its own resizeEvent. Activate
+        # the whole layout tree synchronously at the applied width so the
+        # dialog is at its final size, with the review label unclipped, before
+        # showEvent returns: Approve is clickable at the first Paint, so no
+        # clipped frame may exist and no event-loop timer may be involved
+        # (AGY PEER-163).
         self._fit_height()
-        QTimer.singleShot(0, self._fit_height)
+        self._sync_layouts()
+        target_h=max(440,self.sizeHint().height()+8)
+        if self.layout() is not None:
+            hfw=self.layout().totalHeightForWidth(640)
+            if hfw>0:target_h=max(target_h,hfw+8)
+        self.resize(640,target_h)
+        self._sync_layouts()
 
 
 def describe_broadcast_result(txid, inspect=None):
