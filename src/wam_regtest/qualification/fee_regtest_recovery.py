@@ -91,6 +91,37 @@ def submission_order_holds(events, submissions, expected):
         return False
 
 
+def history_debit_holds(snapshot, txid, amount, fee):
+    """The public snapshot projects history as net atoms, not ledger columns."""
+    try:
+        row, = [r for r in snapshot["history"] if r["txid"] == txid]
+        return type(row["atoms"]) is int and row["atoms"] == -(amount + fee)
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def resume_order_holds(events, submissions, expected):
+    """Recovered bytes use an explicit resume window, with no second crypto."""
+    try:
+        start, = [i for i, e in enumerate(events) if e == "ACTION_RESUME_INTENT"]
+        end = next((i for i in range(start + 1, len(events))
+                    if events[i].startswith("ACTION_")), len(events))
+        window = events[start:end]
+        if {"SIGN", "MARK_SIGNED", "RELEASE_DRAFT"}.intersection(window):
+            return False
+        evidence = window.index("EVIDENCE_UNCERTAIN_SAVED")
+        durable = window.index("SAVE_UNCERTAIN")
+        send = window.index("SENDRAWTRANSACTION")
+        return (submission_order_holds(window, submissions, expected)
+                and window.count("TESTMEMPOOLACCEPT") == 2
+                and "TESTMEMPOOLACCEPT" in window[:evidence]
+                and "SAVE" in window[evidence + 1:durable]
+                and "TESTMEMPOOLACCEPT" in window[durable + 1:send]
+                and "SAVE" in window[send + 1:])
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return False
+
+
 def cancel_holds(before, draft, after, events, releases):
     try:
         return (not (MUTATIONS - {"RELEASE_DRAFT"}).intersection(events)
@@ -232,7 +263,7 @@ def run_recovery(fixture, *, app, request, restart, current_window, idle, wait,
     require(assertions_pass(result["tma"]["checks"]), "F3_RECOVERY_PREFLIGHT")
     require("SENDRAWTRANSACTION" not in observations["events"], "F3_RECOVERY_EARLY_SUBMIT")
     if fixture.case == "F3-12":
-        approve_payment(app, window, window.broadcast, t("pages.approve_broadcast"),
+        approve_payment(app, window, window.broadcast, t("pages.approve_broadcast_2"),
             lambda: idle() and window._pending_confirm_txid is not None,
             wait, checks, result, "broadcast")
     held = inspect()
@@ -289,8 +320,7 @@ def run_recovery(fixture, *, app, request, restart, current_window, idle, wait,
         post_available_atoms=after["available_atoms"], amount=review.atoms, fee=review.fee,
         selected_inputs=result["tma"]["selected_inputs"], reservation_rows=after_inspect["reservation_rows"])
     def history_holds(snapshot):
-        rows = [r for r in snapshot["history"] if r["txid"] == original["txid"]]
-        return len(rows) == 1 and rows[0]["credit_atoms"] - rows[0]["debit_atoms"] == -(review.atoms + review.fee)
+        return history_debit_holds(snapshot, original["txid"], review.atoms, review.fee)
     checks["history_exact_debit"] = history_holds(after)
     window = reopen()
     final = request("snapshot", timeout=240)
@@ -302,6 +332,7 @@ def run_recovery(fixture, *, app, request, restart, current_window, idle, wait,
         and not reservation_warning(final) and displayed_reserved_inputs(final) == 0)
     events = observations["events"]
     checks["one_submission_no_resign"] = all(events.count(e) == 1 for e in ("SIGN", "MARK_SIGNED", "SENDRAWTRANSACTION"))
-    checks["sign_order"] = sign_order_holds(events)
+    checks["sign_order"] = (resume_order_holds(events, observations.get("submissions", []), original)
+                            if fixture.case == "F3-11" else sign_order_holds(events))
     result["recovery"] = {"original": original, "recovered": recovered,
                           "held": held, "reopened": reopened, "replay_refusal": refusal}
