@@ -81,6 +81,46 @@ class ManagedGuiContracts(unittest.TestCase):
         self.assertNotEqual(created[0].thread,threading.get_ident())
         self.assertFalse(executor.closed)
 
+    def test_launch_passphrase_uses_protected_helper_with_validation_and_cancel(self):
+        from unittest.mock import Mock, call
+        from PySide6.QtWidgets import QInputDialog, QWidget
+        from wam_regtest import managed_gui as gui
+        for responses in ([('short', True), ('public-disposable-password', True)],
+                          [('', False)]):
+            with self.subTest(responses=responses):
+                app = Mock()
+                executor = Mock(closed=True)
+                window = QWidget()
+                window.open_wallet = Mock()
+                window.request_quit = Mock()
+                try:
+                    with patch.object(gui, 'qt_application', return_value=app), \
+                            patch.object(gui, 'WalletExecutor', return_value=executor), \
+                            patch.object(gui, 'ManagedWalletProxy'), \
+                            patch.object(gui, 'ManagedWalletWindow', return_value=window), \
+                            patch.object(gui.QSystemTrayIcon, 'isSystemTrayAvailable', return_value=False), \
+                            patch.object(gui, 'get_secret_text', side_effect=responses) as prompt, \
+                            patch.object(QInputDialog, 'getText', return_value=('', False)) as legacy, \
+                            patch.object(gui.QMessageBox, 'warning') as warning:
+                        self.assertEqual(gui.launch_managed(None, None, None,
+                                                          authorized=True, create=True), 0)
+                    self.assertEqual(prompt.call_args_list, [call(window,
+                        gui.t('managed.passphrase_title'), gui.t('managed.passphrase_prompt'))] * len(responses))
+                    legacy.assert_not_called()
+                    if responses[-1][1]:
+                        warning.assert_called_once_with(window, gui.t('managed.passphrase_warning_title'),
+                                                        gui.t('managed.passphrase_warning'))
+                        window.open_wallet.assert_called_once_with(b'public-disposable-password', create=True)
+                        window.request_quit.assert_not_called()
+                    else:
+                        warning.assert_not_called()
+                        window.open_wallet.assert_not_called()
+                        window.request_quit.assert_called_once_with()
+                    app.exec.assert_not_called()
+                    executor.join.assert_called_once_with()
+                finally:
+                    window.hide();window.deleteLater();self.app.processEvents()
+
     def test_close_during_operation_keeps_qt_responsive_then_locks_without_core_stop(self):
         executor,window,created=self.fixture();window.open_wallet(b'public-disposable-password')
         self.wait(lambda:window._worker is None and not window.session.locked)

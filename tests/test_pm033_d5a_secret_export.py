@@ -406,6 +406,24 @@ class SecretExportContracts(unittest.TestCase):
                     window.start.assert_not_called()
                     window.request_quit.assert_called_once_with()
 
+    def test_secret_text_ignores_patched_qinputdialog_gettext_and_clears_dialog(self):
+        from wam_regtest.bip39_backup_page import get_secret_text
+        dialogs = []
+
+        def accept(dialog):
+            dialogs.append(dialog)
+            dialog.setTextValue('public-disposable-passphrase')
+            return QDialog.DialogCode.Accepted
+
+        with patch.object(QInputDialog, 'getText', return_value=('bypass', True)) as legacy, \
+                patch.object(QInputDialog, 'exec', new=accept):
+            self.assertEqual(get_secret_text(None, 'Title', 'Prompt'),
+                             ('public-disposable-passphrase', True))
+        legacy.assert_not_called()
+        self.assertEqual(len(dialogs), 1)
+        self.assertEqual(dialogs[0].textValue(), '')
+        self.assertTrue(all(edit.text() == '' for edit in dialogs[0].findChildren(QLineEdit)))
+
     def test_password_prompt_uses_protected_qinputdialog_line_edit(self):
         from wam_regtest.bip39_backup_page import get_secret_text
         seen = {}

@@ -1,11 +1,12 @@
 """Qt bridge to a persistent wallet owner thread; no live session on Qt workers."""
 from PySide6.QtCore import QEvent,QObject,QThread,QTimer,Qt,Signal
-from PySide6.QtWidgets import QInputDialog,QLineEdit,QMenu,QMessageBox,QSystemTrayIcon
+from PySide6.QtWidgets import QMenu,QMessageBox,QSystemTrayIcon
 
 from .operational_gui import OperationalWalletWindow,qt_application
 from .wallet_executor import ManagedWalletBackend,ManagedWalletProxy,WalletExecutor
 from .gui_errors import operation_error
 from .bip39_locale import t
+from .bip39_backup_page import get_secret_text
 
 
 class ControlWorker(QThread):
@@ -200,8 +201,8 @@ def launch_managed(root,core,source,*,authorized=False,create=False,keychain=Non
     window.show()
     if _window_hook is not None:_window_hook(window)
     while True:
-        password,ok=QInputDialog.getText(window,t('managed.passphrase_title'),
-            t('managed.passphrase_prompt'),QLineEdit.EchoMode.Password)
+        password,ok=get_secret_text(window,t('managed.passphrase_title'),
+            t('managed.passphrase_prompt'))
         if not ok or 12<=len(password.encode())<=1024:break
         QMessageBox.warning(window,t('managed.passphrase_warning_title'),t('managed.passphrase_warning'))
     if ok:window.open_wallet(password.encode(),create=create)

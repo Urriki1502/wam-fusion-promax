@@ -37,7 +37,7 @@ class OnboardingRecovery(unittest.TestCase):
         responses=[('short',True),('public-valid-disposable',True),
                    ('different-disposable',True),('public-valid-disposable',True),
                    ('public-valid-disposable',True)]
-        with patch.object(gui.QInputDialog,'getText',side_effect=responses), \
+        with patch.object(gui,'get_secret_text',side_effect=responses), \
                 patch.object(gui.QMessageBox,'warning') as warning:
             password,ok=gui._onboarding_password(None,'create')
         self.assertTrue(ok)
@@ -47,7 +47,7 @@ class OnboardingRecovery(unittest.TestCase):
     def test_cancel_password_and_reopen_do_not_require_new_confirmation(self):
         from wam_regtest import bip39_owner_gui as gui
         for response in [('',False),('public-valid-disposable',True)]:
-            with patch.object(gui.QInputDialog,'getText',return_value=response) as prompt:
+            with patch.object(gui,'get_secret_text',return_value=response) as prompt:
                 self.assertEqual(gui._onboarding_password(None,'reopen'),response)
                 self.assertEqual(prompt.call_count,1)
 

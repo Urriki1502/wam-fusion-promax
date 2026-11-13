@@ -71,7 +71,6 @@ _BLOCKED_INPUT_METHOD_QUERIES = frozenset({
     Qt.InputMethodQuery.ImTextAfterCursor,
 })
 
-_REAL_QINPUT_GET_TEXT = QInputDialog.getText
 
 
 def _is_blocked_key_event(event):
@@ -316,9 +315,7 @@ class SecretMultilineDialog(QDialog):
 
 
 def get_secret_text(parent, title, prompt):
-    """Prompt for a masked secret line while keeping QInputDialog compatibility."""
-    if QInputDialog.getText is not _REAL_QINPUT_GET_TEXT:
-        return QInputDialog.getText(parent, title, prompt, QLineEdit.EchoMode.Password)
+    """Prompt for a masked secret line with protected editing."""
     dialog = QInputDialog(parent)
     dialog.setWindowTitle(title)
     dialog.setLabelText(prompt)
