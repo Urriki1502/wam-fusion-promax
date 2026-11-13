@@ -308,23 +308,38 @@ def _exact_json(value):
 
     Fee-rate replies (and getnetworkinfo) are decoded with parse_float=Decimal
     since FEE-1, and json.dumps cannot encode Decimal. Fault injection must
-    re-emit the genuine reply unchanged apart from the injected field, so each
-    Decimal is written back as its exact decimal text, never via float.
+    re-emit the genuine reply unchanged apart from the injected field. This is
+    a structural encoder (Codex PEER-107: no textual placeholder replacement,
+    which could collide with genuine strings or keys): every finite Decimal is
+    written as its exact decimal text, strings and keys through json.dumps
+    escaping, and anything else non-JSON is refused.
     """
     from decimal import Decimal
-    numbers = {}
 
-    def default(item):
-        if isinstance(item, Decimal) and item.is_finite():
-            token = '__Q02_DECIMAL_%d__' % len(numbers)
-            numbers[token] = format(item, 'f')
-            return token
+    def encode(item):
+        if item is None or type(item) is bool:
+            return json.dumps(item)
+        if type(item) is int:
+            return str(item)
+        if type(item) is float:
+            if item != item or item in (float('inf'), float('-inf')):
+                raise TypeError('Q02_FAULT_REPLY_NOT_JSON')
+            return json.dumps(item)
+        if type(item) is Decimal:
+            if not item.is_finite():
+                raise TypeError('Q02_FAULT_REPLY_NOT_JSON')
+            return format(item, 'f')
+        if type(item) is str:
+            return json.dumps(item)
+        if type(item) in (list, tuple):
+            return '[' + ','.join(encode(v) for v in item) + ']'
+        if type(item) is dict:
+            if any(type(k) is not str for k in item):
+                raise TypeError('Q02_FAULT_REPLY_NOT_JSON')
+            return '{' + ','.join(json.dumps(k) + ':' + encode(v) for k, v in item.items()) + '}'
         raise TypeError('Q02_FAULT_REPLY_NOT_JSON')
 
-    text = json.dumps(value, default=default)
-    for token, number in numbers.items():
-        text = text.replace('"%s"' % token, number)
-    return text.encode()
+    return encode(value).encode()
 
 
 def probe(core):
