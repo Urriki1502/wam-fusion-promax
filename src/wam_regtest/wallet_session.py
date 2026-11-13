@@ -505,12 +505,12 @@ class WalletSession:
 
         The fee starts from a one-input, two-output estimate and climbs for at
         most four rounds. When a round covers its size but overpays, one lower
-        proposal is tried at that measured need. If the lower fee changes the
-        structure, that draft is released and the original covering fee is
-        proposed once more. At most six proposals. Every abandoned draft is
-        released only while it is still an unsaved, unreviewed draft. The
-        accepted draft is saved exactly as prepare() saves: an uncertain save
-        keeps the reservation.
+        proposal is tried at that measured need. If the selector refuses that
+        lower fee before reserving, or the lower fee changes the structure,
+        the attempt is dropped and the original covering fee is proposed once
+        more. At most six proposals. Every abandoned draft is released only
+        while it is still an unsaved, unreviewed draft. The accepted draft is
+        saved exactly as prepare() saves: an uncertain save keeps the reservation.
         """
         from wam_sp.wallet import Wallet, Intent, Signer
         from .domain.fee_policy import (
@@ -568,13 +568,26 @@ class WalletSession:
             if need < fee:
                 higher = fee
                 self._abort_unreviewed(wallet, proposal.token)
-                proposal, prepared, vsize, need, fee, available_before = propose_once(need)
-                if need > fee:
-                    self._abort_unreviewed(wallet, proposal.token)
+                try:
+                    proposal, prepared, vsize, need, fee, available_before = propose_once(need)
+                except ValueError as error:
+                    # WSP raises this exact ValueError before inserting a
+                    # reservation. WalletSessionError is a ValueError too, and
+                    # every other message keeps its current refusal.
+                    if (type(error) is not ValueError
+                            or error.args != ("INSUFFICIENT_SINGLE_CLUSTER_FUNDS",)):
+                        raise
                     proposal, prepared, vsize, need, fee, available_before = propose_once(higher)
                     if need > fee:
                         self._abort_unreviewed(wallet, proposal.token)
                         raise WalletSessionError("FEE_STRUCTURE_UNSTABLE")
+                else:
+                    if need > fee:
+                        self._abort_unreviewed(wallet, proposal.token)
+                        proposal, prepared, vsize, need, fee, available_before = propose_once(higher)
+                        if need > fee:
+                            self._abort_unreviewed(wallet, proposal.token)
+                            raise WalletSessionError("FEE_STRUCTURE_UNSTABLE")
             try:
                 check_fee_limits(fee, atoms, vsize, quoted)
             except FeePolicyError as error:
