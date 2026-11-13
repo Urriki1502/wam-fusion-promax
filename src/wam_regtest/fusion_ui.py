@@ -1336,6 +1336,12 @@ class BalanceHistoryChart(QWidget):
 
 class WrappedActivityDelegate(QStyledItemDelegate):
     """Measure wrapped text including fallback glyphs and Fusion item padding."""
+    def initStyleOption(self, option, index):
+        super().initStyleOption(option, index)
+        # Paint the wrapped height measured in sizeHint; without the WrapText
+        # feature the style elides the overflow instead of wrapping it.
+        option.features |= QStyleOptionViewItem.ViewItemFeature.WrapText
+
     def sizeHint(self, option, index):
         size = super().sizeHint(option, index)
         measured = QStyleOptionViewItem(option)

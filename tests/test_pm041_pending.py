@@ -175,6 +175,55 @@ class PendingWidgets(unittest.TestCase):
                     page.close()
                     page.deleteLater()
 
+    def test_pending_row_wraps_instead_of_eliding_in_narrowest_locale_and_size(self):
+        from unittest.mock import patch
+        from PySide6.QtCore import QRect, Qt
+        from PySide6.QtGui import QFontMetrics
+        from PySide6.QtWidgets import QStyleOptionViewItem
+        from wam_regtest import bip39_locale
+        from wam_regtest.fusion_ui import FusionOverview, fusion_stylesheet
+        with patch.object(bip39_locale, '_lang', return_value='id'):
+            page = FusionOverview()
+            page.setStyleSheet(fusion_stylesheet('dark') +
+                              'QTableWidget {font-size:18px;}')
+            try:
+                snap = self.snapshot()
+                snap = replace(snap, pending_history=(replace(
+                    snap.pending_history[0], fee_atoms=1234567890123,
+                    pending_change_atoms=987654321098765),))
+                page.render_snapshot(snap, operational=True)
+                page.resize(900, 900)
+                page.show()
+                for _ in range(3):
+                    self.app.processEvents()
+                table = page.activity_table
+                index = table.model().index(0, 2)
+                item = table.item(0, 2)
+                lines = item.text().split('\n')
+                self.assertEqual(len(lines), 2)
+                option = QStyleOptionViewItem()
+                option.initFrom(table)
+                option.font = table.font()
+                table.itemDelegate().initStyleOption(option, index)
+                # The delegate must ask the style to wrap: without the WrapText
+                # feature the long pending fee/change line is elided, not
+                # wrapped (PM-041 review nit).
+                self.assertTrue(option.features & QStyleOptionViewItem.ViewItemFeature.WrapText)
+                rect = table.visualRect(index)
+                metrics = QFontMetrics(option.font)
+                # The second line is wider than the cell, so a non-wrapping
+                # delegate would elide it instead of showing it in full.
+                self.assertGreater(metrics.horizontalAdvance(lines[1]), rect.width() - 21)
+                # Wrapped, the same text fits the cell horizontally and the
+                # row is tall enough to show every wrapped line.
+                wrapped = metrics.boundingRect(QRect(0, 0, rect.width() - 21, 10000),
+                                               Qt.TextFlag.TextWordWrap, item.text())
+                self.assertLessEqual(wrapped.width(), rect.width() - 21)
+                self.assertGreaterEqual(table.rowHeight(0), wrapped.height() + 21)
+            finally:
+                page.close()
+                page.deleteLater()
+
     def test_unverified_fields_have_no_amount_unit_in_each_language(self):
         from unittest.mock import patch
         from wam_regtest import bip39_locale

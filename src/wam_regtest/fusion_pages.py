@@ -311,7 +311,18 @@ class PaymentApproval(QDialog):
         layout.addWidget(label(ui_text('pages.sign_irreversible') if kind=='sign' else ui_text('pages.broadcast_reply_uncertain'),'FusionGold'))
         card,cl=panel(ui_text('pages.exact_payment'));cl.addWidget(label(ui_text('pages.recipient'),'FusionKicker'));cl.addWidget(label(review.code,'ReceiveCode',True));cl.addWidget(grow_with_wrapped_text(label(approval_amount_text(review))));layout.addWidget(card)
         buttons=QDialogButtonBox();self.cancel=buttons.addButton(ui_text('pages.cancel'),QDialogButtonBox.ButtonRole.RejectRole);self.approve=buttons.addButton(ui_text('pages.approve_sign') if kind=='sign' else ui_text('pages.approve_broadcast_2'),QDialogButtonBox.ButtonRole.AcceptRole);self.approve.setObjectName('FusionPrimary');self.cancel.setDefault(True);self.approve.setAutoDefault(False);buttons.rejected.connect(self.reject);buttons.accepted.connect(self.accept);layout.addWidget(buttons)
+        self._fit_height()
+
+    def _fit_height(self):
         self.resize(640, max(440, self.sizeHint().height() + 8))
+
+    def showEvent(self,event):
+        super().showEvent(event)
+        # The __init__ fit predates the stylesheet polish; polished metrics can
+        # need more height, and the layout then squeezes the wrapped review
+        # label below its measured text (FE002-GALLERY-ID-CLIP). Re-fit once
+        # the polished metrics are in effect.
+        self._fit_height()
 
 
 def describe_broadcast_result(txid, inspect=None):
