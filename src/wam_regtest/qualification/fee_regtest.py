@@ -216,8 +216,23 @@ def proposal_trace_holds(fees):
 
 
 def sign_order_holds(events):
-    """Verify durable draft save before sign, POLICY_READ -> MARK_SIGNED -> SAVE -> SIGN, and broadcast."""
+    """Verify durable draft save before sign, POLICY_READ -> MARK_SIGNED -> SAVE -> SIGN, and broadcast.
+
+    Broadcast product path (exact source lines):
+    - src/wam_regtest/wallet_session.py:718 -> :752 (WalletSession.broadcast ->
+      _preflight_not_submitted): rpc.call("testmempoolaccept", [[raw]]) -> TESTMEMPOOLACCEPT
+    - src/wam_regtest/wallet_session.py:724-726 (WalletSession.broadcast):
+      mark_reservations_uncertain_before_submission(...) then self._save() -> SAVE
+    - wsp-upstream/src/wam_sp/wallet.py:273 (Wallet.broadcast):
+      rpc.call("testmempoolaccept", [[raw.hex()]]) -> TESTMEMPOOLACCEPT
+    - wsp-upstream/src/wam_sp/wallet.py:277 (Wallet.broadcast):
+      rpc.call("sendrawtransaction", [raw.hex()]) -> SENDRAWTRANSACTION
+    - src/wam_regtest/wallet_session.py:729 (WalletSession.broadcast):
+      self._save() -> SAVE
+    """
     if not isinstance(events, list):
+        return False
+    if events.count("SENDRAWTRANSACTION") != 1:
         return False
     try:
         sign_action = events.index("ACTION_SIGN")
@@ -239,9 +254,90 @@ def sign_order_holds(events):
                    if e in ("MARK_SIGNED", "SAVE", "SIGN")]
     if sign_window != ["MARK_SIGNED", "SAVE", "SIGN"]:
         return False
-    broadcast_window = [e for e in events[broadcast_action:]
+    next_action = next(
+        (i for i in range(broadcast_action + 1, len(events))
+         if isinstance(events[i], str) and events[i].startswith("ACTION_")),
+        len(events),
+    )
+    broadcast_window = [e for e in events[broadcast_action:next_action]
                         if e in ("TESTMEMPOOLACCEPT", "SAVE", "SENDRAWTRANSACTION")]
-    return broadcast_window[:3] == ["TESTMEMPOOLACCEPT", "SAVE", "SENDRAWTRANSACTION"]
+    return broadcast_window == [
+        "TESTMEMPOOLACCEPT",
+        "SAVE",
+        "TESTMEMPOOLACCEPT",
+        "SENDRAWTRANSACTION",
+        "SAVE",
+    ]
+
+
+def confirmed_debit_holds(
+    *,
+    pre_confirmed_atoms,
+    post_confirmed_atoms,
+    post_available_atoms,
+    amount,
+    fee,
+    selected_inputs,
+    reservation_rows,
+):
+    """Verify post-confirm balance delta and that payment reservation rows are only 'broadcast'.
+
+    WSP keeps confirmed payment rows in state 'broadcast' by design
+    (wsp-upstream/src/wam_sp/wallet.py:280; src/wam_regtest/domain/payment_state.py:4-6).
+    """
+    if any(type(v) is not int for v in (
+        pre_confirmed_atoms, post_confirmed_atoms, post_available_atoms, amount, fee
+    )):
+        return False
+    if amount <= 0 or fee <= 0:
+        return False
+    if post_confirmed_atoms != pre_confirmed_atoms - amount - fee:
+        return False
+    if post_available_atoms != post_confirmed_atoms:
+        return False
+    if not isinstance(selected_inputs, (list, tuple)) or not selected_inputs:
+        return False
+    if not isinstance(reservation_rows, (list, tuple)):
+        return False
+    selected_outpoints = set()
+    for coin in selected_inputs:
+        if not isinstance(coin, dict):
+            return False
+        txid, vout = coin.get("txid"), coin.get("vout")
+        if type(txid) is not str or type(vout) is not int:
+            return False
+        selected_outpoints.add((txid, vout))
+    payment_rows = []
+    for row in reservation_rows:
+        if not isinstance(row, dict):
+            return False
+        if (row.get("txid"), row.get("vout")) in selected_outpoints:
+            payment_rows.append(row)
+    if any(row.get("state") in ("draft", "signed") for row in payment_rows):
+        return False
+    return all(row.get("state") == "broadcast" for row in payment_rows)
+
+
+def reopen_clean_holds(reopened, *, expected_confirmed_atoms, expected_reservation_count):
+    """Verify reopened snapshot matches post-confirm balance with no attention-needing reservations."""
+    from ..domain.payment_state import reservations_need_attention, reserved_rows_needing_attention
+    if not isinstance(reopened, dict):
+        return False
+    states = reopened.get("reservation_states")
+    state_counts = reopened.get("reservation_state_counts")
+    if not isinstance(states, (list, tuple)) or not isinstance(state_counts, (list, tuple)):
+        return False
+    return (
+        reopened.get("confirmed_atoms") == expected_confirmed_atoms
+        and reopened.get("available_atoms") == expected_confirmed_atoms
+        and reopened.get("reservation_count") == expected_reservation_count
+        and not reservations_need_attention(states)
+        and reserved_rows_needing_attention(state_counts) == 0
+        and reopened.get("pending_confirm_txid") is None
+        and reopened.get("payment_review") is None
+        and reopened.get("payment_signed") is False
+        and reopened.get("recovered_unsigned_cancel_available") is False
+    )
 
 
 def assert_tma(response, vsize, fee, txid, wtxid):
@@ -336,6 +432,12 @@ def _valid_result_with_status(result, expected_status, expect_characterization):
             and result["safe_startup_flags"] == [] and digest(result["profile_fixture_id"])
             and result["baseline"]["quote"]["floor_atoms_per_kvb"] == 1000
             and required <= set(result["assertions"]) and assertions_pass(result["assertions"])
+            and (fixture.refusal or fixture.case == "F3-01" or (
+                type(result.get("confirmed_atoms")) is dict
+                and set(result["confirmed_atoms"]) == {"pre", "post"}
+                and type(result["confirmed_atoms"]["pre"]) is int
+                and type(result["confirmed_atoms"]["post"]) is int
+            ))
             and result["cleanup"]["verified_original_owner_shutdown"] is True
             and result["cleanup"]["profile_retained"] is True
             and set(result["artifacts"]) == {"policy.json", "events.json", "tma.json"}

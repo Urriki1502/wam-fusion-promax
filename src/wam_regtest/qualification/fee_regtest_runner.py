@@ -28,8 +28,9 @@ from unittest.mock import patch
 from ..wallet_executor import COMMANDS, WalletExecutor, WalletExecutorError
 from .fee_regtest import (
     CHARACTERIZATION_PENDING_STATUS, FIXTURES, INSUFFICIENT_DATA_ERROR_SHA256,
-    OUTSIDE_STEP, aggregate_status, assertions_pass, assert_tma, exact_atoms,
-    json_capture, proposal_trace_holds, sign_order_holds, tma_capture,
+    OUTSIDE_STEP, aggregate_status, assertions_pass, assert_tma,
+    confirmed_debit_holds, exact_atoms, json_capture, proposal_trace_holds,
+    reopen_clean_holds, sign_order_holds, tma_capture,
     valid_characterization_result, valid_pass_result, write_artifact,
 )
 
@@ -346,6 +347,7 @@ def backend_type():
                                   for c in coins],
                     "balance": Wallet(session.scanner).balance(),
                     "reservations": len(rows), "reservation_states": sorted(r[3] for r in rows),
+                    "reservation_rows": [{"txid": r[0], "vout": r[1], "state": r[3]} for r in rows],
                     "reservation_sha256": sha256(repr(sorted(tuple(r) for r in rows)).encode()).hexdigest(),
                     "anchor_sha256": sha256(anchor).hexdigest(),
                     "mempool": rpc._call("getrawmempool", []),
@@ -567,17 +569,35 @@ def approve_payment(app, window, button, caption, done, wait, checks, result, ki
         timer.stop()
 
 
+def reopen_verified_owner(state, root, core, source, adapter, wait, approve, idle, *, open_owner=None):
+    """Reopen a checkpointed owner via q06_fix_scenarios' ready -> activate -> snapshot pattern."""
+    if open_owner is None:
+        from .q06_fix_scenarios import _open_owner
+        open_owner = _open_owner
+    executor, window = open_owner(
+        state, root, core, source, adapter, "reopen",
+        keychain=root / "q05-disposable.keychain-db",
+    )
+    wait(lambda: idle() and window._ready, "REOPEN")
+    approve(window.activate, "Approve", lambda: window._spend_enabled, "ENABLE_REOPEN")
+    wait(lambda: (idle() and window._last_verified is not None
+                  and window._pending_confirm_txid is None
+                  and not window.confirm.isEnabled()), "REOPEN_SNAPSHOT")
+    return executor, window
+
+
 def run_fixture(fixture, app, adapter, core, source, result, actor=None):
     from ..bip39_fusion_gui import Bip39FusionWindow
     from ..bip39_12 import Bip39Regtest12Keys
     from ..bip39_locale import t
     from mnemonic import Mnemonic
     from .q06_fix_scenarios import (
-        _profile, _bind, _finish_backup, _shutdown, _PASSWORD, _open_owner,
+        _profile, _bind, _finish_backup, _shutdown, _PASSWORD,
     )
     from .q06_fix_scenarios import failure_code
     actor_name = resolve_actor(actor)
     observations = {}
+    wait_report = {}
     state = {"app": app, "window": None, "executor": None}
     checks = result["assertions"]
     root = _profile()
@@ -595,7 +615,7 @@ def run_fixture(fixture, app, adapter, core, source, result, actor=None):
 
         window = Bip39FusionWindow(executor)
         state["window"] = window
-        idle, wait, approve = _bind(state, app, {}, "fee")
+        idle, wait, approve = _bind(state, app, wait_report, "fee")
         window.show()
         window.start(_PASSWORD, "create", "")
         wait(lambda: idle() and window._backup_flow_active, "CREATE")
@@ -705,9 +725,22 @@ def run_fixture(fixture, app, adapter, core, source, result, actor=None):
             checks["broadcast_present"] = txid in mempool
             approve(window.confirm, "Approve", lambda: window._pending_confirm_txid is None, "CONFIRM")
             after = request("snapshot", timeout=240)
-            checks["confirmed_debit"] = (after["confirmed_atoms"] == sum(fixture.coins) - fixture.amount - review.fee
-                and after["available_atoms"] == after["confirmed_atoms"]
-                and after["reservation_count"] == 0)
+            after_inspect = request("fee_inspect", timeout=240)
+            pre_confirmed_atoms = before["balance"]["confirmed_atoms"]
+            post_confirmed_atoms = after["confirmed_atoms"]
+            result["confirmed_atoms"] = {
+                "pre": pre_confirmed_atoms,
+                "post": post_confirmed_atoms,
+            }
+            checks["confirmed_debit"] = confirmed_debit_holds(
+                pre_confirmed_atoms=pre_confirmed_atoms,
+                post_confirmed_atoms=post_confirmed_atoms,
+                post_available_atoms=after["available_atoms"],
+                amount=fixture.amount,
+                fee=review.fee,
+                selected_inputs=preflight["selected_inputs"],
+                reservation_rows=after_inspect["reservation_rows"],
+            )
             # Exact history debit is independently read from the verified DB.
             history = window.history_page.rows
             matches = [row for row in history if row.txid == txid]
@@ -719,14 +752,15 @@ def run_fixture(fixture, app, adapter, core, source, result, actor=None):
             checks["sign_order"] = sign_order_holds(events)
             # Reopen only after verified original-owner shutdown.
             require(_shutdown(state) is False, "F3_PRE_REOPEN_SHUTDOWN")
-            executor, window = _open_owner(state, root, core, source, adapter, "reopen",
-                                          keychain=root / "q05-disposable.keychain-db")
-            wait(lambda: idle() and window._last_verified is not None, "REOPEN")
+            executor, window = reopen_verified_owner(
+                state, root, core, source, adapter, wait, approve, idle,
+            )
             reopened = request("snapshot", timeout=240)
-            checks["reopen_clean"] = (reopened["confirmed_atoms"] == after["confirmed_atoms"]
-                and reopened["available_atoms"] == after["confirmed_atoms"]
-                and reopened["reservation_count"] == 0 and reopened["payment_review"] is None
-                and not reopened["payment_signed"])
+            checks["reopen_clean"] = reopen_clean_holds(
+                reopened,
+                expected_confirmed_atoms=after["confirmed_atoms"],
+                expected_reservation_count=after["reservation_count"],
+            )
         passed = assertions_pass(checks)
         result["status"] = (
             (CHARACTERIZATION_PENDING_STATUS if fixture.characterization else "PASS")
@@ -741,6 +775,9 @@ def run_fixture(fixture, app, adapter, core, source, result, actor=None):
         result["status"] = "FAIL"
         result["failure_code"] = failure_code(error)
     finally:
+        gui_denied = wait_report.get("fee", {}).get("gui_denied")
+        if gui_denied is not None:
+            result["gui_denied"] = gui_denied
         result["observations"] = observations
         uncertain = _shutdown(state)
         checks["observer_integrity"] = not observations.get("observer_errors")

@@ -15,13 +15,14 @@ from unittest.mock import patch
 from wam_regtest.qualification.fee_regtest import (
     CHARACTERIZATION_PENDING_STATUS, FIXTURES, OUTSIDE_STEP,
     TMA_FLOAT_CONVERSION_NOTE, aggregate_status, assertions_pass, assert_tma,
-    exact_atoms, json_capture, proposal_trace_holds, required_assertions,
-    sign_order_holds, tma_capture, valid_characterization_result,
-    valid_pass_result, write_artifact,
+    confirmed_debit_holds, exact_atoms, json_capture, proposal_trace_holds,
+    reopen_clean_holds, required_assertions, sign_order_holds, tma_capture,
+    valid_characterization_result, valid_pass_result, write_artifact,
 )
 from wam_regtest.qualification.fee_regtest_runner import (
     QUALIFICATION_COMMANDS, QualificationFeeExecutor, approve_payment,
-    backend_type, no_manual_fee_controls, plain, quote_checks, resolve_actor,
+    backend_type, no_manual_fee_controls, plain, quote_checks,
+    reopen_verified_owner, resolve_actor, run_fixture,
 )
 from wam_regtest.wallet_executor import COMMANDS, WalletExecutor, WalletExecutorError
 
@@ -448,25 +449,181 @@ class Oracles(unittest.TestCase):
         valid = [
             "ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE",
             "ACTION_SIGN", "POLICY_READ", "MARK_SIGNED", "SAVE", "SIGN",
-            "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "SAVE", "SENDRAWTRANSACTION", "SAVE",
+            "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "SAVE",
+            "TESTMEMPOOLACCEPT", "SENDRAWTRANSACTION", "SAVE",
         ]
         self.assertTrue(sign_order_holds(valid))
+        full_trace = [
+            "ACTION_PREPARE_AUTO", *(["POLICY_READ"] * 6), "PROPOSE", "SAVE",
+            "ACTION_SIGN", *(["POLICY_READ"] * 6), "MARK_SIGNED", "SAVE", "SIGN",
+            "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "SAVE",
+            "TESTMEMPOOLACCEPT", "SENDRAWTRANSACTION", "SAVE",
+            "ACTION_SNAPSHOT", "ACTION_INSPECT_CONFIRMED", "ACTION_CONFIRM", "SAVE",
+            "ACTION_SNAPSHOT", "ACTION_SNAPSHOT", "ACTION_QUIT",
+        ]
+        self.assertTrue(sign_order_holds(full_trace))
         for bad in (
             [e for e in valid if e != "SAVE"],
+            # Sign-window violations (unchanged rules).
             ["ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE",
              "ACTION_SIGN", "POLICY_READ", "MARK_SIGNED", "SAVE", "SIGN",
-             "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "SAVE", "SENDRAWTRANSACTION"],
+             "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "SAVE",
+             "TESTMEMPOOLACCEPT", "SENDRAWTRANSACTION", "SAVE"],
             ["ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE",
              "ACTION_SIGN", "POLICY_READ", "MARK_SIGNED", "SIGN", "SAVE",
-             "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "SAVE", "SENDRAWTRANSACTION"],
+             "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "SAVE",
+             "TESTMEMPOOLACCEPT", "SENDRAWTRANSACTION", "SAVE"],
             ["ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE",
              "ACTION_SIGN", "MARK_SIGNED", "POLICY_READ", "SAVE", "SIGN",
-             "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "SAVE", "SENDRAWTRANSACTION"],
+             "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "SAVE",
+             "TESTMEMPOOLACCEPT", "SENDRAWTRANSACTION", "SAVE"],
             ["ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE",
              "ACTION_SIGN", "POLICY_READ", "SAVE", "MARK_SIGNED", "SIGN",
-             "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "SAVE", "SENDRAWTRANSACTION"],
+             "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "SAVE",
+             "TESTMEMPOOLACCEPT", "SENDRAWTRANSACTION", "SAVE"],
+            # Missing preflight or missing Wallet.broadcast TMA.
+            ["ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE",
+             "ACTION_SIGN", "POLICY_READ", "MARK_SIGNED", "SAVE", "SIGN",
+             "ACTION_BROADCAST", "SAVE", "TESTMEMPOOLACCEPT", "SENDRAWTRANSACTION", "SAVE"],
+            ["ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE",
+             "ACTION_SIGN", "POLICY_READ", "MARK_SIGNED", "SAVE", "SIGN",
+             "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "SAVE", "SENDRAWTRANSACTION", "SAVE"],
+            # Reordered broadcast window.
+            ["ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE",
+             "ACTION_SIGN", "POLICY_READ", "MARK_SIGNED", "SAVE", "SIGN",
+             "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "TESTMEMPOOLACCEPT",
+             "SAVE", "SENDRAWTRANSACTION", "SAVE"],
+            ["ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE",
+             "ACTION_SIGN", "POLICY_READ", "MARK_SIGNED", "SAVE", "SIGN",
+             "ACTION_BROADCAST", "SAVE", "TESTMEMPOOLACCEPT",
+             "TESTMEMPOOLACCEPT", "SENDRAWTRANSACTION", "SAVE"],
+            ["ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE",
+             "ACTION_SIGN", "POLICY_READ", "MARK_SIGNED", "SAVE", "SIGN",
+             "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "SAVE",
+             "SENDRAWTRANSACTION", "TESTMEMPOOLACCEPT", "SAVE"],
+            ["ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE",
+             "ACTION_SIGN", "POLICY_READ", "MARK_SIGNED", "SAVE", "SIGN",
+             "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "SAVE",
+             "TESTMEMPOOLACCEPT", "SAVE", "SENDRAWTRANSACTION"],
+            ["ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE",
+             "ACTION_SIGN", "POLICY_READ", "MARK_SIGNED", "SAVE", "SIGN",
+             "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "SAVE",
+             "TESTMEMPOOLACCEPT", "SENDRAWTRANSACTION"],
+            # Double-send inside broadcast window or later in trace, and send before approval.
+            [*valid[:-1], "SENDRAWTRANSACTION", "SAVE"],
+            [*full_trace, "SENDRAWTRANSACTION"],
+            ["ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE",
+             "ACTION_SIGN", "POLICY_READ", "MARK_SIGNED", "SAVE", "SIGN",
+             "SENDRAWTRANSACTION",
+             "ACTION_BROADCAST", "TESTMEMPOOLACCEPT", "SAVE",
+             "TESTMEMPOOLACCEPT", "SENDRAWTRANSACTION", "SAVE"],
         ):
             self.assertFalse(sign_order_holds(bad), bad)
+
+    def test_confirmed_debit_and_reopen_clean_oracles(self):
+        selected = [{"txid": "11" * 32, "vout": 0, "atoms": 1_000_000}]
+        # WSP leaves confirmed payment rows in state 'broadcast'.
+        self.assertTrue(confirmed_debit_holds(
+            pre_confirmed_atoms=1_000_000,
+            post_confirmed_atoms=899_845,
+            post_available_atoms=899_845,
+            amount=100_000,
+            fee=155,
+            selected_inputs=selected,
+            reservation_rows=[{"txid": "11" * 32, "vout": 0, "state": "broadcast"}],
+        ))
+        # Also passes if the payment's rows are absent, or for multi-input broadcast rows.
+        self.assertTrue(confirmed_debit_holds(
+            pre_confirmed_atoms=1_000_000,
+            post_confirmed_atoms=899_845,
+            post_available_atoms=899_845,
+            amount=100_000,
+            fee=155,
+            selected_inputs=selected,
+            reservation_rows=[],
+        ))
+        multi_inputs = [
+            {"txid": "11" * 32, "vout": 0, "atoms": 100_000},
+            {"txid": "22" * 32, "vout": 1, "atoms": 100_000},
+            {"txid": "33" * 32, "vout": 2, "atoms": 100_000},
+        ]
+        self.assertTrue(confirmed_debit_holds(
+            pre_confirmed_atoms=300_000,
+            post_confirmed_atoms=49_730,
+            post_available_atoms=49_730,
+            amount=250_000,
+            fee=270,
+            selected_inputs=multi_inputs,
+            reservation_rows=[
+                {"txid": c["txid"], "vout": c["vout"], "state": "broadcast"}
+                for c in multi_inputs
+            ],
+        ))
+        # Fails with draft, signed, or uncertain row for this payment, or wrong balance delta.
+        for bad_state in ("draft", "signed", "uncertain"):
+            self.assertFalse(confirmed_debit_holds(
+                pre_confirmed_atoms=1_000_000,
+                post_confirmed_atoms=899_845,
+                post_available_atoms=899_845,
+                amount=100_000,
+                fee=155,
+                selected_inputs=selected,
+                reservation_rows=[{"txid": "11" * 32, "vout": 0, "state": bad_state}],
+            ), bad_state)
+        self.assertFalse(confirmed_debit_holds(
+            pre_confirmed_atoms=1_000_000,
+            post_confirmed_atoms=899_846,
+            post_available_atoms=899_846,
+            amount=100_000,
+            fee=155,
+            selected_inputs=selected,
+            reservation_rows=[{"txid": "11" * 32, "vout": 0, "state": "broadcast"}],
+        ))
+        self.assertFalse(confirmed_debit_holds(
+            pre_confirmed_atoms=1_000_000,
+            post_confirmed_atoms=899_845,
+            post_available_atoms=0,
+            amount=100_000,
+            fee=155,
+            selected_inputs=selected,
+            reservation_rows=[{"txid": "11" * 32, "vout": 0, "state": "broadcast"}],
+        ))
+
+        reopened = {
+            "confirmed_atoms": 899_845,
+            "available_atoms": 899_845,
+            "reservation_count": 1,
+            "reservation_states": ["broadcast"],
+            "reservation_state_counts": [["broadcast", 1]],
+            "pending_confirm_txid": None,
+            "payment_review": None,
+            "payment_signed": False,
+            "recovered_unsigned_cancel_available": False,
+        }
+        self.assertTrue(reopen_clean_holds(
+            reopened, expected_confirmed_atoms=899_845, expected_reservation_count=1,
+        ))
+        for bad_patch in (
+            {"reservation_states": ["signed"], "reservation_state_counts": [["signed", 1]]},
+            {"reservation_states": ["draft"], "reservation_state_counts": [["draft", 1]]},
+            {"reservation_count": 0},
+            {"pending_confirm_txid": "aa" * 32},
+            {"payment_signed": True},
+        ):
+            bad_reopened = {**reopened, **bad_patch}
+            self.assertFalse(reopen_clean_holds(
+                bad_reopened, expected_confirmed_atoms=899_845, expected_reservation_count=1,
+            ), bad_patch)
+
+        # Positive spend pass contract requires explicit pre/post confirmed_atoms.
+        f302 = next(f for f in FIXTURES if f.case == "F3-02")
+        spend_pass = Evidence().passing_result()
+        spend_pass["fixture"] = f302.name
+        spend_pass["case_id"] = f302.case
+        spend_pass["assertions"] = {key: True for key in required_assertions(f302)}
+        self.assertFalse(valid_pass_result(spend_pass))
+        spend_pass["confirmed_atoms"] = {"pre": 1_000_000, "post": 899_845}
+        self.assertTrue(valid_pass_result(spend_pass))
 
 
 class ExecutorAndGuiBoundary(unittest.TestCase):
@@ -949,6 +1106,296 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
         self.assertEqual(result["gui"]["sign"]["decision"], "cancel")
         dialog.close()
         window.close()
+
+    def test_reopen_verified_owner_uses_activate_step_with_fakes(self):
+        from wam_regtest.qualification.q06_fix_scenarios import _bind
+
+        events = []
+        app = SimpleNamespace(processEvents=lambda: None)
+        state = {"app": app, "window": None, "executor": None}
+        wait_report = {}
+        idle, wait, _ = _bind(state, app, wait_report, "fee")
+
+        class FakeWindow:
+            def __init__(self):
+                self._worker = None
+                self._delivering_result = False
+                self._last_error_code = None
+                self._ready = True
+                self._spend_enabled = False
+                # Checkpointed reopen leaves _last_verified None until activate.
+                self._last_verified = None
+                self._pending_confirm_txid = None
+                self.confirm = SimpleNamespace(isEnabled=lambda: False)
+                self.activate = SimpleNamespace(name="activate_btn")
+
+        def fake_open_owner(st, root, core, source, adapter, mode, keychain=None):
+            events.append(("open", mode, keychain))
+            win = FakeWindow()
+            exe = SimpleNamespace(busy=False, closed=True)
+            st["window"] = win
+            st["executor"] = exe
+            return exe, win
+
+        def fake_approve(button, caption, done, label):
+            win = state["window"]
+            self.assertIs(button, win.activate)
+            self.assertEqual(caption, "Approve")
+            self.assertFalse(done())
+            self.assertIsNone(win._last_verified)
+            events.append(("approve", label))
+            win._spend_enabled = True
+            win._last_verified = SimpleNamespace(height=105)
+            self.assertTrue(done())
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            exe, win = reopen_verified_owner(
+                state, root, root / "core", root / "wsp", SimpleNamespace(),
+                wait, fake_approve, idle, open_owner=fake_open_owner,
+            )
+            self.assertIs(exe, state["executor"])
+            self.assertIs(win, state["window"])
+            self.assertTrue(win._spend_enabled)
+            self.assertIsNotNone(win._last_verified)
+            self.assertEqual(events, [
+                ("open", "reopen", root / "q05-disposable.keychain-db"),
+                ("approve", "ENABLE_REOPEN"),
+            ])
+
+    def test_run_fixture_preserves_gui_denial_code_on_reopen_failure(self):
+        from wam_regtest.domain.fee_policy import FeeQuote
+        from wam_regtest.qualification import q06_fix_scenarios
+        from wam_regtest.wallet_session import PaymentReview
+
+        app = SimpleNamespace(processEvents=lambda: None)
+        fixture = next(f for f in FIXTURES if f.case == "F3-05" and f.name == "recipient-330")
+        result = {"assertions": {}}
+        txid = "aa" * 32
+        funding_txid = "11" * 32
+        review = PaymentReview(
+            code="wamrtsp1payee",
+            atoms=330,
+            fee=155,
+            change_atoms=999_515,
+            input_count=1,
+            commitment="cc" * 32,
+            rate_atoms_per_kvb=1000,
+            rate_source="NETWORK_FLOOR",
+            rate_classification="UNAVAILABLE",
+            vsize=155,
+            total_debit=485,
+            available_before=1_000_000,
+            available_after=0,
+            overpay_atoms=0,
+            fee_quote=FeeQuote(
+                network="regtest",
+                rate_atoms_per_kvb=1000,
+                floor_atoms_per_kvb=1000,
+                source="NETWORK_FLOOR",
+                estimator="UNAVAILABLE",
+                reasons=("NO_FEERATE_WITHOUT_ERRORS",),
+                inputs_digest="0" * 64,
+            ),
+        )
+
+        captured_obs = {}
+        phase = {"stage": "before"}
+
+        def fake_backend_cls(_root, _core, _source, *, _anchor_factory=None, observations=None):
+            captured_obs["obs"] = observations
+            return None
+
+        class FakeExecutor:
+            def __init__(self, factory):
+                factory()
+                self.busy = False
+                self.closed = False
+
+            def request(self, action, *args, **kwargs):
+                if action == "fee_fixture":
+                    return {"peers": 0, "funding": [{"txid": funding_txid, "atoms": 1_000_000}]}
+                if action == "fee_inspect":
+                    stage = phase["stage"]
+                    return {
+                        "coins": [1_000_000],
+                        "cluster_count": 1,
+                        "reservations": 0 if stage == "before" else 1,
+                        "reservation_states": (
+                            [] if stage == "before"
+                            else ["signed"] if stage == "signed"
+                            else ["broadcast"]
+                        ),
+                        "reservation_rows": (
+                            [] if stage == "before"
+                            else [{"txid": funding_txid, "vout": 0, "state": "signed"}] if stage == "signed"
+                            else [{"txid": funding_txid, "vout": 0, "state": "broadcast"}]
+                        ),
+                        "reservation_sha256": "r0" if stage == "before" else "r1",
+                        "anchor_sha256": "a0" if stage == "before" else "a1",
+                        "balance": {"confirmed_atoms": 1_000_000, "available_atoms": 1_000_000},
+                        "inventory": [{"txid": funding_txid, "vout": 0}],
+                        "mempool": [txid] if stage == "broadcasted" else [],
+                        "mempool_info": {"response": {"loaded": True}},
+                        "prepared": stage == "signed",
+                        "signed": stage == "signed",
+                        "faulted": False,
+                    }
+                if action == "fee_baseline":
+                    return {"quote": {
+                        "floor_atoms_per_kvb": 1000,
+                        "rate_atoms_per_kvb": 1000,
+                        "estimator": "UNAVAILABLE",
+                    }}
+                if action == "fee_observe":
+                    captured_obs["obs"].update(
+                        events=[
+                            "ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE",
+                        ],
+                        proposals=[155],
+                        releases=[],
+                        policy=[],
+                    )
+                    return None
+                if action == "fee_preflight":
+                    return {
+                        "checks": {"allowed": True},
+                        "final_vsize": 155,
+                        "witness_sizes": [65],
+                        "outputs": [330, 999_515],
+                        "selected_inputs": [{"txid": funding_txid, "vout": 0, "atoms": 1_000_000}],
+                        "txid": txid,
+                        "mempool_unchanged": True,
+                    }
+                if action == "snapshot":
+                    return {
+                        "confirmed_atoms": 999_515,
+                        "available_atoms": 999_515,
+                        "reservation_count": 1,
+                        "reservation_states": ["broadcast"],
+                        "reservation_state_counts": [["broadcast", 1]],
+                    }
+                if action == "quit":
+                    self.closed = True
+                    return None
+                raise AssertionError(f"unexpected action {action}")
+
+            def join(self, _timeout=5):
+                return True
+
+        class FakeWindow:
+            def __init__(self, _exe):
+                self._worker = None
+                self._delivering_result = False
+                self._last_error_code = None
+                self._backup_flow_active = True
+                self._spend_enabled = True
+                self._signed_ready = True
+                self._last_review = review
+                self._pending_confirm_txid = None
+                self._ready = False
+                self._last_verified = None
+                self.recipient_input = SimpleNamespace(setText=lambda _v: None)
+                self.amount_input = SimpleNamespace(setText=lambda _v: None)
+                self.send = SimpleNamespace()
+                self.broadcast = SimpleNamespace()
+                self.activate = SimpleNamespace()
+                self.confirm = SimpleNamespace(isEnabled=lambda: False)
+                self.history_page = SimpleNamespace(rows=[
+                    SimpleNamespace(txid=txid, credit_atoms=0, debit_atoms=485),
+                ])
+
+            def show(self):
+                return None
+
+            def start(self, *_args):
+                return None
+
+        def fake_approve_payment(_app, win, _btn, _cap, _done, _wait, _checks, _res, kind, **_kw):
+            if kind == "sign":
+                phase["stage"] = "signed"
+                captured_obs["obs"]["events"].extend(
+                    ["ACTION_SIGN", "POLICY_READ", "MARK_SIGNED", "SAVE", "SIGN"]
+                )
+            elif kind == "broadcast":
+                phase["stage"] = "broadcasted"
+                win._pending_confirm_txid = txid
+                captured_obs["obs"]["events"].extend(
+                    [
+                        "ACTION_BROADCAST",
+                        "TESTMEMPOOLACCEPT",
+                        "SAVE",
+                        "TESTMEMPOOLACCEPT",
+                        "SENDRAWTRANSACTION",
+                        "SAVE",
+                    ]
+                )
+
+        def fake_open_owner(st, *_args, **_kwargs):
+            win = FakeWindow(None)
+            win._ready = False
+            win._last_error_code = "Q06_GUI_BACKUP_ACK_TAMPERED"
+            exe = SimpleNamespace(busy=False, closed=True)
+            st["window"] = win
+            st["executor"] = exe
+            return exe, win
+
+        def fake_bind(st, _app, report, section):
+            def idle():
+                return True
+
+            def wait(predicate, label, timeout=240):
+                if predicate():
+                    return
+                win = st.get("window")
+                if win is not None and win._last_error_code is not None:
+                    q06_fix_scenarios._note(report, section, gui_denied=win._last_error_code)
+                    raise ValueError("Q06_FIX_GUI_DENIED_" + label)
+                raise ValueError("Q06_FIX_WAIT_" + label)
+
+            def approve(_btn, _cap, _done, label):
+                if label == "CONFIRM":
+                    phase["stage"] = "confirmed"
+                    st["window"]._pending_confirm_txid = None
+                    captured_obs["obs"]["events"].extend(["ACTION_CONFIRM", "SAVE"])
+
+            return idle, wait, approve
+
+        class FakePayee:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def public_metadata(self):
+                return {"receive_code": "wamrtsp1payee"}
+
+        with tempfile.TemporaryDirectory() as folder:
+            case_dir = Path(folder) / "case"
+            case_dir.mkdir()
+            profile_dir = case_dir / "profile"
+            profile_dir.mkdir()
+            with (
+                patch("wam_regtest.bip39_fusion_gui.Bip39FusionWindow", FakeWindow),
+                patch("wam_regtest.bip39_12.Bip39Regtest12Keys", return_value=FakePayee()),
+                patch("wam_regtest.qualification.fee_regtest_runner.QualificationFeeExecutor", FakeExecutor),
+                patch("wam_regtest.qualification.fee_regtest_runner.backend_type", return_value=fake_backend_cls),
+                patch("wam_regtest.qualification.fee_regtest_runner.approve_payment", fake_approve_payment),
+                patch("wam_regtest.qualification.fee_regtest_runner.quote_checks", return_value={}),
+                patch.object(q06_fix_scenarios, "_profile", return_value=profile_dir),
+                patch.object(q06_fix_scenarios, "_bind", fake_bind),
+                patch.object(q06_fix_scenarios, "_finish_backup", lambda *_a: None),
+                patch.object(q06_fix_scenarios, "_open_owner", fake_open_owner),
+                patch.object(q06_fix_scenarios, "_shutdown", return_value=False),
+            ):
+                run_fixture(
+                    fixture, app, SimpleNamespace(make_anchor=lambda _r: None),
+                    Path(folder) / "core", Path(folder) / "wsp", result, actor="test",
+                )
+        self.assertEqual(result["status"], "FAIL")
+        self.assertEqual(result["failure_code"], "Q06_FIX_GUI_DENIED_REOPEN")
+        self.assertEqual(result.get("gui_denied"), "Q06_GUI_BACKUP_ACK_TAMPERED")
 
 
 if __name__ == "__main__":
