@@ -4,6 +4,7 @@ The existing coordinator owns write authorization. This layer only narrows its
 finite disposable-REGTEST method/parameter surface and validates CLI output.
 """
 import json
+from decimal import Decimal
 import re
 import subprocess
 import threading
@@ -16,7 +17,11 @@ class CliRpcError(ValueError):
 
 READS=frozenset(('getblockchaininfo','getblockcount','getbestblockhash',
     'getblockhash','getblock','getconnectioncount','getnetworkinfo',
-    'getrawmempool','gettxout','listwallets','waitfornewblock','getpeerinfo'))
+    'getrawmempool','gettxout','listwallets','waitfornewblock','getpeerinfo',
+    # Automatic-fee policy reads (FEE-1). Read-only; strict parameters below.
+    'getmempoolinfo','estimatesmartfee','estimaterawfee'))
+# Replies whose JSON numbers are fee rates: parsed as exact Decimal, never float.
+DECIMAL_REPLIES=frozenset(('getnetworkinfo','getmempoolinfo','estimatesmartfee','estimaterawfee'))
 WRITES=frozenset(('testmempoolaccept','sendrawtransaction','generatetoaddress',
     'invalidateblock','reconsiderblock','createwallet','getnewaddress','stop',
     'gettxoutsetinfo','setnetworkactive'))  # All writes require original owned consent.
@@ -46,6 +51,12 @@ def validate(args):
                   'getnetworkinfo','getrawmempool','listwallets','stop','getnewaddress','getpeerinfo'):
         valid=not params
     elif method=='setnetworkactive':valid=params in (['true'],['false'])
+    elif method=='getmempoolinfo':valid=not params
+    elif method=='estimatesmartfee':
+        valid=(len(params)==2 and _uint(params[0],1008) and int(params[0])>=1
+               and params[1] in ('conservative','economical'))
+    elif method=='estimaterawfee':
+        valid=len(params)==1 and _uint(params[0],1008) and int(params[0])>=1
     elif method=='createwallet':valid=params==['test']
     elif method=='gettxoutsetinfo':valid=params==['none']
     elif method in ('getblockhash','waitfornewblock'):
@@ -95,10 +106,12 @@ def decode(raw,method,params):
             if text not in ('WAM Core stopping','WAM Coin stopping'):raise ValueError
             return text
         def nonfinite(_):raise ValueError
-        value=json.loads(text,object_pairs_hook=_pairs,parse_constant=nonfinite)
+        value=json.loads(text,object_pairs_hook=_pairs,parse_constant=nonfinite,
+                         **({'parse_float':Decimal} if method in DECIMAL_REPLIES else {}))
         if method in ('getblockcount','getconnectioncount'):
             good=type(value) is int and 0<=value<=1000000
-        elif method in ('getblockchaininfo','getnetworkinfo','createwallet','waitfornewblock'):
+        elif method in ('getblockchaininfo','getnetworkinfo','createwallet','waitfornewblock',
+                        'getmempoolinfo','estimatesmartfee','estimaterawfee'):
             good=type(value) is dict
         elif method=='gettxout':good=value is None or type(value) is dict
         elif method=='gettxoutsetinfo':

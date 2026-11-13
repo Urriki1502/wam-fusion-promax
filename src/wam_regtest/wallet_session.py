@@ -66,7 +66,31 @@ class WalletCoreCli(LiveCoreReadOnlyCli):
         try:return super().attest()
         except RealWspScanError as error:self._failed(error)
 
+    # Automatic-fee policy reads (FEE-1): read-only, attested, strict params.
+    FEE_POLICY_READS = ("getnetworkinfo", "getmempoolinfo", "estimatesmartfee", "estimaterawfee")
+
+    def _fee_policy_read(self, method, params):
+        if type(params) is not list:
+            raise WalletSessionError("WALLET_RPC_PARAMS_DENIED")
+        target = lambda v: type(v) is int and 1 <= v <= 1008
+        if method in ("getnetworkinfo", "getmempoolinfo"):
+            valid = params == []
+        elif method == "estimatesmartfee":
+            valid = (len(params) == 2 and target(params[0])
+                     and params[1] in ("conservative", "economical"))
+        else:
+            valid = len(params) == 1 and target(params[0])
+        if not valid:
+            raise WalletSessionError("WALLET_RPC_PARAMS_DENIED")
+        self.attest()
+        reply = self._call(method, [str(p) for p in params])
+        if type(reply) is not dict:
+            raise WalletSessionError("WALLET_FEE_POLICY_REPLY_DENIED")
+        return reply
+
     def call(self, method, params=None):
+        if method in self.FEE_POLICY_READS:
+            return self._fee_policy_read(method, params)
         if method not in ("gettxout", "testmempoolaccept", "sendrawtransaction"):
             return super().call(method, params)
         self.attest()

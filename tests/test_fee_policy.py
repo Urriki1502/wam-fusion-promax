@@ -315,3 +315,137 @@ class ExactSize(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class CodexPeer099Regressions(unittest.TestCase):
+    """Reproductions from Codex PEER-099, each now a typed refusal or exact."""
+
+    def test_conversion_is_exact_and_independent_of_the_decimal_context(self):
+        import decimal
+        cases = ((Decimal('1.0000000000000000000000000001'), 'FEE_POLICY_RATE_PRECISION'),  # fractional atoms
+                 (Decimal('0.000010000000000000000000000000000001'), 'FEE_POLICY_RATE_PRECISION'),
+                 (Decimal('-1E-999999999'), 'FEE_POLICY_RATE_RANGE'),
+                 (Decimal('sNaN'), 'FEE_POLICY_RATE_PRECISION'),
+                 (Decimal('Infinity'), 'FEE_POLICY_RATE_PRECISION'),
+                 (Decimal('1E+999999999'), 'FEE_POLICY_RATE_RANGE'),
+                 (Decimal('1.00000001'), 'FEE_POLICY_RATE_RANGE'),
+                 (-1, 'FEE_POLICY_RATE_RANGE'), (2, 'FEE_POLICY_RATE_RANGE'))
+        with decimal.localcontext() as context:
+            context.prec = 3
+            context.traps[decimal.Inexact] = True
+            self.assertEqual(fp.coin_rate_to_atoms_per_kvb(Decimal('0.00001001')), 1001)
+            self.assertEqual(fp.coin_rate_to_atoms_per_kvb(Decimal('0.123456780')), 12345678)
+            for value, code in cases:
+                with self.subTest(value=value):
+                    with self.assertRaisesRegex(fp.FeePolicyError, code):
+                        fp.coin_rate_to_atoms_per_kvb(value)
+        for zero in (Decimal('0E-8'), Decimal('-0'), Decimal('0E-999999999'), 0):
+            self.assertEqual(fp.coin_rate_to_atoms_per_kvb(zero), 0)
+        self.assertEqual(fp.coin_rate_to_atoms_per_kvb(Decimal('1E-8')), 1)
+        self.assertEqual(fp.coin_rate_to_atoms_per_kvb(1), 100_000_000)
+
+    def test_digest_includes_the_raw_evidence_that_decides_the_quote(self):
+        usable, weak = simulated_inputs(short_samples='500'), simulated_inputs(short_samples='0')
+        self.assertEqual(fp.quote(usable).rate_atoms_per_kvb, 5000)
+        self.assertEqual(fp.quote(weak).rate_atoms_per_kvb, 1000)
+        self.assertNotEqual(usable.digest(), weak.digest())
+        # A changed estimate alone does not invalidate an approved quote.
+        approved = fp.quote(simulated_inputs(raw_errors=True))
+        self.assertTrue(fp.quote_still_valid(approved, simulated_inputs(
+            smart_rates=('0.00009000', '0.00007000', '0.00004000'), raw_errors=True)))
+
+    def test_smart_blocks_are_required_and_bounded(self):
+        for blocks in (None, -1, 1009, True, '2', Decimal(2)):
+            smart = {t: {'feerate': Decimal(r), 'blocks': t} for t, r in
+                     zip(fp.ESTIMATE_TARGETS, ('0.00008000', '0.00005000', '0.00003000'))}
+            if blocks is None:
+                smart[6].pop('blocks')
+            else:
+                smart[6]['blocks'] = blocks
+            with self.subTest(blocks=blocks):
+                with self.assertRaisesRegex(fp.FeePolicyError, 'FEE_POLICY_UNVERIFIED'):
+                    fp.parse_policy_inputs('regtest', {'version': 113, 'relayfee': Decimal('0.00001')},
+                                           {'loaded': True, 'mempoolminfee': Decimal('0.00001'),
+                                            'minrelaytxfee': Decimal('0.00001')}, smart, {6: None})
+
+    def test_malformed_raw_samples_only_weaken_never_count(self):
+        for total in (Decimal('Infinity'), Decimal('NaN'), Decimal('sNaN'), Decimal('-1'),
+                      Decimal('1E+13'), 'many', True, None):
+            smart = {t: {'feerate': Decimal(r), 'blocks': t} for t, r in
+                     zip(fp.ESTIMATE_TARGETS, ('0.00008000', '0.00005000', '0.00003000'))}
+            raw = {6: {'short': {'feerate': Decimal('0.00005000'), 'pass': {'totalconfirmed': total}}}}
+            with self.subTest(total=total):
+                inputs = fp.parse_policy_inputs(
+                    'regtest', {'version': 113, 'relayfee': Decimal('0.00001')},
+                    {'loaded': True, 'mempoolminfee': Decimal('0.00001'),
+                     'minrelaytxfee': Decimal('0.00001')}, smart, raw)
+                classification, reasons = fp.classify_estimator(inputs)
+                self.assertEqual(classification, fp.UNVALIDATED)
+                self.assertIn('RAW_EVIDENCE_MALFORMED', reasons)
+                self.assertEqual(fp.quote(inputs).source, fp.SOURCE_FLOOR)
+
+
+class SupportedTransportBoundary(unittest.TestCase):
+    """The fee reads pass the REAL validation boundaries, and nothing more."""
+
+    def test_cli_rpc_admits_exactly_the_fee_reads_with_strict_params(self):
+        from wam_regtest.cli_rpc import CliRpcError, validate
+        for args in (['getmempoolinfo'], ['getnetworkinfo'],
+                     ['estimatesmartfee', '6', 'conservative'], ['estimatesmartfee', '1008', 'economical'],
+                     ['estimaterawfee', '1'], ['estimaterawfee', '25']):
+            with self.subTest(args=args):
+                self.assertEqual(validate(args)[0], args[0])
+        for args in (['getmempoolinfo', 'x'], ['estimatesmartfee', '0', 'conservative'],
+                     ['estimatesmartfee', '1009', 'conservative'], ['estimatesmartfee', '6'],
+                     ['estimatesmartfee', '6', 'unset'], ['estimatesmartfee', '06', 'economical'],
+                     ['estimaterawfee', '6', '0.95'], ['estimaterawfee', '-1'],
+                     ['getmempoolinfo', '-rpcwallet=x'], ['settxfee', '0.001'], ['sendtoaddress', 'a', '1']):
+            with self.subTest(args=args):
+                with self.assertRaises(CliRpcError):
+                    validate(args)
+
+    def test_cli_rpc_decodes_fee_rates_as_decimal(self):
+        from wam_regtest.cli_rpc import CliRpcError, decode
+        text = b'{"loaded":true,"mempoolminfee":0.00001000,"minrelaytxfee":0.00001000}'
+        value = decode(text, 'getmempoolinfo', [])
+        self.assertIs(type(value['mempoolminfee']), Decimal)
+        self.assertEqual(value['mempoolminfee'], Decimal('0.00001000'))
+        smart = decode(b'{"feerate":0.00020064,"blocks":2}', 'estimatesmartfee', ['2', 'conservative'])
+        self.assertEqual(fp.coin_rate_to_atoms_per_kvb(smart['feerate']), 20064)
+        info = decode(b'{"version":113,"relayfee":0.00001000}', 'getnetworkinfo', [])
+        self.assertIs(type(info['relayfee']), Decimal)
+        with self.assertRaises(CliRpcError):
+            decode(b'[1]', 'estimaterawfee', ['6'])
+        with self.assertRaises(CliRpcError):
+            decode(b'{"feerate":NaN}', 'estimatesmartfee', ['6', 'conservative'])
+
+    def test_wallet_core_cli_validates_then_attests_then_reads(self):
+        from wam_regtest.wallet_session import WalletCoreCli, WalletSessionError
+        events = []
+        cli = WalletCoreCli.__new__(WalletCoreCli)
+        cli.attest = lambda: events.append('attest')
+        cli._call = lambda method, args: events.append((method, args)) or {'ok': True}
+        self.assertEqual(cli.call('estimatesmartfee', [6, 'conservative']), {'ok': True})
+        self.assertEqual(events, ['attest', ('estimatesmartfee', ['6', 'conservative'])])
+        for method, params in (('estimatesmartfee', [0, 'conservative']), ('estimatesmartfee', ['6', 'conservative']),
+                               ('estimatesmartfee', [6]), ('estimaterawfee', [6, 0.95]),
+                               ('getmempoolinfo', None), ('getnetworkinfo', ['x']), ('estimaterawfee', [True])):
+            events.clear()
+            with self.subTest(method=method, params=params):
+                with self.assertRaisesRegex(WalletSessionError, 'WALLET_RPC_PARAMS_DENIED'):
+                    cli.call(method, params)
+                self.assertEqual(events, [])  # refused before attestation or any read
+        cli._call = lambda method, args: [1]
+        with self.assertRaisesRegex(WalletSessionError, 'WALLET_FEE_POLICY_REPLY_DENIED'):
+            cli.call('getmempoolinfo', [])
+
+    def test_adapter_works_through_the_wallet_core_cli_shape(self):
+        from wam_regtest.infrastructure.fee_rpc import read_policy_inputs
+        from wam_regtest.wallet_session import WalletCoreCli
+        cli = WalletCoreCli.__new__(WalletCoreCli)
+        cli.attest = lambda: None
+        replies = {'getnetworkinfo': ACTUAL['getnetworkinfo'], 'getmempoolinfo': ACTUAL['getmempoolinfo'],
+                   'estimaterawfee': ACTUAL['estimaterawfee_6']}
+        cli._call = lambda method, args: (replies[method] if method in replies
+                                          else ACTUAL['estimatesmartfee_%s_conservative' % args[0]])
+        self.assertEqual(fp.quote(read_policy_inputs(cli, 'regtest')).rate_atoms_per_kvb, 1000)

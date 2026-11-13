@@ -80,13 +80,44 @@ def _refuse(code):
 
 
 def coin_rate_to_atoms_per_kvb(value):
-    """Exact Decimal/int coin-per-kvB rate to integer atoms/kvB, or refuse."""
+    """Exact Decimal/int coin-per-kvB rate to integer atoms/kvB, or refuse.
+
+    Pure integer arithmetic on the Decimal's sign, digits and exponent, so the
+    result never depends on the active decimal context (precision, rounding,
+    traps): Codex PEER-099. Special values, negative non-zero values,
+    fractional atoms and out-of-range values are typed refusals.
+    """
     if type(value) is bool or not isinstance(value, (Decimal, int)):
         _refuse('FEE_POLICY_RATE_TYPE')  # floats and strings are never accepted
-    amount = Decimal(value) * ATOMS_PER_COIN
-    if not amount.is_finite() or amount != amount.to_integral_value():
+    if type(value) is int:
+        if value < 0:
+            _refuse('FEE_POLICY_RATE_RANGE')
+        if value > MAX_RATE_ATOMS_PER_KVB // ATOMS_PER_COIN:
+            _refuse('FEE_POLICY_RATE_RANGE')
+        return value * ATOMS_PER_COIN
+    sign, digits, exponent = value.as_tuple()
+    if type(exponent) is not int:  # 'n' (NaN), 'N' (sNaN), 'F' (Infinity)
         _refuse('FEE_POLICY_RATE_PRECISION')
-    atoms = int(amount)
+    coefficient = 0
+    for digit in digits:
+        coefficient = coefficient * 10 + digit
+    if coefficient == 0:
+        return 0  # any zero, including -0 and 0E-999999999
+    if sign:
+        _refuse('FEE_POLICY_RATE_RANGE')
+    shift = exponent + 8  # atoms = coefficient * 10**shift
+    # Magnitude bound before any power of ten: the value has
+    # len(digits) + shift integer digits in atoms; the maximum has 9.
+    if len(digits) + shift > 9:
+        _refuse('FEE_POLICY_RATE_RANGE')
+    if shift >= 0:
+        atoms = coefficient * 10 ** shift
+    else:
+        if -shift > len(digits):
+            _refuse('FEE_POLICY_RATE_PRECISION')  # non-zero below one atom
+        atoms, remainder = divmod(coefficient, 10 ** -shift)
+        if remainder:
+            _refuse('FEE_POLICY_RATE_PRECISION')
     if not 0 <= atoms <= MAX_RATE_ATOMS_PER_KVB:
         _refuse('FEE_POLICY_RATE_RANGE')
     return atoms
@@ -126,13 +157,21 @@ class PolicyInputs:
     minrelaytxfee: int
     smart: tuple[SmartEstimate, ...]
     raw: tuple[tuple[int, tuple[RawHorizon, ...]], ...]
+    raw_malformed: tuple[int, ...] = ()
 
     def digest(self):
-        """Stable digest of exactly the values a quote depends on."""
+        """Stable provenance digest of every value the quote depends on,
+        including the raw estimator evidence used by the classification
+        (Codex PEER-099). Sign-time validity is quote_still_valid, not equality
+        of this digest: an approved fee stays fixed while it covers the floor."""
         payload = json.dumps(dict(
             network=self.network, core_version=self.core_version, relayfee=self.relayfee,
             mempoolminfee=self.mempoolminfee, minrelaytxfee=self.minrelaytxfee,
-            smart=[(s.target, s.rate, list(s.errors)) for s in self.smart]), sort_keys=True)
+            smart=[(s.target, s.rate, list(s.errors), s.blocks) for s in self.smart],
+            raw=[(target, [(h.name, h.rate, list(h.errors),
+                            None if h.pass_confirmed is None else str(h.pass_confirmed))
+                           for h in horizons]) for target, horizons in self.raw],
+            raw_malformed=list(self.raw_malformed)), sort_keys=True)
         return hashlib.sha256(payload.encode()).hexdigest()
 
     @property
@@ -182,33 +221,56 @@ def parse_policy_inputs(network, networkinfo, mempoolinfo, smart_by_target, raw_
     for target in ESTIMATE_TARGETS:
         entry = _require_dict(smart_by_target[target])
         rate = coin_rate_to_atoms_per_kvb(entry['feerate']) if 'feerate' in entry else None
+        # v0.1.13 always returns 'blocks' (0 when no estimate): required.
         blocks = entry.get('blocks')
-        if blocks is not None and type(blocks) is not int:
+        if type(blocks) is not int or not 0 <= blocks <= 1008:
             _refuse('FEE_POLICY_UNVERIFIED')
         smart.append(SmartEstimate(target, rate, _errors(entry), blocks))
-    raw = []
+    raw, malformed = [], []
     for target in sorted(raw_by_target):
         entry = raw_by_target[target]
         if entry is None:  # diagnostic interface; absence is recorded, not fatal
             raw.append((target, ()))
             continue
-        horizons = []
-        for name in ('short', 'medium', 'long'):
-            if name not in _require_dict(entry):
-                continue
-            horizon = _require_dict(entry[name])
-            rate = coin_rate_to_atoms_per_kvb(horizon['feerate']) if 'feerate' in horizon else None
-            bucket = horizon.get('pass')
-            confirmed = None
-            if bucket is not None:
-                total = _require_dict(bucket).get('totalconfirmed')
-                if type(total) is bool or not isinstance(total, (Decimal, int)) or total < 0:
-                    _refuse('FEE_POLICY_UNVERIFIED')
-                confirmed = Decimal(total)
-            horizons.append(RawHorizon(name, rate, _errors(horizon), confirmed))
-        raw.append((target, tuple(horizons)))
+        try:
+            raw.append((target, _raw_horizons(entry)))
+        except FeePolicyError:
+            # estimaterawfee is diagnostic evidence: a malformed reply can only
+            # weaken the classification (RAW_EVIDENCE_MALFORMED), never abort
+            # the floor quote and never count as evidence.
+            raw.append((target, ()))
+            malformed.append(target)
     return PolicyInputs(network, version, relayfee, mempoolminfee, minrelaytxfee,
-                        tuple(smart), tuple(raw))
+                        tuple(smart), tuple(raw), tuple(malformed))
+
+
+MAX_SAMPLE_COUNT = Decimal(10) ** 12
+
+
+def _sample_count(value):
+    """A finite, non-negative, bounded decayed sample count (Decimal or int)."""
+    if type(value) is bool or not isinstance(value, (Decimal, int)):
+        _refuse('FEE_POLICY_UNVERIFIED')
+    if type(value) is int:
+        value = Decimal(value)
+    if not value.is_finite() or value.is_signed() and value != 0 or value > MAX_SAMPLE_COUNT:
+        _refuse('FEE_POLICY_UNVERIFIED')
+    return value
+
+
+def _raw_horizons(entry):
+    horizons = []
+    for name in ('short', 'medium', 'long'):
+        if name not in _require_dict(entry):
+            continue
+        horizon = _require_dict(entry[name])
+        rate = coin_rate_to_atoms_per_kvb(horizon['feerate']) if 'feerate' in horizon else None
+        bucket = horizon.get('pass')
+        confirmed = None
+        if bucket is not None:
+            confirmed = _sample_count(_require_dict(bucket).get('totalconfirmed'))
+        horizons.append(RawHorizon(name, rate, _errors(horizon), confirmed))
+    return tuple(horizons)
 
 
 def classify_estimator(inputs):
@@ -226,7 +288,9 @@ def classify_estimator(inputs):
         reasons.append('EQUALS_CORE_FALLBACK')
     raw = dict(inputs.raw)
     quote_raw = raw.get(QUOTE_TARGET)
-    if not quote_raw:
+    if QUOTE_TARGET in inputs.raw_malformed:
+        reasons.append('RAW_EVIDENCE_MALFORMED')
+    elif not quote_raw:
         reasons.append('RAW_EVIDENCE_MISSING')
     else:
         horizons = {h.name: h for h in quote_raw}
