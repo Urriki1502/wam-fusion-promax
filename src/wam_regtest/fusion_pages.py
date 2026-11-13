@@ -253,33 +253,38 @@ def _quoted(review):
     return None
 
 
+def _replaceability_text(review):
+    return ('\n' + ui_text('payment.replaceable_yes')
+            if getattr(review, 'replaceable', False) is True else '')
+
+
 def approval_amount_text(review):
-    """Sign/Broadcast dialog facts. Explicit-fee reviews keep the previous line."""
+    """Sign/Broadcast dialog facts, including PSBT-derived replaceability."""
     quoted = _quoted(review)
     if quoted is not None:
-        return ui_text('pages.payment_review_auto').format(**quoted)
+        return ui_text('pages.payment_review_auto').format(**quoted) + _replaceability_text(review)
     return ui_text('pages.payment_amounts').format(
         amount=format_wam(review.atoms), fee=format_wam(review.fee),
-        change=format_wam(review.change_atoms), inputs=review.input_count)
+        change=format_wam(review.change_atoms), inputs=review.input_count) + _replaceability_text(review)
 
 
 def fusion_review_text(review):
     quoted = _quoted(review)
     if quoted is not None:
-        return ui_text('wallet.review_details_auto').format(**quoted)
+        return ui_text('wallet.review_details_auto').format(**quoted) + _replaceability_text(review)
     return ui_text('wallet.review_details').format(
         code=review.code, amount=format_wam(review.atoms),
-        fee=format_wam(review.fee), change=format_wam(review.change_atoms))
+        fee=format_wam(review.fee), change=format_wam(review.change_atoms)) + _replaceability_text(review)
 
 
 def owner_approval_text(review):
     quoted = _quoted(review)
     if quoted is not None:
-        return ui_text('owner.approval_details_auto').format(**quoted)
+        return ui_text('owner.approval_details_auto').format(**quoted) + _replaceability_text(review)
     return ui_text('owner.approval_details').format(
         code=review.code, atoms=review.atoms, fee=review.fee,
         change_atoms=review.change_atoms, input_count=review.input_count,
-        commitment=review.commitment)
+        commitment=review.commitment) + _replaceability_text(review)
 
 
 def operational_review_text(review, *, signed=False, heading=None):
@@ -289,12 +294,12 @@ def operational_review_text(review, *, signed=False, heading=None):
     if quoted is not None:
         quoted = dict(quoted, heading=heading, fee_amount=format_wam(review.fee),
                       change_amount=format_wam(review.change_atoms))
-        return ui_text('operational.payment_review_auto').format(**quoted)
+        return ui_text('operational.payment_review_auto').format(**quoted) + _replaceability_text(review)
     return ui_text('operational.payment_review').format(
         heading=heading, code=review.code, amount=format_wam(review.atoms),
         atoms=review.atoms, fee_amount=format_wam(review.fee), fee_atoms=review.fee,
         change_amount=format_wam(review.change_atoms), change_atoms=review.change_atoms,
-        inputs=review.input_count)
+        inputs=review.input_count) + _replaceability_text(review)
 
 
 class PaymentApproval(QDialog):

@@ -1468,6 +1468,14 @@
     {
       "key": "pending.details_value",
       "reason": "PM-041: pending amount presentation; unknown values carry no unit. Pending native review."
+    },
+    {
+      "key": "payment.replaceable_yes",
+      "reason": "FE-003: PSBT-derived explicit BIP125 signalling in payment review and Sign approval. Pending native review; no Increase Fee action."
+    },
+    {
+      "key": "errors.RBF_SIGNALLING_MISSING",
+      "reason": "FE-003: refuse non-signalling outgoing PSBTs before save or irreversible signing."
     }
   ]
 }

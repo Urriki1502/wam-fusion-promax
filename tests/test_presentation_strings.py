@@ -174,13 +174,20 @@ class CatalogTests(unittest.TestCase):
         pm041 = json.loads((ROOT / 'tests/pm041_english_literals.json').read_text())
         for key, literal in pm041['english'].items():
             self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
+        fe003 = json.loads((ROOT / 'tests/fe003_english_literals.json').read_text())
+        for key, literal in fe003['english'].items():
+            self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
         self.assertEqual(set(CATALOG['en']) - SETTINGS_KEYS,
                          expected | pm017_keys | status_keys | pm018_keys
-                         | set(pm021['english']) | set(fe002['english']) | set(pm041['english']))
+                         | set(pm021['english']) | set(fe002['english']) | set(pm041['english'])
+                         | set(fe003['english']))
 
     def test_public_error_mapping_and_codes_unchanged(self):
         from wam_regtest.gui_errors import _MESSAGES, error_text, public_code
-        self.assertEqual(_MESSAGES, FIXTURE['errors'])
+        fe003 = json.loads((ROOT / 'tests/fe003_english_literals.json').read_text())
+        additions = {key.removeprefix('errors.'): value
+                     for key, value in fe003['english'].items() if key.startswith('errors.')}
+        self.assertEqual(_MESSAGES, FIXTURE['errors'] | additions)
         for code, literal in FIXTURE['errors'].items():
             self.assertEqual(public_code(code), code)
             self.assertEqual(error_text(code), literal)

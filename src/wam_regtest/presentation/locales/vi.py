@@ -762,4 +762,6 @@ VI = {
     "pending.total_value": "Tiền nhận / tiền thừa đang chờ: {amount}",
     "pending.spent_value": "Đầu vào đã xác nhận đang chờ chi: {amount}",
     "pending.details_value": "Phí: {fee} · Tiền thừa đang chờ: {change}",
+    "payment.replaceable_yes": "Có thể thay thế: có (có thể tăng phí sau)",
+    "errors.RBF_SIGNALLING_MISSING": "Giao dịch này thiếu tín hiệu cho phép thay thế BIP125 rõ ràng. Chưa ký gì.",
 }

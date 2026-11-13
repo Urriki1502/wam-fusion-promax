@@ -762,4 +762,6 @@ ZH_HANS = {
     "pending.total_value": "待确认收款／找零: {amount}",
     "pending.spent_value": "待花费的已确认输入: {amount}",
     "pending.details_value": "手续费: {fee} · 待确认找零: {change}",
+    "payment.replaceable_yes": "可替换：是（稍后可提高手续费）",
+    "errors.RBF_SIGNALLING_MISSING": "此付款缺少明确的BIP125可替换信号。未进行任何签名。",
 }

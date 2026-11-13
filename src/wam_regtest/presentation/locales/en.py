@@ -760,4 +760,6 @@ EN = {
     "pending.total_value": "Pending incoming / change: {amount}",
     "pending.spent_value": "Confirmed inputs pending spend: {amount}",
     "pending.details_value": "Fee: {fee} · Pending change: {change}",
+    "payment.replaceable_yes": "Replaceable: yes (fee can be increased later)",
+    "errors.RBF_SIGNALLING_MISSING": "This payment is missing explicit BIP125 replaceability. Nothing was signed.",
 }

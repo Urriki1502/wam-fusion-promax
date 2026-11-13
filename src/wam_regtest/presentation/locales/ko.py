@@ -762,4 +762,6 @@ KO = {
     "pending.total_value": "대기 중인 수신 / 거스름돈: {amount}",
     "pending.spent_value": "지출 대기 중인 확인된 입력: {amount}",
     "pending.details_value": "수수료: {fee} · 대기 중인 거스름돈: {change}",
+    "payment.replaceable_yes": "대체 가능: 예 (나중에 수수료를 올릴 수 있음)",
+    "errors.RBF_SIGNALLING_MISSING": "이 결제에 명시적인 BIP125 대체 신호가 없습니다. 서명하지 않았습니다.",
 }

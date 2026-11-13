@@ -762,4 +762,6 @@ JA = {
     "pending.total_value": "承認待ちの受取／お釣り: {amount}",
     "pending.spent_value": "使用承認待ちの承認済み入力: {amount}",
     "pending.details_value": "手数料: {fee} · 承認待ちのお釣り: {change}",
+    "payment.replaceable_yes": "置換可能: はい（後で手数料を引き上げられます）",
+    "errors.RBF_SIGNALLING_MISSING": "この支払いには明示的なBIP125置換シグナルがありません。署名は行われていません。",
 }

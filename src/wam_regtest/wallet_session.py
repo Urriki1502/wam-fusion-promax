@@ -38,6 +38,13 @@ class _SessionHistoryDenied(WalletSessionError):
     def __init__(self,code):super().__init__('WALLET_'+code)
 
 
+def _psbt_replaceable(raw):
+    """Require explicit BIP125 signalling on every input, independent of full-RBF."""
+    from wam_sp.psbt import PSBT
+    sequences = PSBT.decode(raw).tx.sequence_values()
+    return bool(sequences) and all(sequence <= 0xFFFFFFFD for sequence in sequences)
+
+
 @dataclass(frozen=True)
 class PaymentReview:
     code: str
@@ -56,6 +63,7 @@ class PaymentReview:
     available_after: int | None = None
     overpay_atoms: int | None = None
     fee_quote: object | None = None
+    replaceable: bool = False
 
 
 class WalletCoreCli(LiveCoreReadOnlyCli):
@@ -456,11 +464,15 @@ class WalletSession:
             proposal = wallet.propose((intent,),fee)
             try:
                 prepared = Signer(self.ring).prepare(proposal)
+                replaceable = _psbt_replaceable(prepared.psbt)
             except Exception:
                 # No review, signature, save or network action exists. Release
                 # ONLY this new token, and only while every row is still draft.
                 self._release_unreviewed_draft(wallet,proposal.token)
                 raise WalletSessionError("WALLET_PREPARE_DENIED") from None
+            if not replaceable:
+                self._release_unreviewed_draft(wallet, proposal.token)
+                raise WalletSessionError("RBF_SIGNALLING_MISSING")
             try:
                 self._save()  # Reservation is durable before exposing review.
             except Exception:
@@ -469,7 +481,8 @@ class WalletSession:
                 raise WalletSessionError("WALLET_PREPARE_DENIED") from None
             commitment = sha256(prepared.psbt).hexdigest()
             change = sum(c["atoms"] for c in proposal.coins)-atoms-fee
-            review = PaymentReview(code,atoms,fee,change,len(proposal.coins),commitment)
+            review = PaymentReview(code,atoms,fee,change,len(proposal.coins),commitment,
+                                   replaceable=replaceable)
             self._prepared,self._review,self._tip = prepared,review,self.scanner.store.tip()
             return review
 
@@ -516,6 +529,7 @@ class WalletSession:
                 proposal = wallet.propose((intent,), fee_atoms)
                 try:
                     prepared = Signer(self.ring).prepare(proposal)
+                    replaceable = _psbt_replaceable(prepared.psbt)
                     vsize = psbt_vsize(prepared.psbt)
                     need = fee_for_vsize(vsize, quoted.rate_atoms_per_kvb)
                 except FeePolicyError as error:
@@ -524,6 +538,9 @@ class WalletSession:
                 except Exception:
                     self._abort_unreviewed(wallet, proposal.token)
                     raise WalletSessionError("WALLET_PREPARE_DENIED") from None
+                if not replaceable:
+                    self._abort_unreviewed(wallet, proposal.token)
+                    raise WalletSessionError("RBF_SIGNALLING_MISSING")
                 return proposal, prepared, vsize, need, fee_atoms, available_before
 
             fee = fee_for_vsize(estimated_one_input_vsize(), quoted.rate_atoms_per_kvb)
@@ -587,7 +604,8 @@ class WalletSession:
                 available_before=available_before,
                 available_after=available_after,
                 overpay_atoms=fee - need,
-                fee_quote=quoted)
+                fee_quote=quoted,
+                replaceable=_psbt_replaceable(prepared.psbt))
             self._prepared, self._review, self._tip = prepared, review, self.scanner.store.tip()
             return review
 
@@ -653,6 +671,11 @@ class WalletSession:
                 # A stale network quote refuses before the irreversible mark.
                 # The approved fee is never edited. Explicit-fee reviews skip this.
                 self._require_fresh_fee_quote(rpc)
+                if not _psbt_replaceable(self._prepared.psbt):
+                    # Still unsigned: use the existing cancel/checkpoint path,
+                    # never the never-saved preparation cleanup path.
+                    self.cancel()
+                    raise WalletSessionError("RBF_SIGNALLING_MISSING")
                 # Approving Sign makes this reservation irreversible BEFORE
                 # entering native crypto. A crash/failure cannot restore a draft
                 # that is cancelable, even if no signature was returned.

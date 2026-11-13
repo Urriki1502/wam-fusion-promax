@@ -762,4 +762,6 @@ ID = {
     "pending.total_value": "Penerimaan / kembalian tertunda: {amount}",
     "pending.spent_value": "Input terkonfirmasi menunggu dibelanjakan: {amount}",
     "pending.details_value": "Biaya: {fee} · Kembalian tertunda: {change}",
+    "payment.replaceable_yes": "Dapat diganti: ya (biaya dapat dinaikkan nanti)",
+    "errors.RBF_SIGNALLING_MISSING": "Pembayaran ini tidak memiliki sinyal penggantian BIP125 yang eksplisit. Tidak ada yang ditandatangani.",
 }
