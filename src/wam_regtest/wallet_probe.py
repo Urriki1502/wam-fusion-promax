@@ -238,7 +238,7 @@ def probe_wallet(core_dir,datadir,source,mining_address):
         window.recipient.setText(code);window.amount.setText('0.00100000')
         print("WALLET_E2E_STAGE=PREPARE",flush=True)
         review=_operation(app,window,'prepare_auto',window.prepare_button.click)
-        from .wallet_session import quoted_fee_holds
+        from .qualification.fee_oracles import quoted_fee_holds
         assert review.code==code and review.atoms==100000 and quoted_fee_holds(review)
         assert str(review.atoms) in window.review_text.text() and code in window.review_text.text()
         assert window.sign_button.isEnabled() and not window.broadcast_button.isEnabled()

@@ -8,7 +8,8 @@ from PySide6.QtGui import QImage,QFontInfo
 from PySide6.QtWidgets import QApplication
 from wam_regtest.core import verified_core_paths,_port,_write_private_config,_read_cli
 from wam_regtest.wsp_live import _pinned_source,public_regtest_mining_address,scan_actual_core_blocks
-from wam_regtest.wallet_session import WalletSession,WalletCoreCli,quoted_fee_holds
+from wam_regtest.wallet_session import WalletSession,WalletCoreCli
+from wam_regtest.qualification.fee_oracles import quoted_fee_holds
 from wam_regtest.wallet_read import format_wam
 from wam_regtest.desktop import qt_application,shutdown_qt
 from wam_regtest.operational_gui import OperationalWalletWindow

@@ -132,7 +132,8 @@ def main():
             entry='src/wam_regtest/windows_production_entry.py'
         else:
             modules=['--collect-submodules','wam_regtest',
-                     '--hidden-import','wam_regtest.qualification.real_core_smoke']
+                     '--hidden-import','wam_regtest.qualification.real_core_smoke',
+                     '--hidden-import','wam_regtest.qualification.fee_oracles']
             entry='src/wam_regtest/windows_package_entry.py'
         subprocess.run([sys.executable,'-I','-m','PyInstaller','--noconfirm','--clean','--noupx','--onedir','--windowed',
             '--name','WAM-Privacy-Wallet-REGTEST','--icon',str(icon),'--paths','src',

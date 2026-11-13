@@ -66,6 +66,7 @@ python -I -m PyInstaller --noconfirm --clean --onedir --windowed \
   --hidden-import wam_regtest.qualification.q06_fix_scenarios \
   --hidden-import wam_regtest.qualification.fee_regtest \
   --hidden-import wam_regtest.qualification.fee_regtest_runner \
+  --hidden-import wam_regtest.qualification.fee_oracles \
   --hidden-import wam_regtest.qualification.fee_regtest_frozen \
   --collect-submodules wam_sp \
   --copy-metadata coincurve \

@@ -19,7 +19,7 @@ class ProductionPackaging(unittest.TestCase):
   excluded=available-policy.RUNTIME
   for name in available:
    if name.endswith(('_probe','_scenario')):self.assertIn(name,excluded)
-  for name in ('cli','__main__','package_entry','windows_package_entry','linux_package_entry','bip39_reconcile','q05_packaged','q04_runner','q04_miner_loop','q04_fixture'):
+  for name in ('cli','__main__','package_entry','windows_package_entry','linux_package_entry','bip39_reconcile','q05_packaged','q04_runner','q04_miner_loop','q04_fixture','qualification.fee_oracles'):
    self.assertIn(name,excluded)
   args=policy.arguments(ROOT)
   self.assertEqual(set(args[1::2]),{'wam_regtest.'+n for n in available-{'__init__','production_entry'}})

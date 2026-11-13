@@ -207,7 +207,7 @@ def qualify(core, source):
             data['gui_low_decimal_precision_exact_atoms'] = atoms
             data['gui_raw_amount_input'] = '1.23456789'
             prepared = window._last_review
-            from .wallet_session import quoted_fee_holds
+            from .qualification.fee_oracles import quoted_fee_holds
             try:
                 quoted = quoted_fee_holds(prepared)
             except ValueError:

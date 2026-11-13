@@ -198,7 +198,7 @@ class Driver:
                 w.recipient.setText(self.funding['recipient']);w.amount.setText('0.00100000')
                 w.prepare_payment();self.stage='prepared'
             elif self.stage=='prepared' and self.idle():
-                from .wallet_session import quoted_fee_holds
+                from .qualification.fee_oracles import quoted_fee_holds
                 try:
                     quoted = w.review is not None and quoted_fee_holds(w.review)
                 except ValueError:

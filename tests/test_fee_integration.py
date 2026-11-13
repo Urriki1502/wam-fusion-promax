@@ -268,7 +268,7 @@ class AutomaticFee(unittest.TestCase):
         self.assertEqual(review.total_debit, 10_310)
 
     def test_stable_small_payment_steps_down_to_the_exact_fee(self):
-        from wam_regtest.wallet_session import quoted_fee_holds
+        from wam_regtest.qualification.fee_oracles import quoted_fee_holds
         self._fund((3_224, 3_310))
         review = self.session.prepare_auto(self.code, 3_000)
         self.assertEqual(self.fees, [310, 224])
@@ -373,7 +373,7 @@ class AutomaticFee(unittest.TestCase):
         self.assertIsNone(self.session._prepared)
 
     def test_downward_attempt_stops_within_six_proposals(self):
-        from wam_regtest.wallet_session import quoted_fee_holds
+        from wam_regtest.qualification.fee_oracles import quoted_fee_holds
         self._fund((100_000,))
         sizes = iter((200, 300, 400, 300, 400, 300))
         with patch("wam_regtest.infrastructure.tx_size.psbt_vsize",
@@ -506,7 +506,7 @@ class AutomaticFee(unittest.TestCase):
         # (vsize 112, overpay 86). Fee 224 leaves rest 86, so the selector
         # refuses before reserving and the covering fee is proposed again.
         from wam_regtest.domain.fee_policy import check_fee_limits
-        from wam_regtest.wallet_session import quoted_fee_holds
+        from wam_regtest.qualification.fee_oracles import quoted_fee_holds
         self._fund((100_310,))
         trace = []
         built = []
@@ -692,6 +692,59 @@ class ProductionPrepare(unittest.TestCase):
         with self.assertRaises(Exception) as caught:
             managed.execute("prepare", ("code", 1_000, 155), {})
         self.assertNotEqual(caught.exception.args[:1], ("FEE_EXPLICIT_PREPARE_DENIED",))
+
+
+class QuotedFeeOracle(unittest.TestCase):
+    def review(self, **changes):
+        facts = dict(
+            fee_quote=SimpleNamespace(floor_atoms_per_kvb=1000),
+            rate_source="NETWORK_FLOOR_2X", rate_atoms_per_kvb=2000,
+            vsize=112, fee=224, atoms=3000, total_debit=3224,
+            overpay_atoms=0, available_before=3224, available_after=0,
+            change_atoms=0)
+        return SimpleNamespace(**(facts | changes))
+
+    def test_oracle_is_not_a_product_session_attribute(self):
+        from wam_regtest import wallet_session
+        self.assertFalse(hasattr(wallet_session, "quoted_fee_holds"))
+
+    def test_exact_fee_and_covering_overpayment_are_accepted(self):
+        from wam_regtest.qualification.fee_oracles import quoted_fee_holds
+        self.assertTrue(quoted_fee_holds(self.review()))
+        self.assertTrue(quoted_fee_holds(self.review(
+            fee=310, overpay_atoms=86, total_debit=3310, available_before=3310)))
+        self.assertTrue(quoted_fee_holds(self.review(
+            change_atoms=500, available_before=4224, available_after=500)))
+
+    def test_missing_quote_and_non_integer_facts_are_refused(self):
+        from wam_regtest.qualification.fee_oracles import quoted_fee_holds
+        with self.assertRaisesRegex(ValueError, "^FEE_QUOTE_REQUIRED$"):
+            quoted_fee_holds(self.review(fee_quote=None))
+        with self.assertRaisesRegex(ValueError, "^FEE_QUOTE_REQUIRED$"):
+            quoted_fee_holds(SimpleNamespace())
+        for field in ("vsize", "fee", "atoms", "total_debit", "overpay_atoms",
+                      "available_before", "available_after", "change_atoms"):
+            for value in (None, True, 224.0, "224"):
+                with self.subTest(field=field, value=value), self.assertRaisesRegex(
+                        ValueError, "^FEE_QUOTE_REQUIRED$"):
+                    quoted_fee_holds(self.review(**{field: value}))
+
+    def test_floor_multiplier_size_debit_and_balance_refusals(self):
+        from wam_regtest.qualification.fee_oracles import quoted_fee_holds
+        cases = (
+            ({"rate_source": "NETWORK_FLOOR"}, "FEE_QUOTE_NOT_NETWORK_FLOOR"),
+            ({"rate_atoms_per_kvb": 1000}, "FEE_QUOTE_NOT_NETWORK_FLOOR"),
+            ({"rate_atoms_per_kvb": 3000}, "FEE_QUOTE_NOT_NETWORK_FLOOR"),
+            ({"fee": 223, "overpay_atoms": -1}, "FEE_QUOTE_SIZE"),
+            ({"overpay_atoms": 1}, "FEE_QUOTE_SIZE"),
+            ({"total_debit": 3225}, "FEE_QUOTE_DEBIT"),
+            ({"available_after": 1}, "FEE_QUOTE_BALANCE"),
+            ({"change_atoms": 1}, "FEE_QUOTE_BALANCE"),
+        )
+        for changes, code in cases:
+            with self.subTest(changes=changes), self.assertRaisesRegex(
+                    ValueError, "^" + code + "$"):
+                quoted_fee_holds(self.review(**changes))
 
 
 class RemovedFeeWidget(unittest.TestCase):

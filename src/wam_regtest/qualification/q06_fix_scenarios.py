@@ -512,7 +512,7 @@ def scenario_unconfirmed_restart(app, adapter, core, source, report):
         destination = None
         approve(window.send, "Approve Sign", lambda: window._signed_ready, "S1_SIGN")
         prepared = window._last_review
-        from ..wallet_session import quoted_fee_holds
+        from .fee_oracles import quoted_fee_holds
         try:
             quoted = quoted_fee_holds(prepared)
         except ValueError:

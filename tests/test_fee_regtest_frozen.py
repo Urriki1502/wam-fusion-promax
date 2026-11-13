@@ -495,7 +495,13 @@ class ProductionRefusal(unittest.TestCase):
 
 class ProvenanceRegistration(unittest.TestCase):
     MODULES = ("qualification.fee_regtest", "qualification.fee_regtest_runner",
-               "qualification.fee_regtest_frozen")
+               "qualification.fee_regtest_frozen", "qualification.fee_oracles")
+
+    def test_windows_and_linux_qualification_bundles_import_fee_oracle(self):
+        for builder in ("build_windows_bundle.py", "build_linux_wallet.py"):
+            with self.subTest(builder=builder):
+                text = (ROOT / "scripts" / builder).read_text()
+                self.assertIn("'--hidden-import','wam_regtest.qualification.fee_oracles'", text)
 
     def test_qualification_bundle_imports_the_modules_and_production_excludes_them(self):
         text = (ROOT / "scripts/build_macos_bundle.sh").read_text()

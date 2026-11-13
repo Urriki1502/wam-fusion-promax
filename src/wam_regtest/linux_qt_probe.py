@@ -72,7 +72,7 @@ def probe(core,datadir,source,mining):
         window.recipient.setText(code);window.amount.setText('0.00100000')
         stage='APPROVAL';print('LINUX_QT_STAGE='+stage,flush=True)
         review=_operation(app,window,'prepare_auto',window.prepare_button.click)
-        from .wallet_session import quoted_fee_holds
+        from .qualification.fee_oracles import quoted_fee_holds
         assert review.atoms==100000 and quoted_fee_holds(review) and not window.broadcast_button.isEnabled()
         before=tuple(session.scanner.store.db.execute('SELECT * FROM reservations'))
         _approve_dialog(app,window,window.sign_button,approve=False)

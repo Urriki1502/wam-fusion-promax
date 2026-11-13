@@ -268,7 +268,7 @@ def qualify(core, source, root, receipt, *, confirmed=False,
             step("SIGN")
             gui_approval(window.send, "Approve Sign", lambda: window._signed_ready, duplicate=True)
             draft = window._last_review
-            from .wallet_session import quoted_fee_holds
+            from .qualification.fee_oracles import quoted_fee_holds
             try:
                 quoted = quoted_fee_holds(draft)
             except ValueError:

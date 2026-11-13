@@ -106,7 +106,8 @@ def main():
             entry='src/wam_regtest/linux_production_entry.py'
         else:
             modules=['--collect-submodules','wam_regtest',
-                     '--hidden-import','wam_regtest.qualification.real_core_smoke']
+                     '--hidden-import','wam_regtest.qualification.real_core_smoke',
+                     '--hidden-import','wam_regtest.qualification.fee_oracles']
             entry='src/wam_regtest/linux_package_entry.py'
         command=[sys.executable,'-I','-m','PyInstaller','--noconfirm','--clean','--onedir','--noupx',
             '--name',name,'--paths','src',*modules,
