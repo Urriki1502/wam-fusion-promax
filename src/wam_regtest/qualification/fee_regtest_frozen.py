@@ -3,7 +3,7 @@
 Runs the integrated runner's fixture logic (``fee_regtest_runner.run_fixture``)
 inside the frozen qualification app on native Cocoa, against the bundled signed
 Core and pinned WSP, for the CLOSED frozen-required set of FEE-3 plan §6:
-F3-01..F3-06 and the F3-09 positive case. It accepts no argument, rate, flag,
+F3-01..F3-06, F3-09 positive and F3-11..F3-13 recovery cases. It accepts no argument, rate, flag,
 case list or developer test import. Each case uses a NEW retained disposable
 REGTEST profile and requires verified original-owner shutdown. Every other
 FEE-3 row is written BLOCKED or NOT_IN_SCOPE, never PASS.
@@ -30,7 +30,7 @@ EVIDENCE_NAME = "fee3-frozen-evidence.json"
 CASES_DIR = "fee3-frozen-cases"
 SCHEMA = "wam-fee3-frozen/v1"
 WSP_SOURCE_COMMIT = "ac55f13423620252bdbf848c7e8a280c3b84721e"
-FROZEN_REQUIRED_CASES = ("F3-01", "F3-02", "F3-03", "F3-04", "F3-05", "F3-06")
+FROZEN_REQUIRED_CASES = ("F3-01", "F3-02", "F3-03", "F3-04", "F3-05", "F3-06", "F3-11", "F3-12", "F3-13")
 
 
 def row_name(fixture):
@@ -50,16 +50,13 @@ NON_FROZEN_ROWS = {
     "F3-08": ("BLOCKED", "BLOCKED_STARTUP_FILLER_SEAM_NOT_PACKAGED"),
     "F3-10": ("BLOCKED", "BLOCKED_FILLER_SEAM_NOT_PACKAGED"),
     "F3-09/low-fee": ("NOT_IN_SCOPE", "NOT_IN_SCOPE_SOURCE_ONLY_EXPLICIT_FEE_SEAM"),
-    "F3-11": ("BLOCKED", "BLOCKED_SIGNED_UNBROADCAST_RESTART_NOT_IMPLEMENTED"),
-    "F3-12": ("BLOCKED", "BLOCKED_BROADCAST_UNCONFIRMED_RESTART_NOT_IMPLEMENTED"),
-    "F3-13": ("BLOCKED", "BLOCKED_CANCEL_BEFORE_SIGN_AND_RECOVERED_CANCEL_NOT_IMPLEMENTED"),
     "F3-14": ("BLOCKED", "BLOCKED_SIGN_BROADCAST_SAFETY_INVARIANTS_NOT_IMPLEMENTED"),
     "D-FEE2-2/subdust-sweep-characterization": (
         "NOT_IN_SCOPE", "NOT_IN_SCOPE_SOURCE_CHARACTERIZATION_OWNER_DECISION_PENDING"),
 }
 NON_FROZEN_STATUSES = ("BLOCKED", "NOT_IN_SCOPE")
 
-if (len(FROZEN_FIXTURES) != 15 or len(set(REQUIRED_ROWS)) != 15
+if (len(FROZEN_FIXTURES) != 19 or len(set(REQUIRED_ROWS)) != 19
         or set(REQUIRED_ROWS) & set(NON_FROZEN_ROWS)):
     raise RuntimeError("F3_FROZEN_CLOSED_SET_DENIED")
 
@@ -122,7 +119,7 @@ def _case_result(fixture, identity, core_identity, app, started):
 
 
 def run(core, source):
-    """Entry from the frozen app. 0 only when all 15 required rows PASS."""
+    """Entry from the frozen app. 0 only when all 19 required rows PASS."""
     from .fee_regtest_runner import resolve_actor, run_fixture, utc
     from .q06_fix_scenarios import failure_code
     started = utc()

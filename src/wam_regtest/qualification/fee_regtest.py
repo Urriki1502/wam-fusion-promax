@@ -24,9 +24,6 @@ OUTSIDE_STEP = {
     "F3-08": "BLOCKED_STARTUP_FILLER_SEAM_NOT_IMPLEMENTED",
     "F3-10": "BLOCKED_FILLER_SEAM_NOT_IMPLEMENTED",
     "F3-09-low-fee": "BLOCKED_OUTSIDE_STEP_POSITIVE_ONLY",
-    "F3-11": "BLOCKED_OUTSIDE_STEP_RESTART_LOCK_SEAM_NOT_IMPLEMENTED",
-    "F3-12": "BLOCKED_OUTSIDE_STEP_BROADCAST_UNCONFIRMED_RESTART_AND_CONFIRMATION",
-    "F3-13": "BLOCKED_OUTSIDE_STEP_CANCEL_BEFORE_SIGN_AND_RECOVERED_UNSIGNED_CANCEL",
     "F3-14": "BLOCKED_OUTSIDE_STEP_UNCHANGED_SIGN_BROADCAST_SAFETY_INVARIANTS",
     # The source run never qualifies frozen bytes; --ci-fee-regtest does, in
     # the separate full macOS build (FROZEN_FEE3_REGTEST stage).
@@ -66,6 +63,10 @@ FIXTURES = (
     Fixture("F3-06", "fee-unaffordable", (100_000,), 100_000, refusal=True),
     Fixture("F3-06", "affordable-control", (100_000,), 50_000),
     Fixture("F3-09", "positive", (1_000_000,), 100_000),
+    Fixture("F3-11", "signed-recovery", (1_000_000,), 100_000),
+    Fixture("F3-12", "pending-recovery", (1_000_000,), 100_000),
+    Fixture("F3-13", "fresh-cancel", (1_000_000,), 100_000),
+    Fixture("F3-13", "recovered-cancel", (1_000_000,), 100_000),
     # D-FEE2-2 characterization: 100_000 + 310 < 100_400 < 100_000 + 310 + 330
     # and no exact-remainder fee. Manifest must report OWNER DECISION PENDING, never PASS.
     Fixture("D-FEE2-2", "subdust-sweep-characterization", (100_400,), 100_000,
@@ -400,6 +401,9 @@ POSITIVE_ASSERTIONS = {
 
 def required_assertions(fixture):
     common = {"confirmed_inventory", "empty_loaded_mempool", "observer_integrity"}
+    if fixture.case in ("F3-11", "F3-12", "F3-13"):
+        from .fee_regtest_recovery import recovery_assertions
+        return common | QUOTE_ASSERTIONS | recovery_assertions(fixture)
     if fixture.refusal:
         return common | {"exact_refusal", "original_refusal", "no_state_change",
                          "no_sign_or_submit", "no_mempool_change"}
@@ -472,7 +476,7 @@ def _valid_result_with_status(result, expected_status, expect_characterization, 
             and result["safe_startup_flags"] == [] and digest(result["profile_fixture_id"])
             and result["baseline"]["quote"]["floor_atoms_per_kvb"] == 1000
             and required <= set(result["assertions"]) and assertions_pass(result["assertions"])
-            and (fixture.refusal or fixture.case == "F3-01" or (
+            and (fixture.refusal or fixture.case in ("F3-01", "F3-13") or (
                 type(result.get("confirmed_atoms")) is dict
                 and set(result["confirmed_atoms"]) == {"pre", "post"}
                 and type(result["confirmed_atoms"]["pre"]) is int

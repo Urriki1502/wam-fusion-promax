@@ -151,12 +151,10 @@ class Evidence(unittest.TestCase):
         )
 
     def test_outside_step_lists_f3_11_through_f3_14_and_contextual_actor(self):
-        for case_id in ("F3-07", "F3-08", "F3-09-low-fee", "F3-10", "F3-11", "F3-12", "F3-13", "F3-14",
+        for case_id in ("F3-07", "F3-08", "F3-09-low-fee", "F3-10", "F3-14",
                         "frozen", "Windows/Linux"):
             self.assertIn(case_id, OUTSIDE_STEP)
             self.assertTrue(OUTSIDE_STEP[case_id].startswith("BLOCKED_"), case_id)
-        self.assertIn("UNCONFIRMED_RESTART", OUTSIDE_STEP["F3-12"])
-        self.assertIn("CANCEL_BEFORE_SIGN", OUTSIDE_STEP["F3-13"])
         self.assertIn("SIGN_BROADCAST_SAFETY_INVARIANTS", OUTSIDE_STEP["F3-14"])
         with patch.dict(os.environ, {"WAM_QUALIFICATION_ACTOR": "verifier-agent"}, clear=False):
             self.assertEqual(resolve_actor(), "verifier-agent")
@@ -670,14 +668,14 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
 
         return FakeBackend
 
-    def test_qualification_executor_admits_only_five_fee_actions_while_production_refuses(self):
+    def test_qualification_executor_admits_only_seven_fee_actions_while_production_refuses(self):
         self.assertTrue(QUALIFICATION_COMMANDS.isdisjoint(COMMANDS))
         self.assertEqual(
             set(QUALIFICATION_COMMANDS),
-            {"fee_fixture", "fee_inspect", "fee_baseline", "fee_observe", "fee_preflight"},
+            {"fee_fixture", "fee_inspect", "fee_baseline", "fee_observe", "fee_preflight", "fee_signed_evidence", "fee_resume_replay"},
         )
 
-        # Production WalletExecutor must still refuse all five actions with the exact code.
+        # Production WalletExecutor must still refuse all seven actions with the exact code.
         prod_calls = []
         prod = WalletExecutor(self._fake_backend_factory(prod_calls))
         try:
@@ -927,8 +925,9 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
             inspect_backend.observations = {}
             inspect_backend._spend_session = SimpleNamespace(
                 _rpc=lambda: inspect_rpc,
-                scanner=SimpleNamespace(coins=lambda: coins, store=SimpleNamespace(db=db)),
-                vault=SimpleNamespace(anchor=SimpleNamespace(read=lambda: {"seq": 1})),
+                scanner=SimpleNamespace(coins=lambda: coins, store=SimpleNamespace(db=db, tip=lambda: (1, "a"*64))),
+                ring=SimpleNamespace(public_metadata=lambda: {"account_id": "test-account"}),
+                vault=SimpleNamespace(anchor=SimpleNamespace(read=lambda: (1, "a"*64))),
                 faulted=False,
                 _prepared=None,
                 _signed=None,
@@ -1418,6 +1417,274 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertEqual(result["failure_code"], "Q06_FIX_GUI_DENIED_REOPEN")
         self.assertEqual(result.get("gui_denied"), "Q06_GUI_BACKUP_ACK_TAMPERED")
+
+
+
+class RecoveryOracles(unittest.TestCase):
+    """Realistic sanitized observations; these are PURE_ORCHESTRATION, not Core PASS."""
+    def setUp(self):
+        self.before = dict(reservation_sha256="1"*64, anchor_sha256="2"*64,
+            reservation_states=["signed"], reservations=1,
+            balance={"confirmed_atoms": 1_000_000, "available_atoms": 0},
+            mempool=[], identity_sha256="3"*64, tip=[102, "4"*64],
+            anchor_generation=4, faulted=False, prepared=False, signed=False)
+        self.evidence = dict(raw_sha256="5"*64, encrypted_sha256="9"*64, txid="6"*64, atoms=100_000,
+            fee=310, vsize=155, commitment="7"*64, token_sha256="8"*64)
+
+    def test_readonly_reopen_retains_authority_but_allows_native_generation_advance(self):
+        from wam_regtest.qualification.fee_regtest_recovery import read_only_holds, MUTATIONS
+        after = copy.deepcopy(self.before)
+        after["anchor_generation"] += 1
+        self.assertTrue(read_only_holds(self.before, after, ["ACTION_ACTIVATE"], "signed"))
+        for event in MUTATIONS:
+            self.assertFalse(read_only_holds(self.before, after, [event], "signed"), event)
+        for key in self.before:
+            changed = copy.deepcopy(after)
+            del changed[key]
+            if key not in ("reservations", "prepared", "signed", "anchor_sha256"):
+                self.assertFalse(read_only_holds(self.before, changed, [], "signed"), key)
+        for key, value in (("reservation_sha256", "9"*64), ("tip", [103, "a"*64]),
+                           ("balance", {"confirmed_atoms": 1_000_000, "available_atoms": 1_000_000}),
+                           ("mempool", ["a"*64]), ("identity_sha256", "a"*64),
+                           ("reservation_states", ["draft"]), ("faulted", True),
+                           ("anchor_generation", 3)):
+            changed = copy.deepcopy(after)
+            changed[key] = value
+            self.assertFalse(read_only_holds(self.before, changed, [], "signed"), key)
+
+    def test_signed_identity_requires_every_exact_field_never_reprices(self):
+        from wam_regtest.qualification.fee_regtest_recovery import same_signed_holds
+        self.assertTrue(same_signed_holds(self.evidence, copy.deepcopy(self.evidence)))
+        for key in self.evidence:
+            for value in (None, "changed", 10_000):
+                changed = self.evidence | {key: value}
+                self.assertFalse(same_signed_holds(self.evidence, changed), key)
+            changed = dict(self.evidence)
+            del changed[key]
+            self.assertFalse(same_signed_holds(self.evidence, changed), key)
+
+    def test_status_requires_verified_single_unspent_signed_intent(self):
+        from wam_regtest.qualification.fee_regtest_recovery import resumable_status_holds
+        status = dict(write_attempted=False, automatic_resume=False, abandon_available=False,
+            mainnet_allowed=False, intents=[dict(state="signed", evidence="verified",
+                classification="SIGNED_NOT_SUBMITTED_RESUMABLE", txid="6"*64, atoms=100_000, fee=310)])
+        self.assertTrue(resumable_status_holds(status, self.evidence))
+        for classification, evidence in (
+            ("OPERATOR_REVIEW_EVIDENCE_INVALID", "invalid"),
+            ("OPERATOR_REVIEW_SIGNED_EVIDENCE_MISSING", "missing"),
+            ("OPERATOR_REVIEW_INPUT_SPENT_OR_CONFLICTED", "verified"),
+            ("IN_MEMPOOL_AWAITING_CONFIRMATION", "verified"),
+            ("OPERATOR_REVIEW_MIXED_STATE", "verified")):
+            changed = copy.deepcopy(status)
+            changed["intents"][0].update(classification=classification, evidence=evidence)
+            self.assertFalse(resumable_status_holds(changed, self.evidence))
+        for key in status:
+            changed = copy.deepcopy(status)
+            del changed[key]
+            self.assertFalse(resumable_status_holds(changed, self.evidence), key)
+        self.assertFalse(resumable_status_holds(status | {"intents": []}, self.evidence))
+        self.assertFalse(resumable_status_holds(status | {"intents": status["intents"]*2}, self.evidence))
+
+    def test_corrupt_missing_or_ambiguous_evidence_refusal_must_keep_locks(self):
+        from wam_regtest.qualification.fee_regtest_recovery import refusal_keeps_locks_holds
+        for refusal in ("Q06_RESUME_NOT_ELIGIBLE", "Q06_RESUME_SESSION_NOT_IDLE",
+                        "Q06_INTENT_STATUS_SESSION_FAULTED"):
+            self.assertTrue(refusal_keeps_locks_holds(self.before, self.before, [], refusal))
+            self.assertFalse(refusal_keeps_locks_holds(self.before,
+                self.before | {"reservation_states": []}, [], refusal))
+            self.assertFalse(refusal_keeps_locks_holds(self.before, self.before, ["RELEASE_DRAFT"], refusal))
+        self.assertFalse(refusal_keeps_locks_holds(self.before, self.before, [], None))
+
+    def test_submission_requires_sealed_evidence_then_durable_uncertain_before_one_send(self):
+        from wam_regtest.qualification.fee_regtest_recovery import submission_order_holds
+        events = ["EVIDENCE_UNCERTAIN_SAVED", "SAVE", "SAVE_UNCERTAIN", "SENDRAWTRANSACTION"]
+        submissions = [dict(states=["uncertain"], raw_sha256="5"*64, uncertain_evidence_txid="6"*64)]
+        self.assertTrue(submission_order_holds(events, submissions, self.evidence))
+        for changed in (events[::-1], events[1:], events[:-1], events + ["SENDRAWTRANSACTION"],
+                        ["SAVE_UNCERTAIN", "SENDRAWTRANSACTION", "EVIDENCE_UNCERTAIN_SAVED"]):
+            self.assertFalse(submission_order_holds(changed, submissions, self.evidence))
+        for changed in ([], submissions*2, [submissions[0] | {"states": ["signed"]}],
+                        [submissions[0] | {"raw_sha256": "a"*64}],
+                        [submissions[0] | {"uncertain_evidence_txid": None}]):
+            self.assertFalse(submission_order_holds(events, changed, self.evidence))
+
+    def test_fee_metadata_must_come_from_persistence(self):
+        from wam_regtest.qualification.fee_regtest_recovery import fee_metadata_holds
+        quote = dict(floor_atoms_per_kvb=1000, rate_atoms_per_kvb=2000, source="NETWORK_FLOOR_2X",
+                     estimator="UNAVAILABLE", digest="a"*64)
+        self.assertTrue(fee_metadata_holds(copy.deepcopy(quote), quote))
+        for changed in (None, {}, quote | {"rate_atoms_per_kvb": 1000}, quote | {"digest": "b"*64}):
+            self.assertFalse(fee_metadata_holds(changed, quote))
+
+    def test_cancel_only_releases_exact_unsigned_token_and_replay_is_inert_refusal(self):
+        from wam_regtest.qualification.fee_regtest_recovery import cancel_holds, cancel_replay_holds, MUTATIONS
+        before = self.before | {"balance": {"confirmed_atoms": 1_000_000, "available_atoms": 1_000_000}}
+        draft = self.before | {"reservation_states": ["draft"], "token_sha256": "8"*64}
+        after = before | dict(reservations=0, reservation_states=[], anchor_generation=5)
+        self.assertTrue(cancel_holds(before, draft, after, ["RELEASE_DRAFT"], ["8"*64]))
+        for event in MUTATIONS - {"RELEASE_DRAFT"}:
+            self.assertFalse(cancel_holds(before, draft, after, ["RELEASE_DRAFT", event], ["8"*64]))
+        for changed in ([], ["9"*64], ["8"*64]*2):
+            self.assertFalse(cancel_holds(before, draft, after, ["RELEASE_DRAFT"], changed))
+        self.assertFalse(cancel_holds(before, draft | {"reservation_states": ["signed"]}, after,
+                                     ["RELEASE_DRAFT"], ["8"*64]))
+        for key in after:
+            changed = dict(after)
+            del changed[key]
+            if key != "reservation_sha256" and key != "anchor_sha256":
+                self.assertFalse(cancel_holds(before, draft, changed, ["RELEASE_DRAFT"], ["8"*64]), key)
+        self.assertTrue(cancel_replay_holds(after, after, [], "WALLET_ONLY_UNSIGNED_DRAFT_CAN_CANCEL"))
+        for refusal in (None, "SOMETHING_ELSE"):
+            self.assertFalse(cancel_replay_holds(after, after, [], refusal))
+        self.assertFalse(cancel_replay_holds(after, after, ["RELEASE_DRAFT"], "WALLET_ONLY_UNSIGNED_DRAFT_CAN_CANCEL"))
+        self.assertFalse(cancel_replay_holds(after, after | {"anchor_sha256": "a"*64}, [],
+                                            "WALLET_ONLY_UNSIGNED_DRAFT_CAN_CANCEL"))
+
+    def test_recovery_cases_are_required_source_and_frozen_rows(self):
+        from wam_regtest.qualification import fee_regtest_frozen as frozen
+        expected = {("F3-11", "signed-recovery"), ("F3-12", "pending-recovery"),
+                    ("F3-13", "fresh-cancel"), ("F3-13", "recovered-cancel")}
+        for case, name in expected:
+            fixture = next(f for f in FIXTURES if (f.case, f.name) == (case, name))
+            self.assertNotIn(case, OUTSIDE_STEP)
+            self.assertIn(case + "/" + name, frozen.REQUIRED_ROWS)
+            result = Evidence().passing_result()
+            result.update(case_id=case, fixture=name,
+                          confirmed_atoms={"pre": 1_000_000, "post": 899_690})
+            result["assertions"] = {key: True for key in required_assertions(fixture)}
+            self.assertTrue(valid_pass_result(result))
+            for key in required_assertions(fixture):
+                changed = copy.deepcopy(result)
+                changed["assertions"].pop(key)
+                self.assertFalse(valid_pass_result(changed), key)
+
+
+class RecoveryRefusalExecution(unittest.TestCase):
+    """Exercise the real recovery methods with SQLite and read-only RPC doubles.
+
+    No Core process is run; fabricated RPC success is never qualification evidence.
+    """
+    def test_real_resume_refuses_missing_and_corrupt_evidence_without_releasing(self):
+        from contextlib import nullcontext
+        from wam_regtest.bip39_spend_session import Q06OwnedSpendSession, Q06SpendSessionError
+        db = sqlite3.connect(":memory:")
+        self.addCleanup(db.close)
+        db.executescript("CREATE TABLE reservations(txid TEXT,vout INT,token TEXT,state TEXT);"
+                         "CREATE TABLE history(txid TEXT,height INT);")
+        token, txid = "a"*32, "b"*64
+        db.execute("INSERT INTO reservations VALUES (?,?,?,?)", ("c"*64, 0, token, "signed"))
+        session = Q06OwnedSpendSession.__new__(Q06OwnedSpendSession)
+        session._lock = threading.RLock()
+        session._q06_uncertain = session.faulted = False
+        session._prepared = session._signed = session._review = session._q06_pending_confirm = None
+        session.vault = SimpleNamespace(anchor=SimpleNamespace(lease=lambda: nullcontext()))
+        session.scanner = SimpleNamespace(store=SimpleNamespace(db=db, transaction=lambda: nullcontext()))
+        session.snapshot = lambda: SimpleNamespace(height=102, tip="d"*64)
+        calls = []
+        def raw(method, args):
+            calls.append(method)
+            self.assertEqual(method, "getrawmempool")
+            return []
+        session._rpc = lambda: SimpleNamespace(_call=raw)
+        def missing(*args):
+            return None
+        def corrupt(*args):
+            raise ValueError("Q06_PAYMENT_EVIDENCE_INVALID")
+        for reader, classification in ((missing, "OPERATOR_REVIEW_SIGNED_EVIDENCE_MISSING"),
+                                       (corrupt, "OPERATOR_REVIEW_EVIDENCE_INVALID")):
+            session._read_payment_evidence = reader
+            before = db.execute("SELECT * FROM reservations").fetchall()
+            status = session.signed_intent_status()
+            self.assertEqual(status["intents"][0]["classification"], classification)
+            with self.assertRaisesRegex(Q06SpendSessionError, "Q06_RESUME_NOT_ELIGIBLE"):
+                session.resume_signed_intent(token, txid, approved=True)
+            self.assertEqual(db.execute("SELECT * FROM reservations").fetchall(), before)
+        self.assertEqual(set(calls), {"getrawmempool"})
+
+    def test_real_recovered_cancel_replay_refuses_after_one_exact_release(self):
+        from contextlib import nullcontext
+        from wam_regtest.bip39_spend_session import Q06OwnedSpendSession
+        from wam_regtest.wallet_session import WalletSessionError
+        from wam_sp.wallet import Wallet, Signer
+        db = sqlite3.connect(":memory:")
+        self.addCleanup(db.close)
+        db.execute("CREATE TABLE reservations(txid TEXT,vout INT,token TEXT,state TEXT)")
+        token = "a"*32
+        db.execute("INSERT INTO reservations VALUES (?,?,?,?)", ("c"*64, 0, token, "draft"))
+        session = Q06OwnedSpendSession.__new__(Q06OwnedSpendSession)
+        session._lock = threading.RLock()
+        session._prepared = session._signed = session._review = session._q06_pending_confirm = None
+        session.vault = SimpleNamespace(anchor=SimpleNamespace(lease=lambda: nullcontext()))
+        session.scanner = SimpleNamespace(store=SimpleNamespace(db=db, transaction=lambda: nullcontext()))
+        session._rpc = lambda: None
+        session.snapshot = lambda: None
+        saved, released = [], []
+        session._save = lambda: saved.append(True)
+        def release(wallet, supplied):
+            released.append(supplied)
+            rows = db.execute("SELECT state FROM reservations WHERE token=?", (supplied,)).fetchall()
+            self.assertEqual(rows, [("draft",)])
+            db.execute("DELETE FROM reservations WHERE token=? AND state='draft'", (supplied,))
+        with patch.object(Wallet, "__init__", return_value=None), \
+             patch.object(Wallet, "release_draft", release), \
+             patch.object(Signer, "sign", side_effect=AssertionError("sign forbidden")):
+            self.assertEqual(session.cancel(), {"recovered_unsigned_cancelled": True,
+                                               "signer_allowed": False, "broadcast_allowed": False})
+            with self.assertRaisesRegex(WalletSessionError, "WALLET_ONLY_UNSIGNED_DRAFT_CAN_CANCEL"):
+                session.cancel()
+        self.assertEqual(released, [token])
+        self.assertEqual(saved, [True])
+        self.assertEqual(db.execute("SELECT * FROM reservations").fetchall(), [])
+
+
+class RecoveryObserverExecution(unittest.TestCase):
+    def test_observers_preserve_real_method_result_and_exception_and_capture_order(self):
+        from wam_regtest.wallet_session import WalletCoreCli
+        from wam_regtest.bip39_owner_backend import Bip39ReadOnlyBackend
+        from wam_regtest.qualification.fee_regtest_recovery import submission_order_holds
+        from hashlib import sha256
+        db = sqlite3.connect(":memory:")
+        self.addCleanup(db.close)
+        db.execute("CREATE TABLE reservations(token TEXT,state TEXT,txid TEXT,vout INT)")
+        db.execute("INSERT INTO reservations VALUES (?,?,?,?)", ("a"*32, "signed", "b"*64, 0))
+        sentinel = object()
+        class Session:
+            scanner = SimpleNamespace(store=SimpleNamespace(db=db))
+            def _save(self):
+                return sentinel
+            def _retain_signed_payment(self, stage):
+                return sentinel
+            def _read_payment_evidence(self, token, stage):
+                self_checked = (token, stage)
+                if self_checked != ("a"*32, "uncertain"):
+                    raise AssertionError(self_checked)
+                return {"txid": "c"*64}
+        session = Session()
+        backend = backend_type().__new__(backend_type())
+        backend._spend_session = session
+        backend.observations = {}
+        backend.execute("fee_observe", (), {})
+        rpc = WalletCoreCli.__new__(WalletCoreCli)
+        calls = []
+        def raw(obj, method, params):
+            calls.append((method, params))
+            return sentinel
+        def execute(obj, action, args, kwargs):
+            if action == "sign":
+                raise ValueError("ORIGINAL_ERROR")
+            self.assertIs(session._retain_signed_payment("uncertain"), sentinel)
+            db.execute("UPDATE reservations SET state='uncertain'")
+            self.assertIs(session._save(), sentinel)
+            return rpc._call("sendrawtransaction", ["00ff"])
+        with patch.object(WalletCoreCli, "_call", raw), patch.object(Bip39ReadOnlyBackend, "execute", execute):
+            self.assertIs(backend.execute("broadcast", (), {}), sentinel)
+            with self.assertRaisesRegex(ValueError, "ORIGINAL_ERROR"):
+                backend.execute("sign", (), {})
+        self.assertEqual(calls, [("sendrawtransaction", ["00ff"])])
+        self.assertFalse(backend.observations.get("observer_errors"))
+        expected = {"raw_sha256": sha256(bytes.fromhex("00ff")).hexdigest(), "txid": "c"*64}
+        self.assertTrue(submission_order_holds(backend.observations["events"],
+            backend.observations["submissions"], expected))
 
 
 if __name__ == "__main__":

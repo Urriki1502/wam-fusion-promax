@@ -36,11 +36,12 @@ from .fee_regtest import (
 
 QUALIFICATION_COMMANDS = frozenset((
     "fee_fixture", "fee_inspect", "fee_baseline", "fee_observe", "fee_preflight",
+    "fee_signed_evidence", "fee_resume_replay",
 ))
 
 
 class QualificationFeeExecutor(WalletExecutor):
-    """Qualification-only executor admitting the 5 harness actions alongside COMMANDS."""
+    """Qualification-only executor admitting the 7 harness actions alongside COMMANDS."""
 
     ALLOWED_COMMANDS = COMMANDS | QUALIFICATION_COMMANDS
 
@@ -183,7 +184,7 @@ def backend_type():
                                              "smart": [smart[t] for t in (2, 6, 25)],
                                              "estimaterawfee": estimaterawfee})}
             if action == "fee_observe":
-                self.observations.update(events=[], proposals=[], releases=[], policy=[])
+                self.observations.update(events=[], proposals=[], releases=[], policy=[], submissions=[])
                 return None
             # Observe the actual calls, returning their original values and
             # preserving exceptions. No argument or raw transaction is logged.
@@ -236,8 +237,17 @@ def backend_type():
                     o["events"].append("RELEASE_DRAFT")
 
                 def rpc_before(_obj, a, _kw):
-                    if a[0] in ("sendrawtransaction", "testmempoolaccept"):
+                    from .fee_regtest_recovery import MUTATIONS
+                    if a[0].upper() in MUTATIONS or a[0] == "testmempoolaccept":
                         o["events"].append(a[0].upper())
+                    if a[0] == "sendrawtransaction":
+                        session = self._spend_session
+                        rows = session.scanner.store.db.execute(
+                            "SELECT token,state FROM reservations ORDER BY txid,vout").fetchall()
+                        body = session._read_payment_evidence(rows[0][0], "uncertain")
+                        o["submissions"].append({"raw_sha256": sha256(bytes.fromhex(a[1][0])).hexdigest(),
+                            "states": [r[1] for r in rows],
+                            "uncertain_evidence_txid": body["txid"] if body else None})
 
                 def rpc_after(_obj, a, result):
                     if a[0] in WalletCoreCli.FEE_POLICY_READS:
@@ -257,7 +267,8 @@ def backend_type():
                 wrap(Wallet, "release_draft", after=release)
                 wrap(Wallet, "mark_signed", before=lambda *a: o["events"].append("MARK_SIGNED"))
                 wrap(Signer, "sign", before=lambda *a: o["events"].append("SIGN"))
-                wrap(WalletCoreCli, "call", before=rpc_before, after=rpc_after)
+                wrap(WalletCoreCli, "call", after=rpc_after)
+                wrap(WalletCoreCli, "_call", before=rpc_before)
                 session = self._spend_session
                 if session is not None:
                     original_save = session._save
@@ -265,10 +276,29 @@ def backend_type():
                     def save():
                         result = original_save()
                         o["events"].append("SAVE")
+                        try:
+                            rows = session.scanner.store.db.execute("SELECT state FROM reservations").fetchall()
+                            if rows and {r[0] for r in rows} == {"uncertain"}:
+                                o["events"].append("SAVE_UNCERTAIN")
+                        except Exception:
+                            o.setdefault("observer_errors", []).append("SAVE_CAPTURE_DENIED")
                         return result
 
                     stack.enter_context(patch.object(session, "_save", save))
+                    wrap(type(session), "_retain_signed_payment", after=lambda obj, a, r:
+                         o["events"].append("EVIDENCE_" + a[0].upper() + "_SAVED"))
                 try:
+                    if action == "fee_signed_evidence":
+                        return self.signed_evidence()
+                    if action == "fee_resume_replay":
+                        # Re-read the authoritative token privately; never log it.
+                        token, = {r[0] for r in session.scanner.store.db.execute("SELECT token FROM reservations")}
+                        try:
+                            session.resume_signed_intent(token, args[0], approved=True)
+                        except Exception as error:
+                            from .q06_fix_scenarios import failure_code
+                            return failure_code(error)
+                        return None
                     return super().execute(action, args, kwargs)
                 except Exception as error:
                     if error.args in (("PAYMENT_AMOUNT",), ("INSUFFICIENT_SINGLE_CLUSTER_FUNDS",), ("FEE_DISPROPORTIONATE",)):
@@ -331,6 +361,22 @@ def backend_type():
                 if rpc._transport is not None:
                     rpc._transport.close()
 
+        def signed_evidence(self):
+            from wam_sp.psbt import PSBT
+            from ..infrastructure.tx_size import serialized_vsize
+            session = self._spend_session
+            token, = {r[0] for r in session.scanner.store.db.execute("SELECT token FROM reservations")}
+            body = session._read_payment_evidence(token, "signed")
+            if body is None:
+                raise ValueError("F3_SIGNED_EVIDENCE_MISSING")
+            raw = PSBT.decode(bytes.fromhex(body["signed_psbt"])).finalize()
+            return {"raw_sha256": sha256(raw).hexdigest(), "txid": body["txid"],
+                    "atoms": body["atoms"], "fee": body["fee"], "vsize": serialized_vsize(raw),
+                    "encrypted_sha256": sha256((session._evidence_store()._folder() /
+                        (token + "-signed.enc")).read_bytes()).hexdigest(),
+                    "commitment": body["commitment"], "token_sha256": sha256(token.encode()).hexdigest(),
+                    "fee_quote": body.get("fee_quote")}
+
         def inspect(self):
             from wam_sp.wallet import Wallet
             session = self._spend_session
@@ -340,12 +386,17 @@ def backend_type():
             groups = {(c["account"], c["label"]) for c in coins}
             rows = session.scanner.store.db.execute(
                 "SELECT txid,vout,token,state,created FROM reservations").fetchall()
-            anchor = json.dumps(session.vault.anchor.read(), sort_keys=True, default=str).encode()
+            anchor_value = session.vault.anchor.read()
+            anchor = json.dumps(anchor_value, sort_keys=True, default=str).encode()
             return {"coins": sorted(c["atoms"] for c in coins), "cluster_count": len(groups),
                     "inventory": [{"txid": c["txid"], "vout": c["vout"], "atoms": c["atoms"],
                                    "cluster_sha256": sha256(repr((c["account"], c["label"])).encode()).hexdigest()}
                                   for c in coins],
                     "balance": Wallet(session.scanner).balance(),
+                    "tip": list(session.scanner.store.tip()),
+                    "identity_sha256": sha256(session.ring.public_metadata()["account_id"].encode()).hexdigest(),
+                    "anchor_generation": anchor_value[0],
+                    "token_sha256": sha256(rows[0][2].encode()).hexdigest() if rows else None,
                     "reservations": len(rows), "reservation_states": sorted(r[3] for r in rows),
                     "reservation_rows": [{"txid": r[0], "vout": r[1], "state": r[3]} for r in rows],
                     "reservation_sha256": sha256(repr(sorted(tuple(r) for r in rows)).encode()).hexdigest(),
@@ -530,6 +581,8 @@ def approve_payment(app, window, button, caption, done, wait, checks, result, ki
             checks["gui_no_manual_fee_field"] = no_manual_fee_controls(window, dialog)
             if captured is not None:
                 captured["review"] = review
+                if callable(captured.get("capture_draft")):
+                    captured["draft"] = captured["capture_draft"]()
             result.setdefault("gui", {})[kind] = {
                 "amount_text_sha256": sha256(expected.encode()).hexdigest(),
                 "recipient_sha256": sha256(review.code.encode()).hexdigest(),
@@ -644,7 +697,31 @@ def run_fixture(fixture, app, adapter, core, source, result, actor=None):
                                source=source, authorized_disposable=True) as payee:
             destination = payee.public_metadata()["receive_code"]
         request("fee_observe")
-        if fixture.refusal:
+        if fixture.case in ("F3-11", "F3-12", "F3-13"):
+            from .fee_regtest_recovery import run_recovery
+
+            def restart_recovery():
+                nonlocal executor, window
+                observations["restart_start"] = len(observations["events"])
+                require(_shutdown(state) is False, "F3_RECOVERY_SHUTDOWN")
+                executor = QualificationFeeExecutor(lambda: backend_type()(
+                    root, core, source, keychain=root / "q05-disposable.keychain-db",
+                    observations=observations))
+                state["executor"] = executor
+                window = Bip39FusionWindow(executor)
+                state["window"] = window
+                window.show()
+                window.start(_PASSWORD, "reopen", "")
+                wait(lambda: idle() and window._ready, "RECOVERY_REOPEN")
+                approve(window.activate, "Approve", lambda: window._spend_enabled, "RECOVERY_ACTIVATE")
+                wait(lambda: idle() and window._last_verified is not None, "RECOVERY_SNAPSHOT")
+
+            result["no_manual_controls"] = no_manual_fee_controls(window)
+            run_recovery(fixture, app=app, request=request, restart=restart_recovery,
+                current_window=lambda: window, idle=idle, wait=wait, approve=approve,
+                approve_payment=approve_payment, observations=observations, before=before,
+                destination=destination, checks=checks, result=result)
+        elif fixture.refusal:
             refusal = None
             try:
                 request("prepare_auto", destination, fixture.amount, timeout=240)
