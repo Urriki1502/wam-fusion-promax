@@ -330,20 +330,47 @@ def _drop_window(state):
         app.processEvents()
 
 
-def _shutdown(state):
+def _shutdown(state, timeout=105):
+    """Drain one in-flight action, then quit the original owner within one budget.
+
+    Never skip quit merely because Cancel is still running. Never resubmit an
+    unacknowledged quit, adopt a PID, or claim that a timed-out owner has stopped.
+    """
+    deadline = time.monotonic() + timeout
     executor = state.get("executor")
-    if executor is not None and not executor.closed:
-        try:
-            if not executor.busy:
-                executor.request("quit", timeout=90)
-            if not executor.join(15) or not executor.closed:
-                _drop_window(state)
-                return True
-        except Exception:
-            _drop_window(state)
-            return True
-    _drop_window(state)
-    return False
+    app = state.get("app")
+    state.pop("shutdown_failure_code", None)
+    window = state.get("window")
+    if window is not None:
+        window._poll.stop()  # No new snapshot work while draining Cancel.
+
+    def pump():
+        if time.monotonic() >= deadline:
+            raise TimeoutError
+        if app is not None:
+            app.processEvents()
+        time.sleep(min(.01, max(0, deadline - time.monotonic())))
+
+    try:
+        if executor is not None:
+            if not executor.closed:
+                while executor.busy:
+                    pump()
+                future = executor.submit("quit")
+                while not future.done():
+                    pump()
+                future.result()  # A refusal is not a shutdown acknowledgement.
+            while not executor.join(0):
+                pump()
+            if not executor.closed:
+                raise ValueError("Q06_FIX_SHUTDOWN_UNCERTAIN")
+    except TimeoutError:
+        state["shutdown_failure_code"] = "Q06_FIX_SHUTDOWN_TIMEOUT"
+    except Exception:
+        state["shutdown_failure_code"] = "Q06_FIX_SHUTDOWN_UNCERTAIN"
+    finally:
+        _drop_window(state)
+    return "shutdown_failure_code" in state
 
 
 def _bind(state, app, report, section):

@@ -556,7 +556,7 @@ def approve_payment(app, window, button, caption, done, wait, checks, result, ki
     """Inspect the visible native dialog BEFORE clicking Approve or Cancel."""
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QLabel, QWidget
-    from ..fusion_pages import PaymentApproval
+    from ..fusion_pages import PaymentApproval, approval_amount_text
     from ..bip39_locale import t
     from ..qualification_gui import click_visible_approval
 
@@ -582,16 +582,7 @@ def approve_payment(app, window, button, caption, done, wait, checks, result, ki
             total_text = money(review.atoms + review.fee)
             avail_before_text = money(review.available_before)
             avail_after_text = money(review.available_after)
-            values = dict(amount=money(review.atoms), fee=fee_text,
-                          rate=money(review.rate_atoms_per_kvb),
-                          source=source_text,
-                          classification=review.rate_classification,
-                          total=total_text,
-                          available_before=avail_before_text,
-                          available_after=avail_after_text,
-                          change=money(review.change_atoms), inputs=review.input_count,
-                          input_count=review.input_count)
-            expected = t("pages.payment_review_auto").format(**values)
+            expected = approval_amount_text(review)
             labels = [label.text() for label in dialog.findChildren(QLabel)]
             joined_labels = "\n".join(labels)
             receive_widget = dialog.findChild(QWidget, "ReceiveCode")
@@ -901,7 +892,12 @@ def run_fixture(fixture, app, adapter, core, source, result, actor=None):
                              "action": "inspect retained original owner" if uncertain else "none"}
         if uncertain:
             result["status"] = "FAIL"
-            result["failure_code"] = "F3_SHUTDOWN_UNCERTAIN"
+            result["prior_failure_code"] = result.get("failure_code")
+            result["failure_code"] = ("F3_SHUTDOWN_TIMEOUT"
+                if state.get("shutdown_failure_code") == "Q06_FIX_SHUTDOWN_TIMEOUT"
+                else "F3_SHUTDOWN_UNCERTAIN")
+            result["cleanup"]["failure_code"] = state.get(
+                "shutdown_failure_code", "Q06_FIX_SHUTDOWN_UNCERTAIN")
         elif (result["status"] in ("PASS", CHARACTERIZATION_PENDING_STATUS)
               and not checks["observer_integrity"]):
             result["status"] = "FAIL"
@@ -993,7 +989,7 @@ def quote_checks(review, fixture, observations):
     }
 
 
-def main(argv=None):
+def main(argv=None, *, exit_on_uncertain=False):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--core", required=True, type=Path)
     parser.add_argument("--core-archive", required=True, type=Path)
@@ -1051,8 +1047,11 @@ def main(argv=None):
         if fixture.case == "F3-14" and fixture.name in FAULTS:
             result.update(test_layer="FAULT_INJECTED_REAL_CORE", fault_boundary=FAULTS[fixture.name])
         if setup:
-            result["blocker"] = {"actor": actor, "action": "provide native host and authenticated inputs",
-                                 "code": setup}
+            result["blocker"] = {"actor": actor,
+                "action": ("inspect retained original owner before another fixture"
+                           if setup == "F3_PRIOR_OWNER_UNCERTAIN"
+                           else "provide native host and authenticated inputs"),
+                "code": setup}
         else:
             try:
                 run_fixture(fixture, app, adapter, args.core, args.wsp_source, result, actor=actor)
@@ -1089,8 +1088,15 @@ def main(argv=None):
         "outside_step": dict(OUTSIDE_STEP),
         "accepted": False, "engineering_handoff": False,
     })
+    if exit_on_uncertain and setup == "F3_PRIOR_OWNER_UNCERTAIN":
+        # Receipts (including every later BLOCKED row) are durable first.
+        # A retained non-daemon owner must not trap CLI interpreter shutdown.
+        # Do not adopt/kill its Core PID or release its custody from this thread.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(2)
     return 0 if status == "PASS" else 2
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(exit_on_uncertain=True))

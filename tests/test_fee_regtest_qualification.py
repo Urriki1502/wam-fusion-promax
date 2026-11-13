@@ -1066,6 +1066,7 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
             available_before=1_000_000,
             available_after=0,
             overpay_atoms=0,
+            replaceable=True,
             fee_quote=FeeQuote(
                 network="regtest",
                 rate_atoms_per_kvb=2000,
@@ -1127,6 +1128,33 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
         self.assertIs(captured["review"], review)
         self.assertEqual(result["gui"]["sign"]["decision"], "cancel")
         dialog.close()
+        # Both Sign and Broadcast must reject a missing FE-003 line, while
+        # retaining exact equality for every other review fact.
+        from PySide6.QtWidgets import QLabel
+        for kind, caption in (("sign", t("pages.approve_sign")),
+                              ("broadcast", t("pages.approve_broadcast_2"))):
+            for missing_line in (False, True):
+                with self.subTest(kind=kind, missing_line=missing_line):
+                    dialog = PaymentApproval(review, kind, window)
+                    if missing_line:
+                        for label in dialog.findChildren(QLabel):
+                            if "\n" + t("payment.replaceable_yes") in label.text():
+                                label.setText(label.text().replace("\n" + t("payment.replaceable_yes"), ""))
+                    checks, result = {}, {}
+                    cancelled_calls.clear()
+                    dialog.rejected.connect(lambda: cancelled_calls.append(True))
+                    def run():
+                        approve_payment(app, window, TriggerButton(), caption,
+                            lambda: bool(cancelled_calls), wait, checks, result, kind,
+                            decision="cancel")
+                    if missing_line:
+                        with self.assertRaisesRegex(ValueError, "F3_GUI_REVIEW_MISMATCH"):
+                            run()
+                        self.assertFalse(checks["gui_" + kind + "_review"])
+                    else:
+                        run()
+                        self.assertTrue(checks["gui_" + kind + "_review"])
+                    dialog.close()
         window.close()
 
     def test_reopen_verified_owner_uses_activate_step_with_fakes(self):
@@ -2004,6 +2032,50 @@ class SafetyOracles(unittest.TestCase):
                     backend.inspect()
                 owned.assert_not_called()
                 constructor.assert_not_called()
+
+
+class SourceShutdownReceipts(unittest.TestCase):
+    def test_uncertain_shutdown_writes_all_receipts_before_cli_failure_exit(self):
+        import io
+        from contextlib import redirect_stdout
+        from wam_regtest.qualification import fee_regtest_runner as runner
+        calls = []
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'run'
+            def fixture_run(fixture, app, adapter, core, source, result, actor=None):
+                calls.append(fixture.name)
+                result.update(status='FAIL', failure_code='F3_SHUTDOWN_TIMEOUT', cleanup={
+                    'verified_original_owner_shutdown': False, 'profile_retained': True,
+                    'actor': actor, 'action': 'inspect retained original owner'})
+            def exit_after_receipts(code):
+                manifest = json.loads((output / 'manifest.json').read_text())
+                self.assertEqual(code, 2)
+                self.assertEqual(manifest['exit_code'], 2)
+                self.assertEqual(manifest['status'], 'FAIL')
+                self.assertFalse(manifest['accepted'])
+                for fixture in FIXTURES[1:]:
+                    row = json.loads((output / fixture.case / fixture.name / 'result.json').read_text())
+                    self.assertEqual(row['status'], 'BLOCKED')
+                    self.assertEqual(row['blocker']['code'], 'F3_PRIOR_OWNER_UNCERTAIN')
+                raise SystemExit(code)
+            argv = ['--core', directory, '--core-archive', directory,
+                    '--signed-manifest-dir', directory, '--wsp-source', directory,
+                    '--output', str(output), '--consent-disposable-regtest', '--actor', 'codex-test']
+            with patch.object(runner.sys, 'platform', 'darwin'), \
+                    patch.object(runner.platform, 'machine', return_value='arm64'), \
+                    patch.object(runner, 'source_identity', return_value={'sha': 'a'*40}), \
+                    patch.object(runner, 'authenticate', return_value={}), \
+                    patch('wam_regtest.qualification.q06_fix_scenarios._require_cocoa',
+                          return_value=SimpleNamespace(platformName=lambda: 'offscreen')), \
+                    patch('wam_regtest.q05_platforms.DarwinArm64Adapter'), \
+                    patch('wam_regtest.wsp_live._pinned_source'), \
+                    patch.object(runner, 'run_fixture', fixture_run), \
+                    patch.object(runner.os, '_exit', side_effect=exit_after_receipts), \
+                    redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit) as stopped:
+                    runner.main(argv, exit_on_uncertain=True)
+            self.assertEqual(stopped.exception.code, 2)
+            self.assertEqual(calls, [FIXTURES[0].name])
 
 
 if __name__ == "__main__":

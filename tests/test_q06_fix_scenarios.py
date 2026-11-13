@@ -224,5 +224,55 @@ class FixScenarioWiring(unittest.TestCase):
         self.assertIn("'--ci-q06-fix-scenarios'", production)
 
 
+class BoundedShutdown(unittest.TestCase):
+    def test_busy_cancel_finishes_before_quit_is_submitted(self):
+        import threading
+        from types import SimpleNamespace
+        from wam_regtest.wallet_executor import WalletExecutor
+        started, release = threading.Event(), threading.Event()
+        class Backend:
+            def execute(self, action, args, kwargs):
+                if action == "cancel":
+                    started.set()
+                    release.wait(2)
+            def public_state(self):
+                return {"core_alive": False}
+        executor = WalletExecutor(Backend)
+        executor.submit("cancel")
+        self.assertTrue(started.wait(1))
+        state = {"executor": executor, "app": SimpleNamespace(processEvents=release.set)}
+        try:
+            self.assertFalse(stage._shutdown(state, timeout=1))
+            self.assertTrue(executor.closed)
+            self.assertTrue(executor.join(0))
+        finally:
+            release.set()
+            if not executor.closed:
+                import time
+                deadline = time.monotonic() + 2
+                while executor.busy and time.monotonic() < deadline:
+                    time.sleep(.001)
+                executor.request("quit", timeout=2)
+            executor.join(2)
+
+    def test_stuck_shutdown_is_bounded_and_fail_closed(self):
+        import time
+        from concurrent.futures import Future
+        from types import SimpleNamespace
+        # Quit is accepted but never acknowledged. No real owner/process.
+        executors = (
+            SimpleNamespace(closed=False, busy=False, submit=lambda action: Future()),
+            SimpleNamespace(closed=False, busy=True),
+            SimpleNamespace(closed=True, join=lambda timeout: False),
+        )
+        for executor in executors:
+            with self.subTest(executor=executor):
+                state = {"executor": executor}
+                start = time.monotonic()
+                self.assertTrue(stage._shutdown(state, timeout=.03))
+                self.assertLess(time.monotonic() - start, .3)
+                self.assertEqual(state["shutdown_failure_code"], "Q06_FIX_SHUTDOWN_TIMEOUT")
+
+
 if __name__ == "__main__":
     unittest.main()
