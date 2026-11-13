@@ -19,6 +19,9 @@ from .bip39_owner_backend import Bip39ReadOnlyBackend
 from .bip39_12 import normalize_phrase
 from .bip39_locale import t
 from .presentation.action_state import ActionInputs, BASE_CONTROLS, available_actions
+from .bip39_backup_page import (
+    SecretLineEdit, get_secret_multiline_text, get_secret_text,
+)
 from .domain.payment_state import reservations_need_attention
 
 from .fusion_ui import label, action
@@ -86,7 +89,7 @@ class Bip39RecoveryVerifyDialog(QDialog):
             position_label = QLabel(t('owner.word_position').format(position=index + 1))
             position_label.setObjectName("FusionMuted")
             position_label.setStyleSheet("font-size:11px;font-weight:600;letter-spacing:0.4px;")
-            field = QLineEdit()
+            field = SecretLineEdit()
             field.setObjectName("RecoveryWordField")
             field.setMaxLength(16)
             field.setPlaceholderText(t("word_label"))
@@ -422,8 +425,7 @@ class Bip39TrialWindow(QWidget):
         return True
 
     def _passphrase(self, label):
-        password, ok = QInputDialog.getText(
-            self, t('owner.password_title'), label, QLineEdit.EchoMode.Password)
+        password, ok = get_secret_text(self, t('owner.password_title'), label)
         return password.encode("utf-8") if ok and password else None
 
     def _unlock_prompt(self):
@@ -937,10 +939,9 @@ def _last_remembered_profile():
 def _onboarding_password(parent, mode):
     """Recoverable input validation before any executor request creates custody."""
     while True:
-        password, ok = QInputDialog.getText(
+        password, ok = get_secret_text(
             parent, t('owner.onboarding_title'),
-            t('owner.new_password'),
-            QLineEdit.EchoMode.Password)
+            t('owner.new_password'))
         if not ok:
             return "", False
         if not 12 <= len(password.encode("utf-8")) <= 1024:
@@ -949,9 +950,8 @@ def _onboarding_password(parent, mode):
                                 t('owner.password_length'))
             continue
         if mode in ("create", "restore"):
-            confirmation, confirmed = QInputDialog.getText(
-                parent, t('owner.confirm_password_title'), t('owner.confirm_password_prompt'),
-                QLineEdit.EchoMode.Password)
+            confirmation, confirmed = get_secret_text(
+                parent, t('owner.confirm_password_title'), t('owner.confirm_password_prompt'))
             if not confirmed:
                 password = confirmation = ""
                 return "", False
@@ -983,7 +983,7 @@ def launch_bip39_trial(root,core,source,*,mode,authorized=False,shared_profile=N
     password, ok = _onboarding_password(window, mode)
     phrase=""
     if ok and mode=="restore":
-        phrase,ok=QInputDialog.getMultiLineText(
+        phrase,ok=get_secret_multiline_text(
             window,t('owner.restore_title'),
             t('owner.restore_prompt'))
     if ok:

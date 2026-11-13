@@ -4,16 +4,17 @@ Only public disposable fixtures and recording executors are used. Known gaps
 are expected failures with finding IDs; D5-A must not repair product code.
 """
 from collections import Counter
+import sys
 import unittest
 from unittest.mock import patch
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from test_q06_bip39_backup_ack import _DISPLAY_PHRASE_WORDS
 from test_q06_bip39_backup_safety import (
-    _BackupSafetyCase, _DialogDriver, _VerifyFailsStub,
+    _BackupSafetyCase, _DeferFailsStub, _DialogDriver, _VerifyFailsStub,
 )
 from wam_regtest.bip39_locale import t
 from wam_regtest.bip39_owner_gui import Bip39RecoveryVerifyDialog
@@ -81,6 +82,7 @@ class BackupCommandInventory(_BackupSafetyCase):
 
         def observe(action, *args, **kwargs):
             if action == 'backup_defer':
+                self.assertEqual(kwargs.get('timeout'), 30)
                 counts_at_defer.append(self._word_count())
             return original(action, *args, **kwargs)
 
@@ -117,14 +119,41 @@ class BackupCommandInventory(_BackupSafetyCase):
         self.assertEqual(self.window.executor.requests, [])
         self._assert_phrase_preserved()
 
-    @unittest.expectedFailure
     def test_navigation_callback_requires_departure_guard(self):
-        """D5A-01: direct navigation callback bypasses backup departure guard."""
+        """D5A-01: direct navigation callback must enforce backup departure guard."""
         self._show_required()
         with _DialogDriver(self.app, 'stay') as driver:
             self.window._navigate(1)
         self.assertEqual(len(driver.seen), 1, 'D5A-01: callback has no departure dialog')
         self._assert_phrase_preserved()
+
+    def test_navigation_callback_leave_clears_before_defer_and_deferred_stays_locked(self):
+        self._show_required()
+        counts = []
+        original = self.window.executor.request
+
+        def observe(action, *args, **kwargs):
+            if action == 'backup_defer':
+                self.assertEqual(kwargs.get('timeout'), 30)
+                counts.append(self._word_count())
+            return original(action, *args, **kwargs)
+
+        with patch.object(self.window.executor, 'request', side_effect=observe):
+            with _DialogDriver(self.app, 'leave') as driver:
+                self.window._navigate(1)
+        self.assertEqual(len(driver.seen), 1)
+        self.assertEqual(counts, [0])
+        self._assert_left_fail_closed()
+
+        # Deferred reopen holds no words, so _navigate must stay on backup_page without prompting.
+        self.window.executor.requests.clear()
+        self._show_deferred()
+        with _DialogDriver(self.app, 'stay') as driver:
+            self.window._navigate(1)
+        self.assertEqual(driver.seen, [])
+        self.assertEqual(self._defers(), 0)
+        self.assertIs(self.window.stack.currentWidget(), self.page)
+        self.assertIs(self.page._stack.currentWidget(), self.page._verify_page)
 
     def _leave_via_owner(self, route):
         self._show_required()
@@ -134,6 +163,7 @@ class BackupCommandInventory(_BackupSafetyCase):
 
         def observe(action, *args, **kwargs):
             if action == 'backup_defer':
+                self.assertEqual(kwargs.get('timeout'), 30)
                 counts.append(self._word_count())
             return original(action, *args, **kwargs)
 
@@ -145,19 +175,69 @@ class BackupCommandInventory(_BackupSafetyCase):
         self.assertEqual(self._word_count(), 0)
         self.assertEqual(counts, [0], 'D5A-02: owner quit sends defer before clearing labels')
 
-    @unittest.expectedFailure
     def test_window_close_clears_labels_before_defer(self):
-        """D5A-02: close clears words only after backup_defer returns."""
+        """D5A-02: close clears words before backup_defer is dispatched."""
         self._leave_via_owner(self.window.close)
 
-    @unittest.expectedFailure
     def test_request_quit_clears_labels_before_defer(self):
-        """D5A-02: request_quit clears words only after backup_defer returns."""
+        """D5A-02: request_quit clears words before backup_defer is dispatched."""
         self._leave_via_owner(self.window.request_quit)
 
-    @unittest.skip('Native Cmd+Q/menu delivery requires Cocoa app event loop; Cursor native review; offscreen request_quit is covered separately')
     def test_native_cmd_q_departure(self):
-        pass
+        if sys.platform != 'darwin' or QApplication.platformName() != 'cocoa':
+            self.skipTest('Native Cmd+Q/menu delivery requires macOS Cocoa platform')
+        from PySide6.QtCore import QCoreApplication
+        from test_jeeves_onboarding_regression import _macos_send_command_q
+
+        self._show_required()
+        self.window.show()
+        self.window.raise_()
+        self.window.activateWindow()
+        self.app.processEvents()
+
+        # First Cmd+Q with Stay retains all 12 words and sends zero defers/quits.
+        stay_dog = QTimer(self.window)
+        stay_dog.setSingleShot(True)
+        stay_dog.timeout.connect(lambda: QCoreApplication.exit(0))
+        try:
+            with _DialogDriver(self.app, 'stay') as driver:
+                QTimer.singleShot(50, self.window, _macos_send_command_q)
+                stay_dog.start(400)
+                self.app.exec()
+        finally:
+            stay_dog.stop()
+        self.assertEqual(len(driver.seen), 1)
+        self._assert_phrase_preserved()
+        self.assertNotIn('quit', self.window.executor.requests)
+
+        # Second Cmd+Q with Leave clears words BEFORE backup_defer and quits.
+        counts = []
+        original = self.window.executor.request
+
+        def observe(action, *args, **kwargs):
+            if action == 'backup_defer':
+                self.assertEqual(kwargs.get('timeout'), 30)
+                counts.append(self._word_count())
+            return original(action, *args, **kwargs)
+
+        leave_dog = QTimer(self.window)
+        leave_dog.setSingleShot(True)
+        leave_dog.timeout.connect(lambda: QCoreApplication.exit(0))
+        try:
+            with patch.object(self.window.executor, 'request', side_effect=observe):
+                with _DialogDriver(self.app, 'leave') as driver:
+                    QTimer.singleShot(50, self.window, _macos_send_command_q)
+                    leave_dog.start(500)
+                    self.app.exec()
+        finally:
+            leave_dog.stop()
+            # Reset Qt's quit-now flag left by Quit before later tests run exec().
+            QTimer.singleShot(0, self.app.quit)
+            self.app.exec()
+        self.assertEqual(len(driver.seen), 1)
+        self.assertEqual(counts, [0])
+        self._assert_left_fail_closed()
+        self.assertTrue(self.window._quit_requested)
 
     def test_deferred_reopen_never_redisplays_and_verified_cannot_defer(self):
         self._show_required()
@@ -218,6 +298,53 @@ class UnavailableCommandInventory(_BackupSafetyCase):
         self.assertNotEqual(self.page._challenge_id, previous)
         self.assertEqual(self.page._verify_error.text(), t('verify_unavailable'))
         self.assertTrue(all(not edit.text() for _, _, edit in self.page._verify_cards))
+
+
+class DeferralFailureContracts(_BackupSafetyCase):
+    stub = _DeferFailsStub
+
+    def _assert_owner_deferral_failure(self, route):
+        self._show_required()
+        self.window.show()
+        self.window.executor.requests.clear()
+        counts = []
+        original = self.window.executor.request
+
+        def observe(action, *args, **kwargs):
+            if action == 'backup_defer':
+                self.assertEqual(kwargs.get('timeout'), 30)
+                counts.append(self._word_count())
+            return original(action, *args, **kwargs)
+
+        with patch.object(self.window.executor, 'request', side_effect=observe):
+            with _DialogDriver(self.app, 'leave') as driver:
+                route()
+        self.assertEqual(len(driver.seen), 1)
+        self.assertEqual(counts, [0])
+        self.assertEqual(self._word_count(), 0)
+        self.assertFalse(self.page.holds_unverified_phrase())
+        self.assertTrue(self.window._backup_unacked)
+        self.assertFalse(self.window._ready)
+        self.assertFalse(self.window._unlock_allowed)
+
+    def test_close_deferral_failure_keeps_words_cleared_and_unavailable(self):
+        self._assert_owner_deferral_failure(self.window.close)
+
+    def test_request_quit_deferral_failure_keeps_words_cleared_and_unavailable(self):
+        self._assert_owner_deferral_failure(self.window.request_quit)
+
+    def test_back_up_later_deferral_failure_shows_unavailable_without_restoring_words(self):
+        self._show_required()
+        with _DialogDriver(self.app, 'leave') as driver:
+            self.page._back_up_later.click()
+        self.app.processEvents()
+        self.assertEqual(len(driver.seen), 1)
+        self.assertEqual(self._word_count(), 0)
+        self.assertFalse(self.page.holds_unverified_phrase())
+        self.assertTrue(self.window._backup_unacked)
+        self.assertFalse(self.window._ready)
+        self.assertIn(t('wallet.backup_defer_unavailable'), self.window.status.text())
+        self.assertNotIn('PUBLIC_TEST_ACK_WRITE_FAILURE', self.window.status.text())
 
 
 class RecoveryCommandInventory(_BackupSafetyCase):

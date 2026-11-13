@@ -3,12 +3,13 @@
 Implements the 12-word grid, verification and success screens using the
 existing Fusion design system. No wallet authority, no plaintext persistence.
 """
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFontDatabase
+from PySide6.QtCore import QEvent, QMimeData, QObject, Qt, Signal
+from PySide6.QtGui import QFontDatabase, QKeySequence
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFrame, QLabel,
-    QLineEdit, QPushButton, QCheckBox, QStackedWidget, QScrollArea, QProgressBar, QSizePolicy,
-    QDialog, QDialogButtonBox,
+    QLineEdit, QPlainTextEdit, QPushButton, QCheckBox, QStackedWidget,
+    QScrollArea, QProgressBar, QSizePolicy, QDialog, QDialogButtonBox,
+    QInputDialog,
 )
 
 from .bip39_locale import t
@@ -16,6 +17,336 @@ from .fusion_ui import (
     label, panel, action, fusion_palette, ResponsiveRow, TYPE, WEIGHT,
     grow_with_wrapped_text,
 )
+
+
+_SENSITIVE_INPUT_HINTS = (
+    Qt.InputMethodHint.ImhHiddenText
+    | Qt.InputMethodHint.ImhSensitiveData
+    | Qt.InputMethodHint.ImhNoAutoUppercase
+    | Qt.InputMethodHint.ImhNoPredictiveText
+)
+
+_BLOCKED_STANDARD_KEYS = (
+    QKeySequence.StandardKey.Copy,
+    QKeySequence.StandardKey.Cut,
+    QKeySequence.StandardKey.SelectAll,
+    QKeySequence.StandardKey.SelectNextChar,
+    QKeySequence.StandardKey.SelectPreviousChar,
+    QKeySequence.StandardKey.SelectNextWord,
+    QKeySequence.StandardKey.SelectPreviousWord,
+    QKeySequence.StandardKey.SelectNextLine,
+    QKeySequence.StandardKey.SelectPreviousLine,
+    QKeySequence.StandardKey.SelectStartOfLine,
+    QKeySequence.StandardKey.SelectEndOfLine,
+    QKeySequence.StandardKey.SelectStartOfBlock,
+    QKeySequence.StandardKey.SelectEndOfBlock,
+    QKeySequence.StandardKey.SelectStartOfDocument,
+    QKeySequence.StandardKey.SelectEndOfDocument,
+    QKeySequence.StandardKey.SelectNextPage,
+    QKeySequence.StandardKey.SelectPreviousPage,
+)
+
+_NAV_KEYS = frozenset({
+    Qt.Key.Key_Left,
+    Qt.Key.Key_Right,
+    Qt.Key.Key_Up,
+    Qt.Key.Key_Down,
+    Qt.Key.Key_Home,
+    Qt.Key.Key_End,
+    Qt.Key.Key_PageUp,
+    Qt.Key.Key_PageDown,
+})
+
+_BLOCKED_MENU_OBJECT_NAMES = frozenset({'edit-cut', 'edit-copy', 'select-all'})
+_BLOCKED_MENU_LABELS = frozenset({'cut', 'copy', '_'.join(('select', 'all')).replace('_', ' ')})
+_BLOCKED_MENU_KEYS = (
+    QKeySequence.StandardKey.Copy,
+    QKeySequence.StandardKey.Cut,
+    QKeySequence.StandardKey.SelectAll,
+)
+_BLOCKED_INPUT_METHOD_QUERIES = frozenset({
+    Qt.InputMethodQuery.ImCurrentSelection,
+    Qt.InputMethodQuery.ImSurroundingText,
+    Qt.InputMethodQuery.ImTextBeforeCursor,
+    Qt.InputMethodQuery.ImTextAfterCursor,
+})
+
+_REAL_QINPUT_GET_TEXT = QInputDialog.getText
+
+
+def _is_blocked_key_event(event):
+    if any(event.matches(key) for key in _BLOCKED_STANDARD_KEYS):
+        return True
+    return bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier) and event.key() in _NAV_KEYS
+
+
+def _action_is_blocked(menu_action):
+    if menu_action.objectName() in _BLOCKED_MENU_OBJECT_NAMES:
+        return True
+    blocked_seqs = tuple(seq for key in _BLOCKED_MENU_KEYS for seq in QKeySequence.keyBindings(key))
+    shortcut = menu_action.shortcut()
+    if not shortcut.isEmpty() and shortcut in blocked_seqs:
+        return True
+    text = menu_action.text()
+    if '\t' in text:
+        suffix = QKeySequence(text.split('\t', 1)[1])
+        if not suffix.isEmpty() and suffix in blocked_seqs:
+            return True
+    menu_label = text.replace('&', '').split('\t', 1)[0].strip().lower()
+    return menu_label in _BLOCKED_MENU_LABELS
+
+
+def filter_secret_context_menu(menu):
+    """Strip Cut, Copy, Select All and redundant separators from a Qt menu."""
+    if menu is None:
+        return None
+    for menu_action in list(menu.actions()):
+        if not menu_action.isSeparator() and _action_is_blocked(menu_action):
+            menu.removeAction(menu_action)
+    # Remove leading, trailing, or consecutive separators left after filtering.
+    prev_sep = True
+    for menu_action in list(menu.actions()):
+        if menu_action.isSeparator():
+            if prev_sep:
+                menu.removeAction(menu_action)
+            prev_sep = True
+        else:
+            prev_sep = False
+    actions = menu.actions()
+    while actions and actions[-1].isSeparator():
+        menu.removeAction(actions.pop())
+    return menu
+
+
+def _popup_filtered_menu(widget, event):
+    menu = filter_secret_context_menu(widget.createStandardContextMenu())
+    if menu is not None:
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        menu.popup(event.globalPos())
+    event.accept()
+
+
+def _clear_line_edit_selection(widget):
+    if widget.hasSelectedText():
+        pos = widget.cursorPosition()
+        widget.deselect()
+        widget.setCursorPosition(pos)
+
+
+def _clear_plain_edit_selection(widget):
+    cursor = widget.textCursor()
+    if cursor.hasSelection():
+        cursor.clearSelection()
+        widget.setTextCursor(cursor)
+
+
+def _place_line_edit_cursor(widget, event):
+    widget.setFocus(Qt.FocusReason.MouseFocusReason)
+    widget.setCursorPosition(widget.cursorPositionAt(event.position().toPoint()))
+    event.accept()
+
+
+def _place_plain_edit_cursor(widget, event):
+    widget.setFocus(Qt.FocusReason.MouseFocusReason)
+    widget.setTextCursor(widget.cursorForPosition(event.position().toPoint()))
+    widget.ensureCursorVisible()
+    event.accept()
+
+
+class _SecretEntryFilter(QObject):
+    """Event filter blocking selection/export gestures on protected inputs."""
+
+    def __init__(self, widget, place_cursor):
+        super().__init__(widget)
+        self._widget = widget
+        self._place_cursor = place_cursor
+
+    def eventFilter(self, watched, event):
+        if watched is not self._widget:
+            return False
+        kind = event.type()
+        if kind in (QEvent.Type.ShortcutOverride, QEvent.Type.KeyPress):
+            if _is_blocked_key_event(event):
+                event.accept()
+                return True
+        elif kind == QEvent.Type.MouseButtonDblClick:
+            event.accept()
+            return True
+        elif kind == QEvent.Type.MouseMove and (event.buttons() & Qt.MouseButton.LeftButton):
+            event.accept()
+            return True
+        elif kind == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+            self._place_cursor(self._widget, event)
+            return True
+        elif kind == QEvent.Type.ContextMenu:
+            _popup_filtered_menu(self._widget, event)
+            return True
+        return False
+
+
+def protect_secret_line_edit(line_edit):
+    """Harden an existing QLineEdit (for example inside QInputDialog)."""
+    line_edit.setEchoMode(QLineEdit.EchoMode.Password)
+    line_edit.setDragEnabled(False)
+    line_edit.setAcceptDrops(False)
+    line_edit.setInputMethodHints(_SENSITIVE_INPUT_HINTS)
+    line_edit.selectionChanged.connect(lambda w=line_edit: _clear_line_edit_selection(w))
+    if not getattr(line_edit, '_secret_guard_installed', False):
+        line_edit._secret_guard_installed = True
+        line_edit.installEventFilter(_SecretEntryFilter(line_edit, _place_line_edit_cursor))
+    return line_edit
+
+
+class SecretLineEdit(QLineEdit):
+    """Masked single-line secret entry with selection and export blocked."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        protect_secret_line_edit(self)
+
+    def setDragEnabled(self, _enabled):
+        super().setDragEnabled(False)
+
+    def selectAll(self):
+        return
+
+    def setSelection(self, _start, _length):
+        return
+
+    def copy(self):
+        return
+
+    def cut(self):
+        return
+
+    def createStandardContextMenu(self):
+        return filter_secret_context_menu(super().createStandardContextMenu())
+
+    def inputMethodQuery(self, query):
+        if query in _BLOCKED_INPUT_METHOD_QUERIES:
+            return ''
+        return super().inputMethodQuery(query)
+
+
+class SecretPlainTextEdit(QPlainTextEdit):
+    """Protected multiline secret entry with selection and export blocked."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(False)
+        self.setInputMethodHints(_SENSITIVE_INPUT_HINTS)
+        self.selectionChanged.connect(lambda: _clear_plain_edit_selection(self))
+        self._secret_guard_installed = True
+        self.installEventFilter(_SecretEntryFilter(self, _place_plain_edit_cursor))
+
+    def selectAll(self):
+        return
+
+    def copy(self):
+        return
+
+    def cut(self):
+        return
+
+    def createMimeDataFromSelection(self):
+        return QMimeData()
+
+    def setTextCursor(self, cursor):
+        if cursor.hasSelection():
+            cursor.clearSelection()
+        super().setTextCursor(cursor)
+
+    def createStandardContextMenu(self):
+        return filter_secret_context_menu(super().createStandardContextMenu())
+
+    def inputMethodQuery(self, query):
+        if query in _BLOCKED_INPUT_METHOD_QUERIES:
+            return ''
+        return super().inputMethodQuery(query)
+
+
+class SecretMultilineDialog(QDialog):
+    """Protected multiline prompt preserving QInputDialog.getMultiLineText semantics."""
+
+    def __init__(self, title, prompt, parent=None):
+        super().__init__(parent)
+        self.setObjectName('FusionPanel')
+        self.setWindowTitle(title)
+        self.setModal(True)
+        self.resize(540, 280)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+        message = QLabel(prompt)
+        message.setWordWrap(True)
+        size_policy = message.sizePolicy()
+        size_policy.setVerticalPolicy(QSizePolicy.Policy.Minimum)
+        size_policy.setHeightForWidth(True)
+        message.setSizePolicy(size_policy)
+        layout.addWidget(message)
+        self._editor = SecretPlainTextEdit(self)
+        self._editor.setMinimumHeight(110)
+        self._editor.setAccessibleName(title)
+        layout.addWidget(self._editor, 1)
+        buttons = QDialogButtonBox()
+        cancel = buttons.addButton(t('cancel'), QDialogButtonBox.ButtonRole.RejectRole)
+        approve = buttons.addButton(t('ok'), QDialogButtonBox.ButtonRole.AcceptRole)
+        approve.setObjectName('FusionPrimary')
+        cancel.setAutoDefault(False)
+        approve.setAutoDefault(False)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        self._editor.setFocus()
+
+    def textValue(self):
+        return self._editor.toPlainText()
+
+    def clear_secret(self):
+        self._editor.clear()
+        self._editor.document().clear()
+
+    def reject(self):
+        self.clear_secret()
+        super().reject()
+
+    def closeEvent(self, event):
+        self.clear_secret()
+        super().closeEvent(event)
+
+
+def get_secret_text(parent, title, prompt):
+    """Prompt for a masked secret line while keeping QInputDialog compatibility."""
+    if QInputDialog.getText is not _REAL_QINPUT_GET_TEXT:
+        return QInputDialog.getText(parent, title, prompt, QLineEdit.EchoMode.Password)
+    dialog = QInputDialog(parent)
+    dialog.setWindowTitle(title)
+    dialog.setLabelText(prompt)
+    dialog.setInputMode(QInputDialog.InputMode.TextInput)
+    dialog.setTextEchoMode(QLineEdit.EchoMode.Password)
+    for edit in dialog.findChildren(QLineEdit):
+        protect_secret_line_edit(edit)
+    try:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            return dialog.textValue(), True
+        return '', False
+    finally:
+        dialog.setTextValue('')
+        for edit in dialog.findChildren(QLineEdit):
+            edit.clear()
+        dialog.deleteLater()
+
+
+def get_secret_multiline_text(parent, title, prompt):
+    """Prompt for multiline secret words using SecretMultilineDialog."""
+    dialog = SecretMultilineDialog(title, prompt, parent)
+    try:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            return dialog.textValue(), True
+        return '', False
+    finally:
+        dialog.clear_secret()
+        dialog.deleteLater()
 
 
 class _WordCard(QFrame):
@@ -187,7 +518,7 @@ class Bip39BackupPage(QWidget):
             card_layout.setContentsMargins(12, 14, 12, 14)
             card_layout.setSpacing(8)
             title = label("", "FusionCardTitle")
-            edit = QLineEdit()
+            edit = SecretLineEdit()
             edit.setEchoMode(QLineEdit.EchoMode.Password)
             edit.setMaxLength(16)
             edit.setPlaceholderText(t("word_label"))
@@ -298,6 +629,8 @@ class Bip39BackupPage(QWidget):
         self._challenge_id = None
         self._challenge_positions = []
         for edit in self._verify_inputs:
+            edit.clear()
+        for _, _, edit in self._verify_cards:
             edit.clear()
         self._verify_inputs = []
 

@@ -601,6 +601,16 @@ class Bip39FusionWindow(Bip39TrialWindow):
     def _navigate(self, index):
         if not 0 <= index < len(FUSION_NAV_PAGES):
             return
+        if self._backup_flow_active:
+            if not self._backup_verified and self.backup_page.holds_unverified_phrase():
+                if self.backup_page.confirm_departure():
+                    self.backup_page.clear_phrase()
+                    self._defer_active_backup()
+            if self._backup_flow_active and self.navigation.currentRow() != 0:
+                self.navigation.blockSignals(True)
+                self.navigation.setCurrentRow(0)
+                self.navigation.blockSignals(False)
+            return
         self.page_title.setText(self.navigation.item(index).text())
         reduced = self.reduce_motion.isChecked() or motion_reduced(self)
         self.stack.set_current(index, reduced=reduced)
@@ -864,19 +874,29 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self.backup_page.show_verification_error()
             self._on_backup_challenge()
 
-    def _on_backup_deferred(self):
+    def _defer_active_backup(self):
         if not self._backup_flow_active:
-            return  # Repeated/late signal: the flow already ended.
+            return
+        self._backup_flow_active = False
         if self._backup_verified:
             # Verified acknowledgement is final; never send a deferral for it.
             self._backup_flow_completed(True)
             return
+        # Clear any visible recovery words BEFORE dispatching backup_defer.
+        self.backup_page.clear_phrase()
+        defer_error = None
         try:
             self.executor.request("backup_defer", timeout=30)
         except Exception as error:
-            self.status.setText(
-                t('wallet.backup_defer_unavailable') + str(operation_error("backup_defer", error)))
+            defer_error = (
+                t('wallet.backup_defer_unavailable')
+                + str(operation_error("backup_defer", error)))
         self._backup_flow_completed(False)
+        if defer_error is not None and not self._quit_requested:
+            self.status.setText(defer_error)
+
+    def _on_backup_deferred(self):
+        self._defer_active_backup()
 
     def _on_backup_continue(self):
         self._backup_flow_completed(True)
@@ -886,9 +906,10 @@ class Bip39FusionWindow(Bip39TrialWindow):
         # screen need the same explicit confirmation as Back up later.
         if (self._backup_flow_active and not self._quit_requested
                 and not self._backup_verified
-                and self.backup_page.holds_unverified_phrase()
-                and not self.backup_page.confirm_departure()):
-            return
+                and self.backup_page.holds_unverified_phrase()):
+            if not self.backup_page.confirm_departure():
+                return
+            self.backup_page.clear_phrase()
         super().request_quit()
 
     def _backup_flow_completed(self, success):
