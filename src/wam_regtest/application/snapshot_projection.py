@@ -19,6 +19,9 @@ def project_owned_spend_snapshot(item, session, *, profile, account_id, availabl
         "height": item.height, "tip": item.tip,
         "confirmed_atoms": item.confirmed_atoms,
         "available_atoms": available_atoms,
+        "pending_atoms": getattr(item, "pending_atoms", None),
+        "pending_spent_atoms": getattr(item, "pending_spent_atoms", None),
+        "pending_history": getattr(item, "pending_history", ()),
         "history_count_shown": len(item.history),
         "history": tuple({
             "txid": h.txid, "height": h.block_height,

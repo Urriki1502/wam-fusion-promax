@@ -747,4 +747,12 @@ EN = {
     "errors.FEE_DISPROPORTIONATE": "The fee is too large for this payment amount. Nothing was saved or signed.",
     "errors.FEE_POLICY_UNVERIFIED": "The network fee could not be verified. Nothing was prepared or signed.",
     "errors.FEE_EXPLICIT_PREPARE_DENIED": "A manually chosen fee is not accepted. Nothing was prepared or signed.",
+    "pending.state": "Pending",
+    "pending.unknown": "unknown",
+    "pending.available": "(confirmed): {amount} WAM",
+    "pending.total": "Pending incoming / change: {amount} WAM",
+    "pending.spent": "Confirmed inputs pending spend: {amount} WAM",
+    "pending.details": "Fee: {fee} WAM · Pending change: {change} WAM",
+    "pending.unverified": "Mempool unknown",
+    "pending.history_subtitle": "Pending broadcasts are shown first.",
 }

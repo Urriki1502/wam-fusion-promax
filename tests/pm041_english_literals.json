@@ -1,0 +1,12 @@
+{
+  "english": {
+    "pending.state": "Pending",
+    "pending.unknown": "unknown",
+    "pending.available": "(confirmed): {amount} WAM",
+    "pending.total": "Pending incoming / change: {amount} WAM",
+    "pending.spent": "Confirmed inputs pending spend: {amount} WAM",
+    "pending.details": "Fee: {fee} WAM · Pending change: {change} WAM",
+    "pending.unverified": "Mempool unknown",
+    "pending.history_subtitle": "Pending broadcasts are shown first."
+  }
+}

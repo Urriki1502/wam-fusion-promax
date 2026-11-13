@@ -749,4 +749,12 @@ ZH_HANS = {
     "errors.FEE_DISPROPORTIONATE": "手续费相对这笔金额过大。没有保存，也没有签名。",
     "errors.FEE_POLICY_UNVERIFIED": "无法验证网络手续费。没有准备，也没有签名。",
     "errors.FEE_EXPLICIT_PREPARE_DENIED": "不接受手工选择的手续费。没有准备，也没有签名。",
+    "pending.state": "待确认",
+    "pending.unknown": "未知",
+    "pending.available": "（已确认）: {amount} WAM",
+    "pending.total": "待确认收款／找零: {amount} WAM",
+    "pending.spent": "待花费的已确认输入: {amount} WAM",
+    "pending.details": "手续费: {fee} WAM · 待确认找零: {change} WAM",
+    "pending.unverified": "内存池状态未知",
+    "pending.history_subtitle": "已广播的待确认交易优先显示。",
 }

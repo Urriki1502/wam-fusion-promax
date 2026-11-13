@@ -749,4 +749,12 @@ KO = {
     "errors.FEE_DISPROPORTIONATE": "수수료가 이 금액에 비해 너무 큽니다. 저장되거나 서명되지 않았습니다.",
     "errors.FEE_POLICY_UNVERIFIED": "네트워크 수수료를 검증할 수 없습니다. 준비되거나 서명되지 않았습니다.",
     "errors.FEE_EXPLICIT_PREPARE_DENIED": "직접 선택한 수수료는 받지 않습니다. 준비되거나 서명되지 않았습니다.",
+    "pending.state": "대기 중",
+    "pending.unknown": "알 수 없음",
+    "pending.available": "(확인됨): {amount} WAM",
+    "pending.total": "대기 중인 수신 / 거스름돈: {amount} WAM",
+    "pending.spent": "지출 대기 중인 확인된 입력: {amount} WAM",
+    "pending.details": "수수료: {fee} WAM · 대기 중인 거스름돈: {change} WAM",
+    "pending.unverified": "멤풀 상태 알 수 없음",
+    "pending.history_subtitle": "전파 후 대기 중인 거래가 먼저 표시됩니다.",
 }

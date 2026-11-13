@@ -6,6 +6,10 @@ MAC input, challenge rules, the never-downgrade rule, error codes, and the
 exact public snapshot dict. reservation_states was added by PM-011 (R2, W-TX-03).
 """
 import hmac
+from contextlib import nullcontext
+from dataclasses import replace
+import sqlite3
+from types import SimpleNamespace
 import importlib.util
 import json
 from pathlib import Path
@@ -55,7 +59,15 @@ class _FakeSession:
         self._signed = signed
         self._q06_pending_confirm = pending
         self._item = item
-        self.scanner = object()
+        # PM-041: snapshot supplements the verified read under the same lock
+        # and SQLite transaction. No backup/recovery behavior changes.
+        self._lock = nullcontext()
+        db = sqlite3.connect(':memory:')
+        db.executescript("CREATE TABLE reservations(token TEXT,state TEXT);"
+                         "CREATE TABLE history(txid TEXT,height INTEGER);")
+        self.scanner = SimpleNamespace(store=SimpleNamespace(db=db, transaction=nullcontext),
+                                       mempool_ready=False)
+        self._read_payment_evidence = lambda token, stage: None
         self.snapshot_offsets = []
         self._recovered = recovered
 
@@ -238,7 +250,7 @@ class AckSnapshotCharacterization(unittest.TestCase):
                                pending=PENDING, recovered=True)
         backend = self._backend_with_session(session)
         with patch('wam_sp.wallet.Wallet') as wallet:
-            wallet.return_value.balance.return_value = {'available_atoms': 47000}
+            wallet.return_value._balance.return_value = {'available_atoms': 47000}
             result = backend._session_snapshot()
             wallet.assert_called_once_with(session.scanner)
         self.assertEqual(session.snapshot_offsets, [0])
@@ -251,6 +263,7 @@ class AckSnapshotCharacterization(unittest.TestCase):
             'tip': TIP,
             'confirmed_atoms': 49000,
             'available_atoms': 47000,
+            'pending_atoms': None, 'pending_spent_atoms': None, 'pending_history': (),
             'history_count_shown': 2,
             'history': (
                 {'txid': TXID_A, 'height': 100, 'atoms': 49000},
@@ -265,14 +278,14 @@ class AckSnapshotCharacterization(unittest.TestCase):
             'payment_signed': True,
             'recovered_unsigned_cancel_available': True,
             'pending_confirm_txid': PENDING,
-            'fusion_snapshot': item,
+            'fusion_snapshot': replace(item, available_atoms=47000),
             'signer_allowed': True,
             'broadcast_allowed': True,
             'mainnet_allowed': False,
         })
         # PM-011 / R2 landed: the verified state set is now part of the public dict.
         self.assertEqual(result['reservation_states'], ('broadcast',))
-        self.assertIs(result['fusion_snapshot'], item)
+        self.assertEqual(result['fusion_snapshot'], replace(item, available_atoms=47000))
         self.assertIs(result['payment_review'], review)
 
         idle_item = WalletReadSnapshot(
@@ -283,7 +296,7 @@ class AckSnapshotCharacterization(unittest.TestCase):
         idle = _FakeSession(idle_item, review=None, signed=None, pending=None, recovered=False)
         idle_backend = self._backend_with_session(idle)
         with patch('wam_sp.wallet.Wallet') as wallet:
-            wallet.return_value.balance.return_value = {'available_atoms': 0}
+            wallet.return_value._balance.return_value = {'available_atoms': 0}
             idle_result = idle_backend._session_snapshot(7)
         self.assertEqual(idle.snapshot_offsets, [7])
         self.assertEqual(idle_result['history'], ())

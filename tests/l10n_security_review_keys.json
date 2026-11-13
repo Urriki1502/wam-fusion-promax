@@ -1416,6 +1416,38 @@
     {
       "key": "operational.payment_review_auto",
       "reason": "Signing copy. The operational review shows the same fee, total debit and available balance before Sign."
+    },
+    {
+      "key": "pending.state",
+      "reason": "Pending payments and balance certainty; unconfirmed change is never spendable confirmed value."
+    },
+    {
+      "key": "pending.unknown",
+      "reason": "Pending payments and balance certainty; unconfirmed change is never spendable confirmed value."
+    },
+    {
+      "key": "pending.available",
+      "reason": "Pending payments and balance certainty; unconfirmed change is never spendable confirmed value."
+    },
+    {
+      "key": "pending.total",
+      "reason": "Pending payments and balance certainty; unconfirmed change is never spendable confirmed value."
+    },
+    {
+      "key": "pending.spent",
+      "reason": "Pending payments and balance certainty; unconfirmed change is never spendable confirmed value."
+    },
+    {
+      "key": "pending.details",
+      "reason": "Pending payments and balance certainty; unconfirmed change is never spendable confirmed value."
+    },
+    {
+      "key": "pending.unverified",
+      "reason": "Pending payments and balance certainty; unconfirmed change is never spendable confirmed value."
+    },
+    {
+      "key": "pending.history_subtitle",
+      "reason": "Pending payments and balance certainty; unconfirmed change is never spendable confirmed value."
     }
   ]
 }

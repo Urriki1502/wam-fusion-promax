@@ -330,13 +330,23 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
             raise Q06ReadOnlyError("Q06_GUI_SPEND_NOT_ACTIVE")
         from wam_sp.wallet import Wallet
         session = self._spend_session
-        item = session.snapshot() if history_offset == 0 else session.snapshot(history_offset=history_offset)
-        available = Wallet(session.scanner).balance()["available_atoms"]
-        return project_owned_spend_snapshot(
-            item, session,
-            profile=self._public["profile"],
-            account_id=self._public["account_id"],
-            available_atoms=available)
+        from dataclasses import replace
+        from .history_pages import pending_activity
+        # Keep the existing session lock through the supplemental read. No
+        # signing, new session, checkpoint publication or storage format.
+        with session._lock:
+            item = session.snapshot() if history_offset == 0 else session.snapshot(history_offset=history_offset)
+            with session.scanner.store.transaction():
+                balance = Wallet(session.scanner)._balance(1)
+                pending, spent, rows = pending_activity(
+                    session.scanner, balance, session._read_payment_evidence)
+                item = replace(item, pending_atoms=pending, pending_spent_atoms=spent,
+                               pending_history=rows, available_atoms=balance["available_atoms"])
+            return project_owned_spend_snapshot(
+                item, session,
+                profile=self._public["profile"],
+                account_id=self._public["account_id"],
+                available_atoms=balance["available_atoms"])
 
     def _confirm_spend_ci(self):
         """One explicit test-only block on the original owned REGTEST Core."""
@@ -417,6 +427,9 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
             from .wallet_read import WalletReadSnapshot, HistoryRow
             from .history_pages import GUI_HISTORY_LIMIT
             with scanner.store.transaction():
+                from .history_pages import pending_activity
+                balance = wallet._balance(1)
+                pending, pending_spent, pending_rows = pending_activity(scanner, balance)
                 total = scanner.store.db.execute(
                     "SELECT count(*) FROM history").fetchone()[0]
                 receives = scanner.store.db.execute(
@@ -443,6 +456,8 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                 confirmed_atoms=balance["confirmed_atoms"],
                 confirmed_utxos=len(scanner.coins()),
                 history=tuple(structured),
+                pending_atoms=pending, pending_spent_atoms=pending_spent,
+                pending_history=pending_rows, available_atoms=balance["available_atoms"],
                 core_sha256=owner.receipt["wamd_sha256"],
                 history_count=total, receive_count=receives,
                 history_complete=history_offset == 0 and total<=GUI_HISTORY_LIMIT,
@@ -458,6 +473,8 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                 "height": tip[0], "tip": tip[1],
                 "confirmed_atoms": balance["confirmed_atoms"],
                 "available_atoms": balance["available_atoms"],
+                "pending_atoms": pending, "pending_spent_atoms": pending_spent,
+                "pending_history": pending_rows,
                 "history_count_shown": len(history),
                 "history": tuple({"txid":h.get("txid"), "height":h.get("height"),
                                   "atoms":h.get("atoms")} for h in history),

@@ -749,4 +749,12 @@ ID = {
     "errors.FEE_DISPROPORTIONATE": "Biaya terlalu besar untuk jumlah ini. Tidak ada yang disimpan atau ditandatangani.",
     "errors.FEE_POLICY_UNVERIFIED": "Biaya jaringan tidak dapat diverifikasi. Tidak ada yang disiapkan atau ditandatangani.",
     "errors.FEE_EXPLICIT_PREPARE_DENIED": "Biaya yang dipilih sendiri tidak diterima. Tidak ada yang disiapkan atau ditandatangani.",
+    "pending.state": "Tertunda",
+    "pending.unknown": "tidak diketahui",
+    "pending.available": "(terkonfirmasi): {amount} WAM",
+    "pending.total": "Penerimaan / kembalian tertunda: {amount} WAM",
+    "pending.spent": "Input terkonfirmasi menunggu dibelanjakan: {amount} WAM",
+    "pending.details": "Biaya: {fee} WAM · Kembalian tertunda: {change} WAM",
+    "pending.unverified": "Mempool tidak diketahui",
+    "pending.history_subtitle": "Transaksi tersiar yang tertunda ditampilkan lebih dahulu.",
 }

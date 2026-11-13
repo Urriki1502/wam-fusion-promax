@@ -36,6 +36,14 @@ class HistoryRow:
 
 
 @dataclass(frozen=True)
+class PendingHistoryRow(HistoryRow):
+    # Outgoing debit includes the fee; change is shown separately, never as credit.
+    state: str = "pending"
+    fee_atoms: int | None = None
+    pending_change_atoms: int | None = None
+
+
+@dataclass(frozen=True)
 class WalletReadSnapshot:
     chain: str
     height: int
@@ -60,6 +68,12 @@ class WalletReadSnapshot:
     reservation_states: tuple[str, ...] | None = None
     # PM-013 (W-TX-03b): ((state, rows), ...) from the same verified read; None when not read.
     reservation_state_counts: tuple[tuple[str, int], ...] | None = None
+
+    # None means the current mempool has not been verified (never assume zero).
+    pending_atoms: int | None = None
+    pending_spent_atoms: int | None = None
+    pending_history: tuple[PendingHistoryRow, ...] = ()
+    available_atoms: int | None = None
 
 
 def read_real_wallet_snapshot(

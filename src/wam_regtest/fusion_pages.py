@@ -64,7 +64,7 @@ class HistoryPage(QWidget):
     page_requested=Signal(int)
     def __init__(self):
         super().__init__();self.setObjectName('FusionInner');self.rows=();self.mode='dark';self._offset=0;self._total=0;root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
-        scroll,layout=page(ui_text('pages.history'),ui_text('pages.history_subtitle'),ui_text('pages.on_chain_history'));root.addWidget(scroll)
+        scroll,layout=page(ui_text('pages.history'),ui_text('pages.history_subtitle') + ' ' + ui_text('pending.history_subtitle'),ui_text('pages.on_chain_history'));root.addWidget(scroll)
         card,cl=panel();toolbar=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText(ui_text('pages.search_placeholder'));self.search.setClearButtonEnabled(True);self.search.setAccessibleName(ui_text('pages.search_confirmed_transactions'));self.filter=QComboBox();self.filter.addItems((ui_text('pages.all_activity'),ui_text('pages.credits'),ui_text('pages.debits')));toolbar.addWidget(self.search,1);toolbar.addWidget(self.filter);cl.addLayout(toolbar)
         self.table=QTableWidget(0,6);self.table.setObjectName('FusionActivityTable');self.table.setHorizontalHeaderLabels((ui_text('pages.direction'),ui_text('pages.transaction'),ui_text('pages.block'),ui_text('pages.confirmed'),ui_text('pages.credit_wam'),ui_text('pages.debit_wam')));self.table.verticalHeader().hide();self.table.setShowGrid(False);self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows);keyboard_table(self.table,ui_text('pages.history'));self.table.setMinimumHeight(220);self._size_columns();cl.addWidget(self.table);self.table.viewport().installEventFilter(self)
         self.newer=action(ui_text('pages.newer_confirmed_history'),'history');self.older=action(ui_text('pages.older_confirmed_history'),'history');self.newer.setEnabled(False);self.older.setEnabled(False);self.newer.clicked.connect(self._newer);self.older.clicked.connect(self._older);cl.addWidget(AdaptiveButtonRow(self.newer,self.older))
@@ -98,10 +98,10 @@ class HistoryPage(QWidget):
         if watched is self.table.viewport() and event.type()==QEvent.Type.Resize:self._fit_columns()
         return super().eventFilter(watched,event)
     def render_snapshot(self,snap):
-        self.rows=snap.history if snap else ();self.search.clear();self.table.setRowCount(len(self.rows));self.detail_id.setText(ui_text('pages.no_transaction_selected'));self.detail_values.setText('');self.copy_button.setEnabled(False)
+        self.rows=(snap.pending_history + snap.history) if snap else ();self.search.clear();self.table.setRowCount(len(self.rows));self.detail_id.setText(ui_text('pages.no_transaction_selected'));self.detail_values.setText('');self.copy_button.setEnabled(False)
         self._offset=snap.history_offset if snap and type(snap.history_offset) is int else 0
-        self._total=snap.history_count if snap and type(snap.history_count) is int else len(self.rows)
-        shown=len(self.rows)
+        self._total=snap.history_count if snap and type(snap.history_count) is int else len(snap.history) if snap else 0
+        shown=len(snap.history) if snap else 0
         self.newer.setEnabled(bool(snap) and self._offset>0)
         self.older.setEnabled(bool(snap) and self._offset+shown<self._total)
         if snap is None:
@@ -116,10 +116,15 @@ class HistoryPage(QWidget):
                      ui_text('pages.history_paged'))
             self.scope.setText(
                 ui_text('pages.history_window').format(offset=self._offset, start=start, end=end, records=self._total, proof=proof))
+        if snap and snap.pending_atoms is None:
+            self.scope.setText(self.scope.text() + ' · ' + ui_text('pending.unverified'))
         c=fusion_palette(self.mode)
         for i,row in enumerate(self.rows):
             net=row.credit_atoms-row.debit_atoms;direction=ui_text('pages.received') if net>0 else ui_text('pages.sent') if net<0 else ui_text('pages.activity')
-            values=(direction,row.txid[:12]+'…',str(row.block_height),str(row.confirmations),format_wam(row.credit_atoms),format_wam(row.debit_atoms))
+            pending = getattr(row, 'state', None) == 'pending'
+            if pending:
+                direction += ' · ' + ui_text('pending.state')
+            values=(direction,row.txid[:12]+'…','—' if pending else str(row.block_height),ui_text('pending.state') if pending else str(row.confirmations),format_wam(row.credit_atoms),format_wam(row.debit_atoms))
             for j,value in enumerate(values):
                 item=QTableWidgetItem(value);item.setToolTip(row.txid);item.setData(Qt.ItemDataRole.UserRole,row.txid)
                 if j==0:item.setIcon(vector_icon('receive' if net>0 else 'send',direction_tone(c, net)))
@@ -145,7 +150,19 @@ class HistoryPage(QWidget):
     def show_details(self):
         row=self.table.currentRow()
         if not 0<=row<len(self.rows) or self.table.isRowHidden(row):self.detail_id.setText(ui_text('pages.no_transaction_selected'));self.detail_values.setText('');self.copy_button.setEnabled(False);return
-        tx=self.rows[row];self.detail_id.setText(tx.txid);self.detail_values.setText(ui_text('pages.block_amounts').format(height=tx.block_height, confirmations=tx.confirmations, credit=format_wam(tx.credit_atoms), debit=format_wam(tx.debit_atoms)));self.copy_button.setEnabled(True)
+        tx=self.rows[row];self.detail_id.setText(tx.txid)
+        if getattr(tx, 'state', None) == 'pending':
+            text = ui_text('pending.state')
+            text += ' · ' + ui_text('pages.credit_wam') + ': ' + format_wam(tx.credit_atoms)
+            text += ' · ' + ui_text('pages.debit_wam') + ': ' + format_wam(tx.debit_atoms)
+            if tx.debit_atoms:
+                text += '\n' + ui_text('pending.details').format(
+                    fee=ui_text('pending.unknown') if tx.fee_atoms is None else format_wam(tx.fee_atoms),
+                    change=ui_text('pending.unknown') if tx.pending_change_atoms is None else format_wam(tx.pending_change_atoms))
+            self.detail_values.setText(text)
+        else:
+            self.detail_values.setText(ui_text('pages.block_amounts').format(height=tx.block_height, confirmations=tx.confirmations, credit=format_wam(tx.credit_atoms), debit=format_wam(tx.debit_atoms)))
+        self.copy_button.setEnabled(True)
     def select_txid(self,txid):
         self.search.clear();self.filter.setCurrentIndex(0)
         for i,tx in enumerate(self.rows):

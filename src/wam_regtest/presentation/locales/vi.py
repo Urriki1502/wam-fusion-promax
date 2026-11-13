@@ -749,4 +749,12 @@ VI = {
     "errors.FEE_DISPROPORTIONATE": "Phí quá lớn so với số tiền này. Không có gì được lưu hay ký.",
     "errors.FEE_POLICY_UNVERIFIED": "Không thể xác minh phí mạng. Không có gì được chuẩn bị hay ký.",
     "errors.FEE_EXPLICIT_PREPARE_DENIED": "Phí chọn bằng tay không được chấp nhận. Không có gì được chuẩn bị hay ký.",
+    "pending.state": "Đang chờ",
+    "pending.unknown": "chưa rõ",
+    "pending.available": "(đã xác nhận): {amount} WAM",
+    "pending.total": "Tiền nhận / tiền thừa đang chờ: {amount} WAM",
+    "pending.spent": "Đầu vào đã xác nhận đang chờ chi: {amount} WAM",
+    "pending.details": "Phí: {fee} WAM · Tiền thừa đang chờ: {change} WAM",
+    "pending.unverified": "Chưa rõ mempool",
+    "pending.history_subtitle": "Giao dịch đã phát đang chờ được hiển thị trước.",
 }

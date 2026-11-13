@@ -127,3 +127,75 @@ def sql_history_pages(db,tip_height,sql,error=HistoryPageError,code='HISTORY_DEN
     if seen!=declared:
         raise error(code)
     return declared,out
+
+
+def pending_activity(scanner, balance, read_evidence=None):
+    """Bounded display only, inside the caller's existing SQLite transaction.
+
+    Reservation tokens select authenticated, persisted broadcast evidence. It is
+    never authority to spend/release/replay. A current WSP mempool must match
+    every input before a broadcast is called observed; stale tables are ignored.
+    Confirmed IDs are checked against ALL history, independent of GUI paging.
+    """
+    from .wallet_read import PendingHistoryRow
+    from wam_sp.psbt import PSBT
+
+    db = scanner.store.db
+    ready = scanner.mempool_ready
+    pending = balance.get('unconfirmed_atoms') if ready else None
+    spent = balance.get('pending_spent_atoms') if ready else None
+    rows = []
+    owned_ids = set()
+    if read_evidence is not None:
+        tokens = db.execute(
+            "SELECT DISTINCT token FROM reservations WHERE state='broadcast' "
+            "ORDER BY token LIMIT ?", (GUI_HISTORY_LIMIT,)).fetchall()
+        for (token,) in tokens:
+            try:
+                body = read_evidence(token, 'broadcast')
+                if body is None:
+                    continue
+                psbt = PSBT.decode(bytes.fromhex(body['signed_psbt']))
+                txid, atoms, fee = body['txid'], body['atoms'], body['fee']
+                members = {tuple(row) for row in db.execute(
+                    "SELECT txid,vout FROM reservations WHERE token=? AND state='broadcast'",
+                    (token,))}
+                if (txid != psbt.txid() or set(psbt.tx.inputs) != members
+                        or type(atoms) is not int or atoms <= 0
+                        or type(fee) is not int or fee <= 0
+                        or sum(v for v, _ in psbt.utxos) - sum(v for v, _ in psbt.tx.outputs) != fee
+                        or not any(v == atoms for v, _ in psbt.tx.outputs)):
+                    continue
+                if db.execute('SELECT 1 FROM history WHERE txid=? AND height>0', (txid,)).fetchone():
+                    owned_ids.add(txid)
+                    continue
+                if ready:
+                    observations = [db.execute(
+                        'SELECT spending FROM mempool_spends WHERE txid=? AND vout=?',
+                        coin).fetchone() for coin in members]
+                    if any(row is None or row[0] != txid for row in observations):
+                        continue
+                change = sum(v for v, _ in psbt.utxos) - atoms - fee
+                if change < 0 or txid in owned_ids:
+                    continue
+                owned_ids.add(txid)
+                rows.append(PendingHistoryRow(txid, 0, 0, 0, atoms + fee,
+                            fee_atoms=fee, pending_change_atoms=change if ready else None))
+            except (ValueError, TypeError, KeyError, OSError, RuntimeError):
+                # Supplemental evidence may be absent/invalid. Never fabricate
+                # an amount or alter the native reservation on a display read.
+                continue
+    if ready:
+        for txid, credit in db.execute(
+                'SELECT c.txid,sum(c.atoms) FROM mempool_coins c '
+                'WHERE NOT EXISTS(SELECT 1 FROM mempool_spends s '
+                'WHERE s.txid=c.txid AND s.vout=c.vout) '
+                'AND NOT EXISTS(SELECT 1 FROM history h WHERE h.txid=c.txid AND h.height>0) '
+                'GROUP BY c.txid ORDER BY c.txid LIMIT ?', (GUI_HISTORY_LIMIT,)):
+            if txid in owned_ids:
+                continue
+            if (type(txid) is not str or not _TXID.fullmatch(txid)
+                    or type(credit) is not int or not 0 < credit <= 22_000_000*100_000_000):
+                raise HistoryPageError('PENDING_HISTORY_INCONSISTENT')
+            rows.append(PendingHistoryRow(txid, 0, 0, credit, 0))
+    return pending, spent, tuple(rows[:GUI_HISTORY_LIMIT])

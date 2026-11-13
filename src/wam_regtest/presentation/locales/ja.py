@@ -749,4 +749,12 @@ JA = {
     "errors.FEE_DISPROPORTIONATE": "手数料がこの支払い金額に対して大きすぎます。保存も署名もされていません。",
     "errors.FEE_POLICY_UNVERIFIED": "ネットワーク手数料を検証できませんでした。準備も署名もされていません。",
     "errors.FEE_EXPLICIT_PREPARE_DENIED": "手で選んだ手数料は受け付けません。準備も署名もされていません。",
+    "pending.state": "承認待ち",
+    "pending.unknown": "不明",
+    "pending.available": "（承認済み）: {amount} WAM",
+    "pending.total": "承認待ちの受取／お釣り: {amount} WAM",
+    "pending.spent": "使用承認待ちの承認済み入力: {amount} WAM",
+    "pending.details": "手数料: {fee} WAM · 承認待ちのお釣り: {change} WAM",
+    "pending.unverified": "メモリプール不明",
+    "pending.history_subtitle": "送信済みの承認待ち取引を先頭に表示します。",
 }

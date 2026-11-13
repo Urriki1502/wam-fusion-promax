@@ -1566,10 +1566,13 @@ class FusionOverview(QScrollArea):
         self.utxo_details.setText(
             ui_text('fusion.utxo_summary').format(count=snap.confirmed_utxos, height=snap.height)
             + (ui_text('fusion.regtest_shared') if network.get('shared') else ui_text('fusion.regtest_isolated')))
-        funds = []
-        if type(available_atoms) is int and available_atoms >= 0:
-            if available_atoms != snap.confirmed_atoms:
-                funds.append(ui_text('fusion.spendable') + format_wam(available_atoms, grouped=True) + ' WAM')
+        if available_atoms is None:
+            available_atoms = snap.available_atoms
+        def amount_text(value):
+            return format_wam(value, grouped=True) if type(value) is int and value >= 0 else ui_text('pending.unknown')
+        funds = [ui_text('fusion.spendable') + ui_text('pending.available').format(amount=amount_text(available_atoms)),
+                 ui_text('pending.total').format(amount=amount_text(snap.pending_atoms)),
+                 ui_text('pending.spent').format(amount=amount_text(snap.pending_spent_atoms))]
         if type(reservation_count) is int and reservation_count > 0:
             funds.append(str(reservation_count) + ui_text('fusion.reserved_input_s_stay_unavailable'))
         self.fund_details.setText('  ·  '.join(funds))
@@ -1587,7 +1590,7 @@ class FusionOverview(QScrollArea):
         self.wallet_profile.setText(ui_text('fusion.operational_regtest_wallet') if operational else ui_text('fusion.read_only_regtest_wallet'))
         self.environment_core.setText(core_compat.DISPLAY_NAME + ui_text('fusion.sha_256') + snap.core_sha256[:12] + '…')
         self.environment_core.setToolTip(ui_text('fusion.core_sha_256') + snap.core_sha256)
-        rows = snap.history[:4]
+        rows = (snap.pending_history + snap.history)[:4]
         self._txids = [r.txid for r in rows]
         self.activity_table.setRowCount(len(rows))
         self.activity_table.setVisible(bool(rows))
@@ -1600,6 +1603,11 @@ class FusionOverview(QScrollArea):
             direction = ui_text('fusion.received') if value > 0 else ui_text('fusion.sent') if value < 0 else ui_text('fusion.activity_2')
             amount = ('+' if value > 0 else '-' if value < 0 else '') + format_wam(abs(value)) + ' WAM'
             status = ui_text('fusion.confirmed_count_block').format(confirmations=tx.confirmations, height=tx.block_height)
+            if getattr(tx, 'state', None) == 'pending':
+                status = ui_text('pending.state')
+                if tx.debit_atoms:
+                    status += '\n' + ui_text('pending.details').format(
+                        fee=amount_text(tx.fee_atoms), change=amount_text(tx.pending_change_atoms))
             activity_text = direction + '\n' + tx.txid[:12] + '…'
             for j, text in enumerate((activity_text, amount, status)):
                 item = QTableWidgetItem(text)
