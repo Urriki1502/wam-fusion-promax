@@ -1,6 +1,23 @@
 {
   "english": {
     "common.copy": "Copy",
-    "common.select_all": "Select All"
+    "common.select_all": "Select All",
+    "fee.source.NETWORK_FLOOR": "network minimum",
+    "fee.source.ESTIMATOR": "estimator",
+    "pages.payment_review_auto": "Amount     {amount} WAM\nFee          {fee} WAM ({source}, {rate} WAM/kvB, {classification})\nTotal debit  {total} WAM\nAvailable before  {available_before} WAM\nAvailable after   {available_after} WAM\nChange    {change} WAM\nInputs      {inputs}",
+    "wallet.fee_is_network": "The network sets this fee. Review shows the fee, the total debit and the available balance before Sign.",
+    "wallet.review_details_auto": "Recipient  {code}\nAmount  {amount} WAM\nFee  {fee} WAM ({source}, {rate} WAM/kvB, {classification})\nTotal debit  {total} WAM\nAvailable before  {available_before} WAM\nAvailable after   {available_after} WAM\nChange  {change} WAM",
+    "wallet.invalid_amount": "Enter a complete REGTEST silent-payment recipient and a valid amount.",
+    "owner.approval_details_auto": "Recipient: {code}\nAmount: {amount} WAM ({atoms:,} atoms)\nFee: {fee} WAM ({source}, {rate} WAM/kvB, {classification})\nTotal debit: {total} WAM\nAvailable before: {available_before} WAM\nAvailable after: {available_after} WAM\nChange: {change} WAM ({change_atoms:,} atoms)\nInputs: {input_count}\nPSBT SHA256: {commitment}\n\nSIGN and irreversibly reserve these coins?",
+    "operational.send_network_fee": "Prepare an exact recipient and amount. The network sets the fee. Signing and broadcast require separate approval.",
+    "operational.payment_review_auto": "{heading}\nRecipient: {code}\nAmount: {amount} WAM ({atoms} atoms)\nFee: {fee_amount} WAM ({fee_atoms} atoms, {source}, {rate} WAM/kvB, {classification})\nTotal debit: {total} WAM\nAvailable before: {available_before} WAM\nAvailable after: {available_after} WAM\nChange: {change_amount} WAM ({change_atoms} atoms)\nInputs: {inputs}",
+    "wallet.fee_caption": "FEE / WAM",
+    "wallet.review_details": "Recipient  {code}\nAmount  {amount} WAM\nFee  {fee} WAM\nChange  {change} WAM",
+    "owner.fee_prompt": "Transaction fee in integer atoms (1–1,000,000):",
+    "owner.approval_details": "Recipient: {code}\nAmount: {atoms:,} atoms\nFee: {fee:,} atoms\nChange: {change_atoms:,} atoms\nInputs: {input_count}\nPSBT SHA256: {commitment}\n\nSIGN and irreversibly reserve these coins?",
+    "operational.fee_accessible": "Fee in WAM",
+    "operational.fee_kicker": "FEE / WAM",
+    "operational.send_subtitle": "Prepare an exact recipient, amount and fee. Signing and broadcast require separate approval.",
+    "operational.payment_review": "{heading}\nRecipient: {code}\nAmount: {amount} WAM ({atoms} atoms)\nFee: {fee_amount} WAM ({fee_atoms} atoms)\nChange: {change_amount} WAM ({change_atoms} atoms)\nInputs: {inputs}"
   }
 }

@@ -64,7 +64,8 @@ class UnsignedDraftControls(unittest.TestCase):
         Bip39TrialWindow._on_ready(w,'snapshot',snap(True));w._set_actions()
         self.assertTrue(w._recovered_unsigned_cancel)
         self.assertTrue(w.cancel.isEnabled());self.assertFalse(w.send.isEnabled())
-        w.recipient_input.setText('wamrtsp1public');w.amount_input.setText('1');w.fee_input.setText('0.0001')
+        self.assertFalse(hasattr(w, 'fee_input'))
+        w.recipient_input.setText('wamrtsp1public');w.amount_input.setText('1')
         w._prepare_send();self.assertEqual(self.calls,[])  # New payment waits.
         for name,state,busy in [('faulted',ExecutorState(locked=False,core_alive=True,faulted=True),False),
                                 ('locked',ExecutorState(locked=True,core_alive=True),False),
@@ -89,11 +90,96 @@ class UnsignedDraftControls(unittest.TestCase):
             try:Bip39TrialWindow._on_ready(w,action,{})
             except Exception:pass
             self.assertFalse(w._recovered_unsigned_cancel)
-    def test_fee_and_amount_validation_never_dispatch_invalid_values(self):
-        w=self.window;w.recipient_input.setText('wamrtsp1public');w.amount_input.setText('1.23456789')
-        for fee in ['0','-1','0.000000001','0.01000001','NaN','1e-8']:
-            w.fee_input.setText(fee);w._prepare_send();self.assertEqual(self.calls,[])
-        for raw,fee in [('0.00000001',1),('0.000001',100),('0.01',1000000)]:
-            w.fee_input.setText(raw);w._prepare_send();self.assertEqual(self.calls.pop(),('prepare','wamrtsp1public',123456789,fee))
+    def test_amount_validation_dispatches_automatic_prepare_without_a_fee_field(self):
+        w=self.window
+        self.assertFalse(hasattr(w, 'fee_input'))
+        w.recipient_input.setText('wamrtsp1public')
+        for raw in ('', '0', '-1', '0.00000001', '0.00000329', 'NaN', '1e-8'):
+            w.amount_input.setText(raw);w._prepare_send();self.assertEqual(self.calls,[])
+        w.amount_input.setText('1.23456789');w._prepare_send()
+        self.assertEqual(self.calls.pop(),('prepare_auto','wamrtsp1public',123456789))
+
+    def test_quoted_review_and_sign_dialog_show_fee_total_and_available(self):
+        from PySide6.QtWidgets import QApplication, QLabel, QWidget
+        from wam_regtest.fusion_pages import approval_amount_text, fusion_review_text, owner_approval_text
+        from wam_regtest.presentation.action_state import ActionInputs, available_actions
+        from wam_regtest.wallet_session import PaymentReview
+        import inspect
+        review=PaymentReview(
+            'wamrtsp1public', 25_000_000, 155, 124_989_845, 1, 'b'*64,
+            rate_atoms_per_kvb=1000, rate_source='NETWORK_FLOOR',
+            rate_classification='UNAVAILABLE', vsize=155,
+            total_debit=25_000_155, available_before=149_990_000,
+            available_after=0, overpay_atoms=0, fee_quote=object())
+        for text in (fusion_review_text(review), approval_amount_text(review), owner_approval_text(review)):
+            self.assertIn('network minimum', text)
+            self.assertIn('0.00000155', text)
+            self.assertIn('0.25000155', text)
+            self.assertIn('1.49990000', text)
+            self.assertIn('0.00001000', text)
+            for preset in ('Fast', 'Normal', 'Slow'):
+                self.assertNotIn(preset, text)
+        w=self.window
+        w._completed_result=('prepare_auto', review)
+        w._finished();self.app.processEvents()
+        dialog=QApplication.activeModalWidget()
+        self.assertIsNotNone(dialog)
+        shown='\n'.join(item.text() for item in dialog.findChildren(QLabel))
+        recipient=dialog.findChild(QWidget, 'ReceiveCode')
+        self.assertEqual(recipient.toPlainText(), review.code)
+        self.assertIn(review.code, w.review_summary.text())
+        self.assertIn('network minimum', shown)
+        self.assertIn('0.00000155', shown)
+        self.assertIn('0.25000155', shown)
+        self.assertIn('1.49990000', shown)
+        dialog.cancel.click();self.app.processEvents()
+        self.assertEqual(self.calls,[('cancel',)])
+        self.assertNotIn('fee', inspect.getsource(available_actions))
+        ready=dict(ready=True, spend_enabled=True, signed_ready=False, pending_confirm=False,
+                   approved_commitment=False, recovered_unsigned_cancel=False,
+                   resumable_intent=False, unlock_allowed=False, test_funded=True,
+                   quit_requested=False, busy=False, executor_closed=False, faulted=False,
+                   locked=False, reauthentication_required=False, core_alive=True)
+        self.assertTrue(available_actions(ActionInputs(**ready))['send'])
+        held=dict(ready, approved_commitment=True)
+        gated=available_actions(ActionInputs(**held))
+        self.assertFalse(gated['send']);self.assertTrue(gated['cancel']);self.assertFalse(gated['broadcast'])
+
+    def test_operational_send_form_has_no_fee_field_and_prepares_automatically(self):
+        from pathlib import Path
+        from PySide6.QtWidgets import QLineEdit
+        from wam_regtest.fusion_pages import operational_review_text
+        from wam_regtest.operational_gui import OperationalWalletWindow
+        from wam_regtest.wallet_session import PaymentReview
+        session=type('Session', (), {
+            'locked': False, 'faulted': False,
+            'core_dir': Path('/tmp/wam-fee2-core'),
+            'datadir': Path('/tmp/wam-fee2-data'),
+            'source': Path('/tmp/wam-fee2-wsp')})()
+        window=OperationalWalletWindow(session)
+        self.addCleanup(window.deleteLater)
+        for timer in (getattr(window, '_sync_timer', None), getattr(window, '_theme_timer', None)):
+            if timer is not None:
+                timer.stop()
+        self.assertFalse(hasattr(window, 'fee'))
+        names=' '.join(edit.accessibleName() for edit in window.findChildren(QLineEdit))
+        self.assertNotIn('fee', names.lower())
+        calls=[]
+        window.start_operation=lambda *args: calls.append(args)
+        window.recipient.setText('wamrtsp1public');window.amount.setText('1.00000000')
+        window.prepare_payment()
+        self.assertEqual(calls,[('prepare_auto','wamrtsp1public',100_000_000)])
+        review=PaymentReview(
+            'wamrtsp1public', 100_000_000, 155, 0, 1, 'c'*64,
+            rate_atoms_per_kvb=1000, rate_source='NETWORK_FLOOR',
+            rate_classification='UNAVAILABLE', vsize=155, total_debit=100_000_155,
+            available_before=100_000_155, available_after=0, overpay_atoms=0,
+            fee_quote=object())
+        window._operation_ready('prepare_auto', review)
+        shown=window.review_text.text()
+        self.assertIn('network minimum', shown)
+        self.assertIn('0.00000155', shown)
+        self.assertIn('1.00000155', shown)
+        self.assertEqual(shown, operational_review_text(review, signed=False))
 
 if __name__=='__main__':unittest.main(verbosity=2)

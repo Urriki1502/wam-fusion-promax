@@ -1,7 +1,7 @@
 """Native disposable test-wallet Send/Sign/Broadcast and Security/Settings UI."""
 import sys
 from . import custody
-from decimal import Decimal, InvalidOperation
+from decimal import InvalidOperation
 from pathlib import Path
 import secrets
 import re
@@ -12,10 +12,9 @@ from PySide6.QtWidgets import (
 )
 from wam_regtest.desktop import RegtestWalletWindow, qt_application
 from wam_regtest.wallet_session import WalletSession, PaymentReview
-from wam_regtest.wallet_read import format_wam
 from .fusion_ui import panel,page,label,action,ResponsiveRow,ReadableText
-from .fusion_pages import PaymentSteps,PaymentApproval
-from .amounts import _parse_atoms,parse_amount
+from .fusion_pages import PaymentSteps,PaymentApproval,operational_review_text
+from .amounts import parse_amount
 from .gui_errors import operation_error,error_text,public_code,INPUT_ERRORS
 from .infrastructure import core_compat
 from .bip39_locale import t
@@ -31,7 +30,8 @@ class OperationWorker(QThread):
         return self.session.disclose_record(txid,fields,password,approved=True)
     def run(self):
         try:
-            methods={"prepare":self.session.prepare,"sign":self.session.sign,
+            methods={"prepare":self.session.prepare,"prepare_auto":self.session.prepare_auto,
+                     "sign":self.session.sign,
                      "broadcast":self.session.broadcast,"cancel":self.session.cancel,
                      "lock":self.session.lock,"unlock":self.session.unlock,
                      "backup":self.session.backup,"recover":self.session.recover_backup,
@@ -57,17 +57,14 @@ class OperationalWalletWindow(RegtestWalletWindow):
         self.setWindowTitle(t("operational.window_title"))
         self.warning.setText(t("operational.warning"))
         self.navigation.addItems([t("fusion.send"),t("fusion.security"),t("fusion.settings")])
-        send,layout=page(t("operational.send_title"),t("operational.send_subtitle"),t("operational.send_kicker"))
+        send,layout=page(t("operational.send_title"),t("operational.send_network_fee"),t("operational.send_kicker"))
         self.steps=PaymentSteps();layout.addWidget(self.steps)
         form,fl=panel(t("operational.payment_details"),t("operational.payment_details_subtitle"))
         self.recipient=QLineEdit();self.recipient.setMaxLength(256);self.recipient.setPlaceholderText(t("operational.recipient_placeholder"));self.recipient.setAccessibleName(t("operational.recipient_accessible"))
         self.amount=QLineEdit();self.amount.setMaxLength(32);self.amount.setPlaceholderText('0.00000000');self.amount.setAccessibleName(t("operational.amount_accessible"))
-        self.fee=QLineEdit('0.00010000');self.fee.setMaxLength(32);self.fee.setAccessibleName(t("operational.fee_accessible"))
         fl.addWidget(label(t("operational.recipient_caption"),'FusionKicker'));fl.addWidget(self.recipient)
-        numbers=QHBoxLayout()
-        for title,widget in ((t("operational.amount_kicker"),self.amount),(t("operational.fee_kicker"),self.fee)):
-            col=QVBoxLayout();col.addWidget(label(title,'FusionKicker'));col.addWidget(widget);numbers.addLayout(col,1)
-        fl.addLayout(numbers);fl.addWidget(label(t("operational.atom_arithmetic")))
+        fl.addWidget(label(t("operational.amount_kicker"),'FusionKicker'));fl.addWidget(self.amount)
+        fl.addWidget(label(t("wallet.fee_is_network")));fl.addWidget(label(t("operational.atom_arithmetic")))
         self.prepare_button=action(t("operational.prepare_payment"),'send',True);fl.addWidget(self.prepare_button)
         review,rl=panel(t("operational.review_panel"),t("operational.review_panel_subtitle"))
         self.review_text=ReadableText(t("operational.no_active_review_hint"));rl.addWidget(self.review_text,1)
@@ -162,7 +159,7 @@ class OperationalWalletWindow(RegtestWalletWindow):
             self.settings_sync.setEnabled(not busy and unlocked)
             self.steps.set_stage(2 if busy and getattr(self._worker,"action",None)=="sign" else 3 if self.signed else 1 if self.review is not None else 0)
         editable=not busy and unlocked and self.review is None
-        for field in (self.recipient,self.amount,self.fee):
+        for field in (self.recipient,self.amount):
             field.setEnabled(editable)
 
     def start_operation(self,action,*args):
@@ -171,7 +168,8 @@ class OperationalWalletWindow(RegtestWalletWindow):
         worker=OperationWorker(self.session,action,args)
         self._worker=worker
         self.refresh_button.setEnabled(False)
-        labels={"prepare":t("operational.preparing_review"), "sign":t("operational.signing_payment"),
+        labels={"prepare":t("operational.preparing_review"), "prepare_auto":t("operational.preparing_review"),
+                "sign":t("operational.signing_payment"),
                 "broadcast":t("operational.submitting"), "cancel":t("operational.canceling_draft"),
                 "lock":t("operational.locking"), "unlock":t("operational.verifying_passphrase"),
                 "backup":t("operational.saving_backup"), "recover":t("operational.verifying_recovery"),
@@ -194,30 +192,15 @@ class OperationalWalletWindow(RegtestWalletWindow):
         except (ValueError,InvalidOperation,OverflowError):
             self._operation_denied("WALLET_INPUT_AMOUNT_INVALID")
             return
-        try:
-            # Fee has a lower dust-independent floor and explicit WSP limit.
-            fee=_parse_atoms(self.fee.text(),1,1_000_000)
-        except (ValueError,InvalidOperation,OverflowError):
-            self._operation_denied("WALLET_INPUT_FEE_INVALID")
-            return
-        self.start_operation("prepare",self.recipient.text().strip(),atoms,fee)
+        self.start_operation("prepare_auto",self.recipient.text().strip(),atoms)
 
     def _operation_ready(self,action,result):
-        if action in ("prepare","sign"):
+        if action in ("prepare","prepare_auto","sign"):
             self.review=result
             self.recipient.setCursorPosition(0)
             self.signed=action=="sign"
-            self.review_text.setText(
-                t('operational.payment_review').format(
-                    heading=t('operational.heading_signed') if self.signed else t('operational.heading_review'),
-                    code=result.code,
-                    amount=format_wam(result.atoms),
-                    atoms=result.atoms,
-                    fee_amount=format_wam(result.fee),
-                    fee_atoms=result.fee,
-                    change_amount=format_wam(result.change_atoms),
-                    change_atoms=result.change_atoms,
-                    inputs=result.input_count))
+            heading=t("operational.heading_signed") if self.signed else t("operational.heading_review")
+            self.review_text.setText(operational_review_text(result, heading=heading))
         elif action in ("cancel","broadcast","lock"):
             self.review=None
             self.signed=False
@@ -238,7 +221,7 @@ class OperationalWalletWindow(RegtestWalletWindow):
             message = (t('operational.backup_saved') if action=="backup" else
                        t('operational.broadcast_submitted') if action=="broadcast" else
                        t('operational.signed_retained') if action=="sign" else
-                       t('operational.review_ready_status') if action=="prepare" else
+                       t('operational.review_ready_status') if action in ("prepare", "prepare_auto") else
                        t('operational.operation_completed'))
             self.status.setText(message)
             if action in ("unlock","recover","mine"):

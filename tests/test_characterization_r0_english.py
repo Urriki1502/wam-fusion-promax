@@ -8,7 +8,14 @@ import unittest
 from wam_regtest.bip39_locale import _STRINGS
 from wam_regtest.gui_errors import _MESSAGES, error_text
 
-ENGLISH_GUI_ERRORS = {'Q06_RECONCILIATION_NOT_NEEDED': 'The active custody session is healthy. Refresh the chain before '
+ENGLISH_GUI_ERRORS = {'FEE_ABSOLUTE_LIMIT': 'The fee exceeds 0.01 WAM. Nothing was saved or signed.',
+ 'FEE_BELOW_NETWORK_FLOOR': 'The fee is below the network minimum. Nothing was saved or signed.',
+ 'FEE_DISPROPORTIONATE': 'The fee is too large for this payment amount. Nothing was saved or signed.',
+ 'FEE_EXCEEDS_AMOUNT': 'The fee is larger than the payment amount. Nothing was saved or signed.',
+ 'FEE_POLICY_UNVERIFIED': 'The network fee could not be verified. Nothing was prepared or signed.',
+ 'FEE_QUOTE_STALE': 'The network fee changed after this review. Nothing was signed and the fee was not changed. Cancel the unsigned draft and prepare the payment again.',
+ 'FEE_STRUCTURE_UNSTABLE': 'The fee for this payment could not be settled. Nothing was saved or signed. Unsigned drafts from this attempt were released.',
+ 'Q06_RECONCILIATION_NOT_NEEDED': 'The active custody session is healthy. Refresh the chain before '
                                   'requesting recovery.',
  'Q06_SHARED_RECONCILIATION_DENIED': 'Shared-chain reconciliation was refused. Native checkpoints, '
                                      'signed evidence and reservations are preserved. Verify the '

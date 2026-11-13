@@ -22,6 +22,7 @@ from .presentation.action_state import ActionInputs, BASE_CONTROLS, available_ac
 from .domain.payment_state import reservations_need_attention
 
 from .fusion_ui import label, action
+from .fusion_pages import owner_approval_text
 
 
 def reservation_warning(result):
@@ -403,7 +404,7 @@ class Bip39TrialWindow(QWidget):
                 or self._delivering_result):
             return False
         worker=ControlWorker(self.executor, action, args,
-                             kwargs={"timeout":240} if action in ("mine","snapshot","activate","prepare","sign","broadcast","confirm","recovery_verify","inspect_confirmed","intent_status","resume_intent") else None,
+                             kwargs={"timeout":240} if action in ("mine","snapshot","activate","prepare","prepare_auto","sign","broadcast","confirm","recovery_verify","inspect_confirmed","intent_status","resume_intent") else None,
                              parent=self)
         self._worker=worker
         self._worker_action = action
@@ -490,22 +491,15 @@ class Bip39TrialWindow(QWidget):
             t('owner.amount_prompt'))
         if not ok:
             return
-        fee,ok=QInputDialog.getText(
-            self,t('owner.prepare_title'),
-            t('owner.fee_prompt'))
-        if not ok:
-            return
-        if (not code.startswith("wamrtsp1") or len(amount)>19 or len(fee)>7
-                or not amount.isascii() or not amount.isdecimal()
-                or not fee.isascii() or not fee.isdecimal()):
+        if (not code.startswith("wamrtsp1") or len(amount)>19
+                or not amount.isascii() or not amount.isdecimal()):
             QMessageBox.warning(self,t('owner.invalid_input_title'),t('owner.invalid_input'))
             return
-        atoms_value,fee_value=int(amount),int(fee)
-        if not (330<=atoms_value<=22_000_000*100_000_000
-                and 1<=fee_value<=1_000_000):
+        atoms_value=int(amount)
+        if not 330<=atoms_value<=22_000_000*100_000_000:
             QMessageBox.warning(self,t('owner.invalid_input_title'),t('owner.policy_amount'))
             return
-        self._command("prepare",code,atoms_value,fee_value)
+        self._command("prepare_auto",code,atoms_value)
 
     def _confirm_broadcast(self):
         if not self._signed_ready or self._approved_commitment is None:
@@ -658,12 +652,12 @@ class Bip39TrialWindow(QWidget):
                     t('owner.send_verified')
                     if self._spend_enabled else
                     t('owner.scan_verified'))
-        elif action=="prepare":
+        elif action in ("prepare", "prepare_auto"):
             self._approved_commitment=result.commitment
             self._signed_ready=False
             choice=QMessageBox.question(
                 self,t('owner.approval_title'),
-                t('owner.approval_details').format(code=result.code, atoms=result.atoms, fee=result.fee, change_atoms=result.change_atoms, input_count=result.input_count, commitment=result.commitment),
+                owner_approval_text(result),
                 QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
             self._pending_action=(

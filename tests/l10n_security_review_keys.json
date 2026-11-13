@@ -1360,6 +1360,54 @@
     {
       "key": "operational.passphrase_length",
       "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "errors.FEE_QUOTE_STALE",
+      "reason": "Public failure text. A changed network fee refuses Sign. Nothing is signed, the approved fee is not changed, and the user prepares again."
+    },
+    {
+      "key": "errors.FEE_STRUCTURE_UNSTABLE",
+      "reason": "Public failure text. The fee loop stopped. Nothing was saved or signed, and only never-reviewed drafts were released."
+    },
+    {
+      "key": "errors.FEE_BELOW_NETWORK_FLOOR",
+      "reason": "Public failure text. A fee under the network minimum is refused before save or Sign."
+    },
+    {
+      "key": "errors.FEE_ABSOLUTE_LIMIT",
+      "reason": "Public failure text. The 0.01 WAM fee cap is refused before save or Sign."
+    },
+    {
+      "key": "errors.FEE_EXCEEDS_AMOUNT",
+      "reason": "Public failure text. A fee larger than the payment amount is refused before save or Sign."
+    },
+    {
+      "key": "errors.FEE_DISPROPORTIONATE",
+      "reason": "Public failure text. A disproportionate fee is refused before save or Sign."
+    },
+    {
+      "key": "errors.FEE_POLICY_UNVERIFIED",
+      "reason": "Public failure text. Missing or unverifiable network fee data fails closed. Nothing is prepared or signed."
+    },
+    {
+      "key": "wallet.fee_is_network",
+      "reason": "Signing copy. The fee is set by the network. The review must show the fee, the total debit and the available balance before Sign."
+    },
+    {
+      "key": "wallet.review_details_auto",
+      "reason": "Signing copy. The review the user approves shows recipient, amount, fee, rate source, total debit, available balance and change."
+    },
+    {
+      "key": "pages.payment_review_auto",
+      "reason": "Signing copy. The Sign and Broadcast approval dialog shows amount, fee, rate source, total debit, available balance and change."
+    },
+    {
+      "key": "owner.approval_details_auto",
+      "reason": "Signing copy. Explicit Sign approval states the fee, total debit and available balance, and that the reservation is irreversible."
+    },
+    {
+      "key": "operational.payment_review_auto",
+      "reason": "Signing copy. The operational review shows the same fee, total debit and available balance before Sign."
     }
   ]
 }

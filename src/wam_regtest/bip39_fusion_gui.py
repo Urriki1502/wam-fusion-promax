@@ -30,10 +30,10 @@ from .fusion_ui import (
 )
 from .fusion_motion import fade_widget, PressFeedback, TransitionHost, STAGGER_MS, STANDARD_MS, motion_reduced
 from .fusion_status import classify
-from .fusion_pages import ReceivePage, HistoryPage, PaymentSteps, PaymentApproval, WalletConsent, NetworkPage, describe_broadcast_result
+from .fusion_pages import ReceivePage, HistoryPage, PaymentSteps, PaymentApproval, WalletConsent, NetworkPage, describe_broadcast_result, fusion_review_text
 from .bip39_backup_page import Bip39BackupPage
-from .wallet_read import WalletReadSnapshot, format_wam
-from .amounts import parse_amount, _parse_atoms
+from .wallet_read import WalletReadSnapshot
+from .amounts import parse_amount
 from .branding import brand_image
 from .infrastructure import core_compat
 from .ui_settings import ui_settings
@@ -262,18 +262,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.amount_input = QLineEdit()
         self.amount_input.setMaxLength(32)
         self.amount_input.setPlaceholderText("0.00000000")
-        self.fee_input = QLineEdit("0.00010000")
-        self.fee_input.setMaxLength(32)
         fl.addWidget(label(t('wallet.recipient_caption'), "FusionKicker"))
         fl.addWidget(self.recipient_input)
-        amounts = QHBoxLayout()
-        for name, widget in ((t('wallet.amount_caption'), self.amount_input),
-                             (t('wallet.fee_caption'), self.fee_input)):
-            group = QVBoxLayout()
-            group.addWidget(label(name, "FusionKicker"))
-            group.addWidget(widget)
-            amounts.addLayout(group, 1)
-        fl.addLayout(amounts)
+        fl.addWidget(label(t('wallet.amount_caption'), "FusionKicker"))
+        fl.addWidget(self.amount_input)
+        fl.addWidget(label(t('wallet.fee_is_network')))
         self.send.setText(t('wallet.review_payment'))
         self.send.setObjectName("FusionPrimary")
         self.send.setProperty("fusion_icon", "send")
@@ -932,14 +925,13 @@ class Bip39FusionWindow(Bip39TrialWindow):
             return
         try:
             atoms = parse_amount(self.amount_input.text())
-            fee = _parse_atoms(self.fee_input.text(), 1, 1_000_000)
             code = self.recipient_input.text().strip()
             if not code.startswith("wamrtsp1") or len(code) > 256:
                 raise ValueError("Q06_FUSION_RECIPIENT_DENIED")
         except (ValueError, ArithmeticError):
             self.status.setText(t('wallet.invalid_payment'))
             return
-        self._command("prepare", code, atoms, fee)
+        self._command("prepare_auto", code, atoms)
 
     def _confirm_broadcast(self):
         if (not self._signed_ready or self._approved_commitment is None
@@ -1033,7 +1025,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
                                 if result['connected'] else t('wallet.peer_disconnected'))
             self._set_actions()
             return
-        if action == "prepare":
+        if action in ("prepare", "prepare_auto"):
             # Existing Q05 Fusion exact-transaction approval, not the old
             # developer QMessageBox. Signing still requires explicit consent
             # and retains its native-anchored irreversible reservation.
@@ -1041,8 +1033,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self._last_review = result
             self._signed_ready = False
             self._broadcast_complete = False
-            self.review_summary.setText(
-                t('wallet.review_details').format(code=result.code, amount=format_wam(result.atoms), fee=format_wam(result.fee), change=format_wam(result.change_atoms)))
+            self.review_summary.setText(fusion_review_text(result))
             self.payment_steps.set_stage(1)
             dialog = PaymentApproval(result, "sign", self)
             commitment = result.commitment

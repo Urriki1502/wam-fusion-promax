@@ -115,7 +115,14 @@
     "WALLET_BACKUP_DIRECTORY_DENIED": "Backup destination was refused. Choose a new private folder owned by this account, without links or inherited access.",
     "WALLET_LOCKED_OR_FAULTED": "Wallet is locked or faulted. Balances are hidden and sensitive operations are unavailable; reservations remain protected.",
     "WALLET_SYNC_UNVERIFIED": "Live REGTEST synchronization could not be verified. Balances are hidden. Verify the local node and use Sync again; do not reset custody.",
-    "WALLET_OPERATION_DENIED_STATE_RETAINED": "Operation could not complete safely. Wallet state and reservations are retained. Verify the live chain and latest checkpoint; do not reset custody."
+    "WALLET_OPERATION_DENIED_STATE_RETAINED": "Operation could not complete safely. Wallet state and reservations are retained. Verify the live chain and latest checkpoint; do not reset custody.",
+    "FEE_QUOTE_STALE": "The network fee changed after this review. Nothing was signed and the fee was not changed. Cancel the unsigned draft and prepare the payment again.",
+    "FEE_STRUCTURE_UNSTABLE": "The fee for this payment could not be settled. Nothing was saved or signed. Unsigned drafts from this attempt were released.",
+    "FEE_BELOW_NETWORK_FLOOR": "The fee is below the network minimum. Nothing was saved or signed.",
+    "FEE_ABSOLUTE_LIMIT": "The fee exceeds 0.01 WAM. Nothing was saved or signed.",
+    "FEE_EXCEEDS_AMOUNT": "The fee is larger than the payment amount. Nothing was saved or signed.",
+    "FEE_DISPROPORTIONATE": "The fee is too large for this payment amount. Nothing was saved or signed.",
+    "FEE_POLICY_UNVERIFIED": "The network fee could not be verified. Nothing was prepared or signed."
   },
   "moved": {
     "managed_onboarding": {

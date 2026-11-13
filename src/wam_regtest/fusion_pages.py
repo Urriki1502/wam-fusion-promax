@@ -208,6 +208,76 @@ class WalletConsent(QDialog):
         layout.addWidget(buttons)
 
 
+def _quoted(review):
+    source = getattr(review, 'rate_source', None)
+    rate = getattr(review, 'rate_atoms_per_kvb', None)
+    classification = getattr(review, 'rate_classification', None)
+    before = getattr(review, 'available_before', None)
+    after = getattr(review, 'available_after', None)
+    total = getattr(review, 'total_debit', None)
+    if (source in ('NETWORK_FLOOR', 'ESTIMATOR') and type(rate) is int
+            and type(classification) is str and type(before) is int
+            and type(after) is int and type(total) is int):
+        if source == 'NETWORK_FLOOR':
+            source_label = ui_text('fee.source.NETWORK_FLOOR')
+        else:
+            source_label = ui_text('fee.source.ESTIMATOR')
+        return dict(amount=format_wam(review.atoms), fee=format_wam(review.fee),
+                    source=source_label, rate=format_wam(rate),
+                    classification=classification, total=format_wam(total),
+                    available_before=format_wam(before), available_after=format_wam(after),
+                    change=format_wam(review.change_atoms), inputs=review.input_count,
+                    input_count=review.input_count,
+                    code=review.code, atoms=review.atoms, fee_atoms=review.fee,
+                    change_atoms=review.change_atoms,
+                    commitment=getattr(review, 'commitment', ''))
+    return None
+
+
+def approval_amount_text(review):
+    """Sign/Broadcast dialog facts. Explicit-fee reviews keep the previous line."""
+    quoted = _quoted(review)
+    if quoted is not None:
+        return ui_text('pages.payment_review_auto').format(**quoted)
+    return ui_text('pages.payment_amounts').format(
+        amount=format_wam(review.atoms), fee=format_wam(review.fee),
+        change=format_wam(review.change_atoms), inputs=review.input_count)
+
+
+def fusion_review_text(review):
+    quoted = _quoted(review)
+    if quoted is not None:
+        return ui_text('wallet.review_details_auto').format(**quoted)
+    return ui_text('wallet.review_details').format(
+        code=review.code, amount=format_wam(review.atoms),
+        fee=format_wam(review.fee), change=format_wam(review.change_atoms))
+
+
+def owner_approval_text(review):
+    quoted = _quoted(review)
+    if quoted is not None:
+        return ui_text('owner.approval_details_auto').format(**quoted)
+    return ui_text('owner.approval_details').format(
+        code=review.code, atoms=review.atoms, fee=review.fee,
+        change_atoms=review.change_atoms, input_count=review.input_count,
+        commitment=review.commitment)
+
+
+def operational_review_text(review, *, signed=False, heading=None):
+    if heading is None:
+        heading = ui_text('operational.heading_signed') if signed else ui_text('operational.heading_review')
+    quoted = _quoted(review)
+    if quoted is not None:
+        quoted = dict(quoted, heading=heading, fee_amount=format_wam(review.fee),
+                      change_amount=format_wam(review.change_atoms))
+        return ui_text('operational.payment_review_auto').format(**quoted)
+    return ui_text('operational.payment_review').format(
+        heading=heading, code=review.code, amount=format_wam(review.atoms),
+        atoms=review.atoms, fee_amount=format_wam(review.fee), fee_atoms=review.fee,
+        change_amount=format_wam(review.change_atoms), change_atoms=review.change_atoms,
+        inputs=review.input_count)
+
+
 class PaymentApproval(QDialog):
     """UI-only explicit approval, default Cancel; no session operation inside."""
     def __init__(self,review,kind,parent):
@@ -215,8 +285,9 @@ class PaymentApproval(QDialog):
         layout=QVBoxLayout(self);layout.setContentsMargins(28,24,28,24);layout.setSpacing(16)
         layout.addWidget(label(ui_text('pages.explicit_transaction_approval'),'FusionKicker'));layout.addWidget(label(ui_text('pages.approve_signature') if kind=='sign' else ui_text('pages.submit_to_regtest'),'PageTitle'))
         layout.addWidget(label(ui_text('pages.sign_irreversible') if kind=='sign' else ui_text('pages.broadcast_reply_uncertain'),'FusionGold'))
-        card,cl=panel(ui_text('pages.exact_payment'));cl.addWidget(label(ui_text('pages.recipient'),'FusionKicker'));cl.addWidget(label(review.code,'ReceiveCode',True));cl.addWidget(label(ui_text('pages.payment_amounts').format(amount=format_wam(review.atoms), fee=format_wam(review.fee), change=format_wam(review.change_atoms), inputs=review.input_count)));layout.addWidget(card)
+        card,cl=panel(ui_text('pages.exact_payment'));cl.addWidget(label(ui_text('pages.recipient'),'FusionKicker'));cl.addWidget(label(review.code,'ReceiveCode',True));cl.addWidget(grow_with_wrapped_text(label(approval_amount_text(review))));layout.addWidget(card)
         buttons=QDialogButtonBox();self.cancel=buttons.addButton(ui_text('pages.cancel'),QDialogButtonBox.ButtonRole.RejectRole);self.approve=buttons.addButton(ui_text('pages.approve_sign') if kind=='sign' else ui_text('pages.approve_broadcast_2'),QDialogButtonBox.ButtonRole.AcceptRole);self.approve.setObjectName('FusionPrimary');self.cancel.setDefault(True);self.approve.setAutoDefault(False);buttons.rejected.connect(self.reject);buttons.accepted.connect(self.accept);layout.addWidget(buttons)
+        self.resize(640, max(440, self.sizeHint().height() + 8))
 
 
 def describe_broadcast_result(txid, inspect=None):
