@@ -223,11 +223,12 @@ class AutomaticFee(unittest.TestCase):
         self.assertEqual(self._states(), {"draft", "signed"})
 
     def test_change_dust_oscillation_accepts_the_higher_fee(self):
-        # Codex: coins 1155 and 2000, amount 1000, would flip 155 then 112.
-        # Amount 10_000 keeps the same shape and stays inside the 10% guard.
+        # Coins 10_155 and 20_000, amount 10_000. Fee 112 makes the exact coin
+        # dusty, so the lower attempt is released and the covering fee returns.
         self._fund((10_155, 20_000))
         review = self.session.prepare_auto(self.code, 10_000)
-        self.assertEqual(self.fees, [155])
+        self.assertEqual(self.fees, [155, 112, 155])
+        self.assertLessEqual(len(self.fees), 6)
         self.assertEqual(review.input_count, 1)
         self.assertEqual(review.change_atoms, 0)
         self.assertEqual(review.vsize, 112)
@@ -236,12 +237,28 @@ class AutomaticFee(unittest.TestCase):
         self.assertGreater(review.available_after, 0)
         self.assertEqual(review.total_debit, 10_155)
 
+    def test_stable_small_payment_steps_down_to_the_exact_fee(self):
+        from wam_regtest.wallet_session import quoted_fee_holds
+        self._fund((1_112, 1_155))
+        review = self.session.prepare_auto(self.code, 1_000)
+        self.assertEqual(self.fees, [155, 112])
+        self.assertLessEqual(len(self.fees), 6)
+        self.assertTrue(quoted_fee_holds(review))
+        self.assertEqual(review.fee, 112)
+        self.assertEqual(review.vsize, 112)
+        self.assertEqual(review.overpay_atoms, 0)
+        self.assertEqual(review.change_atoms, 0)
+        self.assertEqual(review.input_count, 1)
+        self.assertEqual(review.total_debit, 1_112)
+        self.assertEqual(len(self.vault.saved), 1)
+
     def test_small_oscillation_is_refused_as_disproportionate_and_released(self):
         from wam_regtest.wallet_session import WalletSessionError
         self._fund((1_155, 2_000))
         with self.assertRaisesRegex(WalletSessionError, "FEE_DISPROPORTIONATE"):
             self.session.prepare_auto(self.code, 1_000)
-        self.assertEqual(self.fees, [155])
+        self.assertEqual(self.fees, [155, 112, 155])
+        self.assertLessEqual(len(self.fees), 6)
         self.assertEqual(_rows(self.scanner), [FOREIGN])
         self.assertEqual(self.vault.saved, [])
         self.assertIsNone(self.session._prepared)
@@ -308,10 +325,26 @@ class AutomaticFee(unittest.TestCase):
                 self.session.prepare_auto(self.code, 50_000)
         self.assertEqual(self.fees, [155, 1000, 2000, 3000])
         self.assertEqual(self.fees, sorted(self.fees))
+        self.assertLessEqual(len(self.fees), 6)
         self.assertEqual(len(released), 4)
         self.assertEqual(_rows(self.scanner), [FOREIGN])
         self.assertFalse(self.session.faulted)
         self.assertIsNone(self.session._prepared)
+
+    def test_downward_attempt_stops_within_six_proposals(self):
+        from wam_regtest.wallet_session import quoted_fee_holds
+        self._fund((100_000,))
+        sizes = iter((200, 300, 400, 300, 400, 300))
+        with patch("wam_regtest.infrastructure.tx_size.psbt_vsize",
+                   side_effect=lambda _psbt: next(sizes)):
+            review = self.session.prepare_auto(self.code, 50_000)
+        self.assertEqual(self.fees, [155, 200, 300, 400, 300, 400])
+        self.assertEqual(len(self.fees), 6)
+        self.assertTrue(quoted_fee_holds(review))
+        self.assertEqual(review.fee, 400)
+        self.assertEqual(review.vsize, 300)
+        self.assertEqual(review.overpay_atoms, 100)
+        self.assertEqual(len(self.vault.saved), 1)
 
     def test_uncertain_save_retains_the_accepted_draft(self):
         from wam_regtest.wallet_session import WalletSessionError

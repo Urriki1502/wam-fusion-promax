@@ -58,6 +58,33 @@ class PaymentReview:
     fee_quote: object | None = None
 
 
+def quoted_fee_holds(review):
+    """REGTEST GUI review: floor rate, size is covered, debit and balance agree."""
+    from .domain.fee_policy import SOURCE_FLOOR, fee_for_vsize
+    quote = getattr(review, "fee_quote", None)
+    numbers = (
+        getattr(review, "vsize", None), getattr(review, "fee", None),
+        getattr(review, "atoms", None), getattr(review, "total_debit", None),
+        getattr(review, "overpay_atoms", None),
+        getattr(review, "available_before", None),
+        getattr(review, "available_after", None),
+        getattr(review, "change_atoms", None))
+    if quote is None or any(type(value) is not int for value in numbers):
+        raise ValueError("FEE_QUOTE_REQUIRED")
+    if (review.rate_source != SOURCE_FLOOR
+            or review.rate_atoms_per_kvb != quote.floor_atoms_per_kvb):
+        raise ValueError("FEE_QUOTE_NOT_NETWORK_FLOOR")
+    need = fee_for_vsize(review.vsize, review.rate_atoms_per_kvb)
+    if review.fee < need or review.overpay_atoms != review.fee - need:
+        raise ValueError("FEE_QUOTE_SIZE")
+    if review.total_debit != review.atoms + review.fee:
+        raise ValueError("FEE_QUOTE_DEBIT")
+    selected = review.atoms + review.fee + review.change_atoms
+    if review.available_before - review.available_after != selected:
+        raise ValueError("FEE_QUOTE_BALANCE")
+    return True
+
+
 class WalletCoreCli(LiveCoreReadOnlyCli):
     """Write capabilities granted only to this disposable session coordinator."""
     def __init__(self,binary,datadir,*,on_trust_failure=None):
@@ -432,11 +459,17 @@ class WalletSession:
         """Explicit fee for tests and non-GUI probes. The production GUI uses prepare_auto.
 
         There is no fee field and no privileged override on the Fusion window,
-        the owner window, or the operational window. Callers that still pass a
-        fee are the existing unit tests (draft release, broadcast rejection,
-        payment state, signed-intent recovery, signer bridge) and the non-GUI
-        probes linux_headless, linux_headless_probe, reopen_probe and
-        q05_checkpoint_scenario.
+        the owner window, or the operational window. Callers that still pass a fee:
+
+        Unit tests: test_fee_integration, test_tx03_signed_intent_recovery,
+        test_q06_bip39_signer_bridge, test_pm006_payment_state_machine,
+        test_failed_prepare_draft_release, test_broadcast_rejection_state.
+
+        Non-GUI probes: linux_headless, linux_headless_probe, reopen_probe,
+        q05_checkpoint_scenario, q06_same_chain_restore_probe,
+        q06_spend_probe (executor.request only), q06_platform_probe (no
+        window), shared_network_probe (executor.request only), and
+        scripts/qualify_six_gate_native.py.
         """
         from wam_sp.wallet import Wallet, Intent, Signer
         with self._lock:
@@ -467,14 +500,16 @@ class WalletSession:
             return review
 
     def prepare_auto(self, code, atoms):
-        """Quote a network fee and reserve one monotone draft. Never signs.
+        """Quote a network fee and reserve one draft. Never signs.
 
-        The fee starts from a one-input, two-output estimate and never falls.
-        A measured need that is already covered is accepted, so a change/dust
-        oscillation (155 then 112 then 155) stops on the higher fee. At most
-        four rounds. Every abandoned draft is released only while it is still
-        an unsaved, unreviewed draft. The accepted draft is saved exactly as
-        prepare() saves: an uncertain save keeps the reservation.
+        The fee starts from a one-input, two-output estimate and climbs for at
+        most four rounds. When a round covers its size but overpays, one lower
+        proposal is tried at that measured need. If the lower fee changes the
+        structure, that draft is released and the original covering fee is
+        proposed once more. At most six proposals. Every abandoned draft is
+        released only while it is still an unsaved, unreviewed draft. The
+        accepted draft is saved exactly as prepare() saves: an uncertain save
+        keeps the reservation.
         """
         from wam_sp.wallet import Wallet, Intent, Signer
         from .domain.fee_policy import (
@@ -494,13 +529,17 @@ class WalletSession:
             except FeePolicyError as error:
                 raise WalletSessionError(_fee_code(error)) from None
             wallet = Wallet(self.scanner)
-            fee = fee_for_vsize(estimated_one_input_vsize(), quoted.rate_atoms_per_kvb)
-            accepted = None
-            for _round in range(4):
-                if type(fee) is not int or not 1 <= fee <= MAX_FEE_ATOMS:
+            proposals = 0
+
+            def propose_once(fee_atoms):
+                nonlocal proposals
+                proposals += 1
+                if proposals > 6:
+                    raise WalletSessionError("FEE_STRUCTURE_UNSTABLE")
+                if type(fee_atoms) is not int or not 1 <= fee_atoms <= MAX_FEE_ATOMS:
                     raise WalletSessionError("FEE_ABSOLUTE_LIMIT")
                 available_before = wallet.balance()["available_atoms"]
-                proposal = wallet.propose((intent,), fee)
+                proposal = wallet.propose((intent,), fee_atoms)
                 try:
                     prepared = Signer(self.ring).prepare(proposal)
                     vsize = psbt_vsize(prepared.psbt)
@@ -511,6 +550,12 @@ class WalletSession:
                 except Exception:
                     self._abort_unreviewed(wallet, proposal.token)
                     raise WalletSessionError("WALLET_PREPARE_DENIED") from None
+                return proposal, prepared, vsize, need, fee_atoms, available_before
+
+            fee = fee_for_vsize(estimated_one_input_vsize(), quoted.rate_atoms_per_kvb)
+            accepted = None
+            for _round in range(4):
+                proposal, prepared, vsize, need, fee, available_before = propose_once(fee)
                 if need <= fee:
                     accepted = (proposal, prepared, vsize, need, fee, available_before)
                     break
@@ -519,6 +564,16 @@ class WalletSession:
             if accepted is None:
                 raise WalletSessionError("FEE_STRUCTURE_UNSTABLE")
             proposal, prepared, vsize, need, fee, available_before = accepted
+            if need < fee:
+                higher = fee
+                self._abort_unreviewed(wallet, proposal.token)
+                proposal, prepared, vsize, need, fee, available_before = propose_once(need)
+                if need > fee:
+                    self._abort_unreviewed(wallet, proposal.token)
+                    proposal, prepared, vsize, need, fee, available_before = propose_once(higher)
+                    if need > fee:
+                        self._abort_unreviewed(wallet, proposal.token)
+                        raise WalletSessionError("FEE_STRUCTURE_UNSTABLE")
             try:
                 check_fee_limits(fee, atoms, vsize, quoted)
             except FeePolicyError as error:
