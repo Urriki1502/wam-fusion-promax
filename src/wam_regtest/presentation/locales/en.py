@@ -745,4 +745,5 @@ EN = {
     "errors.FEE_EXCEEDS_AMOUNT": "The fee is larger than the payment amount. Nothing was saved or signed.",
     "errors.FEE_DISPROPORTIONATE": "The fee is too large for this payment amount. Nothing was saved or signed.",
     "errors.FEE_POLICY_UNVERIFIED": "The network fee could not be verified. Nothing was prepared or signed.",
+    "errors.FEE_EXPLICIT_PREPARE_DENIED": "A manually chosen fee is not accepted. Nothing was prepared or signed.",
 }

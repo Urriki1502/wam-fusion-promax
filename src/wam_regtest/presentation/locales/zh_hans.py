@@ -747,4 +747,5 @@ ZH_HANS = {
     "errors.FEE_EXCEEDS_AMOUNT": "手续费大于付款金额。没有保存，也没有签名。",
     "errors.FEE_DISPROPORTIONATE": "手续费相对这笔金额过大。没有保存，也没有签名。",
     "errors.FEE_POLICY_UNVERIFIED": "无法验证网络手续费。没有准备，也没有签名。",
+    "errors.FEE_EXPLICIT_PREPARE_DENIED": "不接受手工选择的手续费。没有准备，也没有签名。",
 }

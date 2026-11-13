@@ -1390,6 +1390,10 @@
       "reason": "Public failure text. Missing or unverifiable network fee data fails closed. Nothing is prepared or signed."
     },
     {
+      "key": "errors.FEE_EXPLICIT_PREPARE_DENIED",
+      "reason": "Public failure text. The shipped app refuses a manually chosen fee. Nothing is prepared or signed."
+    },
+    {
       "key": "wallet.fee_is_network",
       "reason": "Signing copy. The fee is set by the network. The review must show the fee, the total debit and the available balance before Sign."
     },

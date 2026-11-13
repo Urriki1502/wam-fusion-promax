@@ -747,4 +747,5 @@ ID = {
     "errors.FEE_EXCEEDS_AMOUNT": "Biaya lebih besar daripada jumlah pembayaran. Tidak ada yang disimpan atau ditandatangani.",
     "errors.FEE_DISPROPORTIONATE": "Biaya terlalu besar untuk jumlah ini. Tidak ada yang disimpan atau ditandatangani.",
     "errors.FEE_POLICY_UNVERIFIED": "Biaya jaringan tidak dapat diverifikasi. Tidak ada yang disiapkan atau ditandatangani.",
+    "errors.FEE_EXPLICIT_PREPARE_DENIED": "Biaya yang dipilih sendiri tidak diterima. Tidak ada yang disiapkan atau ditandatangani.",
 }

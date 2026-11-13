@@ -461,6 +461,29 @@ class AutomaticFee(unittest.TestCase):
         self.assertNotIn("estimatesmartfee", self.rpc.calls)
 
 
+class ProductionPrepare(unittest.TestCase):
+    def test_shipped_backends_refuse_an_explicit_fee(self):
+        from wam_regtest import ui_settings
+        from wam_regtest.bip39_owner_backend import Bip39ReadOnlyBackend
+        from wam_regtest.wallet_executor import ManagedWalletBackend, WalletExecutorError
+        previous = ui_settings._native
+        ui_settings.use_native_store()
+        try:
+            managed = ManagedWalletBackend.__new__(ManagedWalletBackend)
+            owner = Bip39ReadOnlyBackend.__new__(Bip39ReadOnlyBackend)
+            with self.assertRaisesRegex(WalletExecutorError, "FEE_EXPLICIT_PREPARE_DENIED"):
+                managed.execute("prepare", ("code", 1_000, 155), {})
+            with self.assertRaisesRegex(WalletExecutorError, "FEE_EXPLICIT_PREPARE_DENIED"):
+                owner.execute("prepare", ("code", 1_000, 155), {})
+        finally:
+            ui_settings._native = previous
+        self.assertFalse(ui_settings.native_store_enabled())
+        managed = ManagedWalletBackend.__new__(ManagedWalletBackend)
+        with self.assertRaises(Exception) as caught:
+            managed.execute("prepare", ("code", 1_000, 155), {})
+        self.assertNotEqual(caught.exception.args[:1], ("FEE_EXPLICIT_PREPARE_DENIED",))
+
+
 class RemovedFeeWidget(unittest.TestCase):
     def test_qualification_code_does_not_drive_a_removed_fee_widget(self):
         root = Path(__file__).resolve().parents[1]

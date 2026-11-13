@@ -121,6 +121,7 @@
     "FEE_BELOW_NETWORK_FLOOR": "The fee is below the network minimum. Nothing was saved or signed.",
     "FEE_ABSOLUTE_LIMIT": "The fee exceeds 0.01 WAM. Nothing was saved or signed.",
     "FEE_EXCEEDS_AMOUNT": "The fee is larger than the payment amount. Nothing was saved or signed.",
+    "FEE_EXPLICIT_PREPARE_DENIED": "A manually chosen fee is not accepted. Nothing was prepared or signed.",
     "FEE_DISPROPORTIONATE": "The fee is too large for this payment amount. Nothing was saved or signed.",
     "FEE_POLICY_UNVERIFIED": "The network fee could not be verified. Nothing was prepared or signed."
   },

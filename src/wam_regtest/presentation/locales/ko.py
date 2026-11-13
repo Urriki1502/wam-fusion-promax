@@ -747,4 +747,5 @@ KO = {
     "errors.FEE_EXCEEDS_AMOUNT": "수수료가 지급 금액보다 큽니다. 저장되거나 서명되지 않았습니다.",
     "errors.FEE_DISPROPORTIONATE": "수수료가 이 금액에 비해 너무 큽니다. 저장되거나 서명되지 않았습니다.",
     "errors.FEE_POLICY_UNVERIFIED": "네트워크 수수료를 검증할 수 없습니다. 준비되거나 서명되지 않았습니다.",
+    "errors.FEE_EXPLICIT_PREPARE_DENIED": "직접 선택한 수수료는 받지 않습니다. 준비되거나 서명되지 않았습니다.",
 }

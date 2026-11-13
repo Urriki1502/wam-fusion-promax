@@ -459,7 +459,8 @@ class WalletSession:
         """Explicit fee for tests and non-GUI probes. The production GUI uses prepare_auto.
 
         There is no fee field and no privileged override on the Fusion window,
-        the owner window, or the operational window. Callers that still pass a fee:
+        the owner window, or the operational window. After use_native_store()
+        the shipped backends refuse this action. Callers that still pass a fee:
 
         Unit tests: test_fee_integration, test_tx03_signed_intent_recovery,
         test_q06_bip39_signer_bridge, test_pm006_payment_state_machine,

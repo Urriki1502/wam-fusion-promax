@@ -505,6 +505,8 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
         return result
 
     def _execute_q06(self, action, args, kwargs):
+        from .wallet_executor import refuse_explicit_prepare
+        refuse_explicit_prepare(action)
         if action == 'reconcile_reorg':
             if (self.shared_profile is None or kwargs or len(args)!=1 or type(args[0]) is not bytes):
                 raise Q06ReadOnlyError('Q06_SHARED_RECONCILIATION_DENIED')

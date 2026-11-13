@@ -14,6 +14,13 @@ import time
 class WalletExecutorError(ValueError):pass
 
 
+def refuse_explicit_prepare(action):
+    """The shipped app has no fee field. Tests and qualification stay explicit."""
+    from .ui_settings import native_store_enabled
+    if action == 'prepare' and native_store_enabled():
+        raise WalletExecutorError('FEE_EXPLICIT_PREPARE_DENIED')
+
+
 class FrozenDict(dict):
     def _deny(self,*args,**kwargs):raise TypeError('IMMUTABLE_WALLET_RESULT')
     __setitem__=__delitem__=clear=pop=popitem=setdefault=update=__ior__=_deny
@@ -208,6 +215,7 @@ class ManagedWalletBackend:
         if self.session is not None:self.session.lock()
 
     def execute(self,action,args,kwargs):
+        refuse_explicit_prepare(action)
         if action in ('network_status','network_active'):
             from .shared_regtest import SharedRegtestProfile, peer_status, block_magic
             from .managed_wallet_checkpoint import _owned

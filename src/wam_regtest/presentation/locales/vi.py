@@ -747,4 +747,5 @@ VI = {
     "errors.FEE_EXCEEDS_AMOUNT": "Phí lớn hơn số tiền thanh toán. Không có gì được lưu hay ký.",
     "errors.FEE_DISPROPORTIONATE": "Phí quá lớn so với số tiền này. Không có gì được lưu hay ký.",
     "errors.FEE_POLICY_UNVERIFIED": "Không thể xác minh phí mạng. Không có gì được chuẩn bị hay ký.",
+    "errors.FEE_EXPLICIT_PREPARE_DENIED": "Phí chọn bằng tay không được chấp nhận. Không có gì được chuẩn bị hay ký.",
 }

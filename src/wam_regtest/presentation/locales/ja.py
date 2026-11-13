@@ -747,4 +747,5 @@ JA = {
     "errors.FEE_EXCEEDS_AMOUNT": "手数料が支払い金額より大きいです。保存も署名もされていません。",
     "errors.FEE_DISPROPORTIONATE": "手数料がこの支払い金額に対して大きすぎます。保存も署名もされていません。",
     "errors.FEE_POLICY_UNVERIFIED": "ネットワーク手数料を検証できませんでした。準備も署名もされていません。",
+    "errors.FEE_EXPLICIT_PREPARE_DENIED": "手で選んだ手数料は受け付けません。準備も署名もされていません。",
 }
