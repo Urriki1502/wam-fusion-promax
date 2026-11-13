@@ -14,9 +14,10 @@ from unittest.mock import patch
 
 from wam_regtest.qualification.fee_regtest import (
     CHARACTERIZATION_PENDING_STATUS, FIXTURES, OUTSIDE_STEP,
-    aggregate_status, assertions_pass, assert_tma, exact_atoms, json_capture,
-    proposal_trace_holds, required_assertions, sign_order_holds,
-    valid_characterization_result, valid_pass_result, write_artifact,
+    TMA_FLOAT_CONVERSION_NOTE, aggregate_status, assertions_pass, assert_tma,
+    exact_atoms, json_capture, proposal_trace_holds, required_assertions,
+    sign_order_holds, tma_capture, valid_characterization_result,
+    valid_pass_result, write_artifact,
 )
 from wam_regtest.qualification.fee_regtest_runner import (
     QUALIFICATION_COMMANDS, QualificationFeeExecutor, approve_payment,
@@ -171,13 +172,30 @@ class Evidence(unittest.TestCase):
 
 
 class Oracles(unittest.TestCase):
-    def _empty_smart_policy(self):
-        return [
+    def _empty_smart_policy(self, *, blocks=0, reads=1, targets=(2, 6, 25)):
+        smart_entries = [
+            {
+                "method": "estimatesmartfee",
+                "target": target,
+                "result": json_capture({"errors": ["Insufficient data or no feerate found"], "blocks": blocks}),
+            }
+            for target in targets
+        ]
+        one_read = [
             {"method": "getnetworkinfo", "result": json_capture({"relayfee": Decimal("0.00001000")})},
             {"method": "getmempoolinfo", "result": json_capture({"mempoolminfee": Decimal("0.00001000"),
                                                               "minrelaytxfee": Decimal("0.00001000")})},
-            *[{"method": "estimatesmartfee",
-               "result": json_capture({"errors": ["Insufficient data or no feerate found"], "blocks": 0})}] * 3,
+            *smart_entries,
+        ]
+        return one_read * reads
+
+    def _prepare_events(self):
+        return ["ACTION_PREPARE_AUTO", *(["POLICY_READ"] * 6), "PROPOSE", "SAVE"]
+
+    def _prepare_and_sign_events(self):
+        return [
+            "ACTION_PREPARE_AUTO", *(["POLICY_READ"] * 6), "PROPOSE", "SAVE",
+            "ACTION_SIGN", *(["POLICY_READ"] * 6), "MARK_SIGNED", "SAVE", "SIGN",
         ]
 
     def test_quote_oracle_detects_floor_arithmetic_and_structure_mismatches(self):
@@ -187,30 +205,82 @@ class Oracles(unittest.TestCase):
             vsize=155, rate_atoms_per_kvb=1000, available_after=0, input_count=1,
             atoms=100_000, fee=155, overpay_atoms=0, change_atoms=899_845,
             available_before=1_000_000, total_debit=100_155)
-        observations = {"proposals": [155], "releases": [], "policy": self._empty_smart_policy()}
+        observations = {
+            "proposals": [155],
+            "releases": [],
+            "events": self._prepare_events(),
+            "policy": self._empty_smart_policy(),
+        }
         self.assertTrue(assertions_pass(quote_checks(review, FIXTURES[0], observations)))
         review.change_atoms -= 1
         self.assertFalse(assertions_pass(quote_checks(review, FIXTURES[0], observations)))
 
-    def test_unavailable_smart_pins_exact_v013_insufficient_data_structure(self):
+    def test_unavailable_smart_matches_policy_read_count_and_blocks_target_bound(self):
         review = SimpleNamespace(
             fee_quote=SimpleNamespace(estimator="UNAVAILABLE", source="NETWORK_FLOOR",
                 rate_atoms_per_kvb=1000, floor_atoms_per_kvb=1000),
             vsize=155, rate_atoms_per_kvb=1000, available_after=0, input_count=1,
             atoms=100_000, fee=155, overpay_atoms=0, change_atoms=899_845,
             available_before=1_000_000, total_debit=100_155)
-        bad_cases = (
-            [{"method": "estimatesmartfee", "result": json_capture({"errors": ["Insufficient data"], "blocks": 0})}] * 3,
-            [{"method": "estimatesmartfee", "result": json_capture({"errors": ["Insufficient data or no feerate found"], "blocks": 1})}] * 3,
-            [{"method": "estimatesmartfee", "result": json_capture({"errors": ["Insufficient data or no feerate found"]})}] * 3,
-            [{"method": "estimatesmartfee", "result": json_capture({"errors": ["Insufficient data or no feerate found"], "blocks": 0})}] * 2,
-        )
+
+        # 1 policy read -> 3 captures (blocks=0 and blocks=1 <= target) pass.
+        for blocks in (0, 1, 2):
+            with self.subTest(reads=1, blocks=blocks):
+                checks = quote_checks(review, FIXTURES[0], {
+                    "proposals": [155],
+                    "releases": [],
+                    "events": self._prepare_events(),
+                    "policy": self._empty_smart_policy(blocks=blocks, reads=1),
+                })
+                self.assertTrue(checks["unavailable_smart"])
+                self.assertTrue(checks["floor_quote"])
+
+        # 2 policy reads (prepare + sign re-read) -> 6 captures (blocks=0 and blocks=1) pass.
+        for blocks in (0, 1):
+            with self.subTest(reads=2, blocks=blocks):
+                checks = quote_checks(review, FIXTURES[1], {
+                    "proposals": [155],
+                    "releases": [],
+                    "events": self._prepare_and_sign_events(),
+                    "policy": self._empty_smart_policy(blocks=blocks, reads=2),
+                })
+                self.assertTrue(checks["unavailable_smart"])
+                self.assertTrue(checks["floor_quote"])
+
+        # Count mismatches, missing targets, blocks > target, bad blocks, or non-unavailable replies fail.
         base_policy = self._empty_smart_policy()[:2]
-        for smart in bad_cases:
-            checks = quote_checks(review, FIXTURES[0], {
-                "proposals": [155], "releases": [], "policy": [*base_policy, *smart],
-            })
-            self.assertFalse(checks["unavailable_smart"])
+        def smart(target, blocks=0, errors=None, extra=None):
+            payload = {"errors": errors if errors is not None else ["Insufficient data or no feerate found"]}
+            if blocks is not None:
+                payload["blocks"] = blocks
+            if extra:
+                payload.update(extra)
+            return {"method": "estimatesmartfee", "target": target, "result": json_capture(payload)}
+
+        bad_cases = (
+            ("wrong_error_text", self._prepare_events(), [*base_policy, *[smart(t, 0, ["Insufficient data"]) for t in (2, 6, 25)]]),
+            ("blocks_exceeds_target_2", self._prepare_events(), [*base_policy, smart(2, 3), smart(6, 1), smart(25, 1)]),
+            ("blocks_exceeds_target_6", self._prepare_events(), [*base_policy, smart(2, 1), smart(6, 7), smart(25, 1)]),
+            ("blocks_negative", self._prepare_events(), [*base_policy, smart(2, -1), smart(6, 0), smart(25, 0)]),
+            ("blocks_bool", self._prepare_events(), [*base_policy, smart(2, True), smart(6, 0), smart(25, 0)]),
+            ("blocks_missing", self._prepare_events(), [*base_policy, *[smart(t, None) for t in (2, 6, 25)]]),
+            ("feerate_present", self._prepare_events(), [*base_policy, smart(2, 0, extra={"feerate": Decimal("0.00020000")}), smart(6, 0), smart(25, 0)]),
+            ("missing_target", self._prepare_events(), [*base_policy, *[{"method": "estimatesmartfee", "result": json_capture({"errors": ["Insufficient data or no feerate found"], "blocks": 0})}] * 3]),
+            ("too_few_for_1_read", self._prepare_events(), [*base_policy, smart(2, 0), smart(6, 0)]),
+            ("6_captures_for_1_read_trace", self._prepare_events(), self._empty_smart_policy(blocks=0, reads=2)),
+            ("3_captures_for_2_read_trace", self._prepare_and_sign_events(), self._empty_smart_policy(blocks=0, reads=1)),
+            ("sign_missing_policy_read", ["ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE", "ACTION_SIGN", "MARK_SIGNED", "SAVE", "SIGN"], self._empty_smart_policy(blocks=0, reads=1)),
+            ("empty_events", [], self._empty_smart_policy(blocks=0, reads=1)),
+        )
+        for label, events, policy in bad_cases:
+            with self.subTest(label=label):
+                checks = quote_checks(review, FIXTURES[0], {
+                    "proposals": [155],
+                    "releases": [],
+                    "events": events,
+                    "policy": policy,
+                })
+                self.assertFalse(checks["unavailable_smart"], label)
 
     def response(self):
         return [{"allowed": True, "txid": "a" * 64, "wtxid": "b" * 64,
@@ -227,6 +297,92 @@ class Oracles(unittest.TestCase):
             changed[0][key] = bad
             self.assertFalse(assertions_pass(assert_tma(changed, 155, 155, "a"*64, "b"*64)))
         self.assertFalse(assertions_pass(assert_tma([], 155, 155, "a"*64, "b"*64)))
+
+    def test_tma_capture_converts_known_float_fields_and_refuses_all_others(self):
+        float_reply = [{
+            "allowed": True,
+            "txid": "a" * 64,
+            "wtxid": "b" * 64,
+            "vsize": 155,
+            "fees": {
+                "base": 1.55e-06,
+                "effective-feerate": 1e-05,
+                "effective-includes": ["b" * 64],
+            },
+        }]
+        # json_capture itself remains strict and refuses floats everywhere.
+        with self.assertRaisesRegex(ValueError, "F3_RPC_TYPE_DENIED"):
+            json_capture(float_reply)
+
+        with localcontext() as ctx:
+            ctx.prec = 2
+            captured = tma_capture(float_reply)
+            checks = assert_tma(float_reply, 155, 155, "a" * 64, "b" * 64)
+        self.assertTrue(assertions_pass(checks))
+        self.assertEqual(captured["decimals"], {
+            "/0/fees/base": "0.00000155",
+            "/0/fees/effective-feerate": "0.00001",
+        })
+        self.assertEqual(captured["float_decoded_fields"], {
+            "/0/fees/base": TMA_FLOAT_CONVERSION_NOTE,
+            "/0/fees/effective-feerate": TMA_FLOAT_CONVERSION_NOTE,
+        })
+        # Original float_reply was not mutated.
+        self.assertIs(type(float_reply[0]["fees"]["base"]), float)
+
+        # F3-03/exact realistic Core reply: 112 vB, 155 atoms, effective-feerate 1383 atoms/kvB.
+        exact_reply = [{
+            "allowed": True,
+            "txid": "a" * 64,
+            "wtxid": "b" * 64,
+            "vsize": 112,
+            "fees": {
+                "base": 1.55e-06,
+                "effective-feerate": 1.383e-05,
+                "effective-includes": ["b" * 64],
+            },
+        }]
+        self.assertTrue(assertions_pass(assert_tma(exact_reply, 112, 155, "a" * 64, "b" * 64)))
+
+        # Fractional-atom fees.base is refused.
+        for bad_base in (1.551e-06, 1e-09, 0.1 + 0.2, -1.55e-06, -0.0):
+            bad_reply = copy.deepcopy(float_reply)
+            bad_reply[0]["fees"]["base"] = bad_base
+            with self.subTest(bad_base=bad_base):
+                with self.assertRaisesRegex(ValueError, "F3_AMOUNT_PRECISION"):
+                    tma_capture(bad_reply)
+                self.assertFalse(assert_tma(bad_reply, 155, 155, "a" * 64, "b" * 64)["base_fee"])
+
+        # Non-finite floats in known TMA fields are refused.
+        for nonfinite in (float("nan"), float("inf"), float("-inf")):
+            bad_reply = copy.deepcopy(float_reply)
+            bad_reply[0]["fees"]["base"] = nonfinite
+            with self.subTest(nonfinite=nonfinite):
+                with self.assertRaisesRegex(ValueError, "F3_RPC_TYPE_DENIED"):
+                    tma_capture(bad_reply)
+                self.assertFalse(assert_tma(bad_reply, 155, 155, "a" * 64, "b" * 64)["base_fee"])
+
+        # Non-round-trip conversion (e.g. repr mismatch) is refused.
+        with patch("builtins.repr", return_value="0.0000015500000000000002"):
+            with self.assertRaisesRegex(ValueError, "F3_TMA_FLOAT_ROUNDTRIP"):
+                tma_capture(float_reply)
+            self.assertFalse(assert_tma(float_reply, 155, 155, "a" * 64, "b" * 64)["base_fee"])
+
+        # Any float in any other field (or non-list shape) still raises F3_RPC_TYPE_DENIED.
+        other_float_cases = (
+            [{"allowed": True, "txid": "a" * 64, "wtxid": "b" * 64, "vsize": 155.0,
+              "fees": {"base": 1.55e-06, "effective-feerate": 1e-05, "effective-includes": ["b" * 64]}}],
+            [{"allowed": True, "txid": "a" * 64, "wtxid": "b" * 64, "vsize": 155,
+              "fees": {"base": 1.55e-06, "effective-feerate": 1e-05, "ancestor": 1.55e-06, "effective-includes": ["b" * 64]}}],
+            [{"allowed": True, "txid": "a" * 64, "wtxid": "b" * 64, "vsize": 155,
+              "fees": {"base": 1.55e-06, "effective-feerate": 1e-05, "effective-includes": [1.0]}}],
+            [{"allowed": True, "txid": "a" * 64, "wtxid": "b" * 64, "vsize": 155, "extra": 0.5,
+              "fees": {"base": 1.55e-06, "effective-feerate": 1e-05, "effective-includes": ["b" * 64]}}],
+            {"fees": {"base": 1.55e-06}},
+        )
+        for bad_shape in other_float_cases:
+            with self.subTest(bad_shape=bad_shape), self.assertRaisesRegex(ValueError, "F3_RPC_TYPE_DENIED"):
+                tma_capture(bad_shape)
 
     def test_bounded_downward_attempt_matches_reviewed_fee2(self):
         refused_112 = {"fee": 112, "refused": True, "code": "WALLET_INPUT_FUNDS_UNAVAILABLE"}
@@ -262,12 +418,14 @@ class Oracles(unittest.TestCase):
         checks = quote_checks(exact_review, exact_fixture, {
             "proposals": [155, refused, 155],
             "releases": ["r1"],
+            "events": self._prepare_events(),
             "policy": self._empty_smart_policy(),
         })
         self.assertTrue(assertions_pass(checks))
         bad_releases = quote_checks(exact_review, exact_fixture, {
             "proposals": [155, refused, 155],
             "releases": ["r1", "r2"],
+            "events": self._prepare_events(),
             "policy": self._empty_smart_policy(),
         })
         self.assertFalse(bad_releases["released_unsaved_drafts"])
@@ -281,7 +439,7 @@ class Oracles(unittest.TestCase):
         f301_checks = quote_checks(floor_review, FIXTURES[0], {
             "proposals": [155],
             "releases": ["cancel-release"],
-            "events": ["ACTION_PREPARE_AUTO", "PROPOSE", "SAVE", "ACTION_CANCEL", "RELEASE_DRAFT", "SAVE"],
+            "events": ["ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE", "ACTION_CANCEL", "RELEASE_DRAFT", "SAVE"],
             "policy": self._empty_smart_policy(),
         })
         self.assertTrue(f301_checks["released_unsaved_drafts"])
@@ -603,7 +761,7 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
                 inspect_ev = inspect_backend.execute("fee_inspect", (), {})
             write_artifact(root / "fee_inspect.json", inspect_ev)
 
-            # 3. fee_preflight
+            # 3. fee_preflight (realistic product-transport float-decoded TMA reply)
             script = b"\x51\x20" + bytes(32)
             tx = Tx((("11" * 32, 0),), ((100_000, script), (899_845, script)))
             raw_tx = tx.serialize([(bytes(65),)])
@@ -615,8 +773,8 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
                 "wtxid": wtxid,
                 "vsize": 155,
                 "fees": {
-                    "base": Decimal("0.00000155"),
-                    "effective-feerate": Decimal("0.00001000"),
+                    "base": 1.55e-06,
+                    "effective-feerate": 1e-05,
                     "effective-includes": [wtxid],
                 },
             }]
@@ -644,6 +802,10 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
             with patch.object(PSBT, "decode", return_value=fake_psbt):
                 preflight_ev = preflight_backend.execute("fee_preflight", (), {})
             self.assertTrue(all(preflight_ev["checks"].values()))
+            self.assertEqual(preflight_ev["capture"]["float_decoded_fields"], {
+                "/0/fees/base": TMA_FLOAT_CONVERSION_NOTE,
+                "/0/fees/effective-feerate": TMA_FLOAT_CONVERSION_NOTE,
+            })
             write_artifact(root / "tma.json", preflight_ev)
 
             # 4. fee_observe + observed FEE_POLICY_READS
@@ -677,6 +839,8 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
                 self.assertEqual(obs_backend.execute("prepare_auto", (), {}), "ok")
             self.assertFalse(obs.get("observer_errors"))
             self.assertEqual(len(obs["policy"]), 4)
+            self.assertEqual(obs["policy"][2]["target"], 6)
+            self.assertEqual(obs["policy"][3]["target"], 6)
             write_artifact(root / "policy.json", obs["policy"])
             write_artifact(root / "events.json", {k: v for k, v in obs.items() if k != "policy"})
 

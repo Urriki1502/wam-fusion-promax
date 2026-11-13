@@ -29,7 +29,7 @@ from ..wallet_executor import COMMANDS, WalletExecutor, WalletExecutorError
 from .fee_regtest import (
     CHARACTERIZATION_PENDING_STATUS, FIXTURES, INSUFFICIENT_DATA_ERROR_SHA256,
     OUTSIDE_STEP, aggregate_status, assertions_pass, assert_tma, exact_atoms,
-    json_capture, proposal_trace_holds, sign_order_holds,
+    json_capture, proposal_trace_holds, sign_order_holds, tma_capture,
     valid_characterization_result, valid_pass_result, write_artifact,
 )
 
@@ -244,7 +244,12 @@ def backend_type():
                         if a[0] == "getnetworkinfo":
                             result = {k: result[k] for k in
                                       ("version", "subversion", "relayfee", "incrementalfee") if k in result}
-                        o["policy"].append({"method": a[0], "result": json_capture(result)})
+                        entry = {"method": a[0], "result": json_capture(result)}
+                        params = a[1] if len(a) > 1 else None
+                        if (a[0] in ("estimatesmartfee", "estimaterawfee")
+                                and isinstance(params, (list, tuple)) and params and type(params[0]) is int):
+                            entry["target"] = params[0]
+                        o["policy"].append(entry)
                         o["events"].append("POLICY_READ")
 
                 wrap(Wallet, "propose", after=proposal_built, on_error=proposal_refused)
@@ -360,7 +365,7 @@ def backend_type():
             after = rpc._call("getrawmempool", [])
             txid = psbt.txid()
             wtxid = sha256(sha256(raw).digest()).digest()[::-1].hex()
-            return {"capture": json_capture(reply), "raw_sha256": sha256(raw).hexdigest(),
+            return {"capture": tma_capture(reply), "raw_sha256": sha256(raw).hexdigest(),
                     "txid": txid, "wtxid": wtxid, "final_vsize": serialized_vsize(raw),
                     "outputs": [v for v, _ in psbt.tx.outputs],
                     "selected_inputs": [{"txid": c["txid"], "vout": c["vout"], "atoms": c["atoms"]}
@@ -751,37 +756,75 @@ def run_fixture(fixture, app, adapter, core, source, result, actor=None):
             result["failure_code"] = "F3_OBSERVER_CAPTURE_DENIED"
 
 
+def _count_policy_reads(events):
+    """Count contiguous POLICY_READ phases in the observed event trace."""
+    if not isinstance(events, list):
+        return 0
+    return sum(
+        1 for i, event in enumerate(events)
+        if event == "POLICY_READ" and (i == 0 or events[i - 1] != "POLICY_READ")
+    )
+
+
+def _action_has_policy_read(events, action):
+    if action not in events:
+        return True
+    start = events.index(action) + 1
+    end = next((i for i in range(start, len(events))
+                if isinstance(events[i], str) and events[i].startswith("ACTION_")), len(events))
+    return "POLICY_READ" in events[start:end]
+
+
+def _unavailable_smart_entry_holds(entry):
+    target = entry.get("target")
+    if type(target) is not int or not 1 <= target <= 1008:
+        return False
+    response = entry.get("result", {}).get("response", {})
+    blocks = response.get("blocks")
+    return (
+        "feerate" not in response
+        and type(blocks) is int
+        and 0 <= blocks <= target
+        and response.get("errors") == [{"text_sha256": INSUFFICIENT_DATA_ERROR_SHA256}]
+    )
+
+
 def quote_checks(review, fixture, observations):
     # Independent integer equations; no quoted_fee_holds/shared size oracle.
     q = review.fee_quote
     need = (review.vsize * review.rate_atoms_per_kvb + 999)//1000
     selected = sum(fixture.coins) - review.available_after
     policy = observations["policy"]
-    smart = [p["result"]["response"] for p in policy if p["method"] == "estimatesmartfee"]
-    network = next(p["result"]["response"] for p in policy if p["method"] == "getnetworkinfo")
-    mempool = next(p["result"]["response"] for p in policy if p["method"] == "getmempoolinfo")
+    smart_entries = [p for p in policy if p.get("method") == "estimatesmartfee"]
+    networks = [p["result"]["response"] for p in policy if p["method"] == "getnetworkinfo"]
+    mempools = [p["result"]["response"] for p in policy if p["method"] == "getmempoolinfo"]
     # Captured decimal strings carry original type schema alongside them.
     from decimal import Decimal
-    floor = max(exact_atoms(Decimal(v)) for v in
-                (network["relayfee"], mempool["mempoolminfee"], mempool["minrelaytxfee"]))
+    def _measured_floor(net, mem):
+        return max(exact_atoms(Decimal(v)) for v in
+                   (net["relayfee"], mem["mempoolminfee"], mem["minrelaytxfee"]))
+    floor = _measured_floor(networks[0], mempools[0])
+    floors_consistent = (
+        len(networks) == len(mempools)
+        and all(_measured_floor(n, m) == floor for n, m in zip(networks, mempools))
+    )
     fees = observations["proposals"]
     built = [f for f in fees if type(f) is int]
     events = observations.get("events", [])
+    policy_reads = _count_policy_reads(events)
     if "ACTION_CANCEL" in events:
         release_count = events[:events.index("ACTION_CANCEL")].count("RELEASE_DRAFT")
     else:
         release_count = len(observations["releases"])
     return {
         "unavailable_smart": (
-            len(smart) == 3
-            and all(
-                "feerate" not in r
-                and r.get("blocks") == 0
-                and r.get("errors") == [{"text_sha256": INSUFFICIENT_DATA_ERROR_SHA256}]
-                for r in smart
-            )
+            policy_reads > 0
+            and _action_has_policy_read(events, "ACTION_PREPARE_AUTO")
+            and _action_has_policy_read(events, "ACTION_SIGN")
+            and len(smart_entries) == 3 * policy_reads
+            and all(_unavailable_smart_entry_holds(entry) for entry in smart_entries)
         ),
-        "floor_quote": q.estimator == "UNAVAILABLE" and q.source == "NETWORK_FLOOR"
+        "floor_quote": floors_consistent and q.estimator == "UNAVAILABLE" and q.source == "NETWORK_FLOOR"
             and q.rate_atoms_per_kvb == q.floor_atoms_per_kvb == floor == 1000,
         "structure": review.input_count == fixture.inputs and review.vsize == fixture.vsize,
         "exact_intent": review.atoms == fixture.amount,

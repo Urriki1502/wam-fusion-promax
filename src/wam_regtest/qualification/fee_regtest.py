@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from hashlib import sha256
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -15,6 +16,9 @@ import re
 
 CHARACTERIZATION_PENDING_STATUS = "OWNER DECISION PENDING (absorb sub-dust remainder vs refuse)"
 INSUFFICIENT_DATA_ERROR_SHA256 = sha256(b"Insufficient data or no feerate found").hexdigest()
+TMA_FLOAT_CONVERSION_NOTE = (
+    "float-decoded by product transport; converted by shortest-repr with round-trip proof"
+)
 OUTSIDE_STEP = {
     "F3-07": "BLOCKED_STARTUP_SEAM_NOT_IMPLEMENTED",
     "F3-08": "BLOCKED_STARTUP_FILLER_SEAM_NOT_IMPLEMENTED",
@@ -114,6 +118,42 @@ def json_capture(value):
             "sha256": sha256(encoded.encode()).hexdigest()}
 
 
+def _tma_float_to_decimal(value, *, require_whole_atoms):
+    """Convert a transport-decoded float in a known TMA fee field to exact Decimal."""
+    if type(value) is not float or not math.isfinite(value):
+        raise ValueError("F3_RPC_TYPE_DENIED")
+    if value < 0 or math.copysign(1.0, value) < 0:
+        raise ValueError("F3_AMOUNT_PRECISION")
+    converted = Decimal(repr(value))
+    if not converted.is_finite() or float(converted) != value:
+        raise ValueError("F3_TMA_FLOAT_ROUNDTRIP")
+    if require_whole_atoms:
+        exact_atoms(converted)
+    return converted
+
+
+def tma_capture(response):
+    """Capture testmempoolaccept RPC reply, converting only fees.base and fees.effective-feerate floats."""
+    converted_fields = {}
+    normalized = response
+    if type(response) is list:
+        normalized = []
+        for index, row in enumerate(response):
+            if type(row) is dict and type(row.get("fees")) is dict:
+                fees = dict(row["fees"])
+                for field in ("base", "effective-feerate"):
+                    if field in fees and type(fees[field]) is float:
+                        fees[field] = _tma_float_to_decimal(
+                            fees[field], require_whole_atoms=(field == "base"),
+                        )
+                        converted_fields[f"/{index}/fees/{field}"] = TMA_FLOAT_CONVERSION_NOTE
+                row = {**row, "fees": fees}
+            normalized.append(row)
+    capture = json_capture(normalized)
+    capture["float_decoded_fields"] = converted_fields
+    return capture
+
+
 def write_artifact(path, payload):
     """Create-only, owner-private artifacts, with digest of the exact bytes."""
     data = (json.dumps(payload, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
@@ -209,11 +249,17 @@ def assert_tma(response, vsize, fee, txid, wtxid):
     row = response[0] if checks["single_response"] and type(response[0]) is dict else {}
     fees = row.get("fees") if type(row.get("fees")) is dict else {}
     try:
-        base = exact_atoms(fees.get("base"))
+        base_value = fees.get("base")
+        if type(base_value) is float:
+            base_value = _tma_float_to_decimal(base_value, require_whole_atoms=True)
+        base = exact_atoms(base_value)
     except (ValueError, OverflowError):
         base = None
     try:
-        rate = exact_atoms(fees.get("effective-feerate"))
+        rate_value = fees.get("effective-feerate")
+        if type(rate_value) is float:
+            rate_value = _tma_float_to_decimal(rate_value, require_whole_atoms=False)
+        rate = exact_atoms(rate_value)
         # Core reports coin/kvB at atom precision. Permit only the adjacent
         # integer rounding of fee*1000/vsize, never a float tolerance.
         rate_holds = vsize > 0 and abs(rate*vsize - fee*1000) < vsize
