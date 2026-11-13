@@ -757,4 +757,9 @@ JA = {
     "pending.details": "手数料: {fee} WAM · 承認待ちのお釣り: {change} WAM",
     "pending.unverified": "メモリプール不明",
     "pending.history_subtitle": "送信済みの承認待ち取引を先頭に表示します。",
+    "pending.amount_wam": "{amount} WAM",
+    "pending.available_value": "（承認済み）: {amount}",
+    "pending.total_value": "承認待ちの受取／お釣り: {amount}",
+    "pending.spent_value": "使用承認待ちの承認済み入力: {amount}",
+    "pending.details_value": "手数料: {fee} · 承認待ちのお釣り: {change}",
 }

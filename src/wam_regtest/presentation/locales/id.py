@@ -757,4 +757,9 @@ ID = {
     "pending.details": "Biaya: {fee} WAM · Kembalian tertunda: {change} WAM",
     "pending.unverified": "Mempool tidak diketahui",
     "pending.history_subtitle": "Transaksi tersiar yang tertunda ditampilkan lebih dahulu.",
+    "pending.amount_wam": "{amount} WAM",
+    "pending.available_value": "(terkonfirmasi): {amount}",
+    "pending.total_value": "Penerimaan / kembalian tertunda: {amount}",
+    "pending.spent_value": "Input terkonfirmasi menunggu dibelanjakan: {amount}",
+    "pending.details_value": "Biaya: {fee} · Kembalian tertunda: {change}",
 }

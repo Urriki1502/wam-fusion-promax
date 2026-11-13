@@ -757,4 +757,9 @@ VI = {
     "pending.details": "Phí: {fee} WAM · Tiền thừa đang chờ: {change} WAM",
     "pending.unverified": "Chưa rõ mempool",
     "pending.history_subtitle": "Giao dịch đã phát đang chờ được hiển thị trước.",
+    "pending.amount_wam": "{amount} WAM",
+    "pending.available_value": "(đã xác nhận): {amount}",
+    "pending.total_value": "Tiền nhận / tiền thừa đang chờ: {amount}",
+    "pending.spent_value": "Đầu vào đã xác nhận đang chờ chi: {amount}",
+    "pending.details_value": "Phí: {fee} · Tiền thừa đang chờ: {change}",
 }

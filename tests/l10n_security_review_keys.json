@@ -1448,6 +1448,26 @@
     {
       "key": "pending.history_subtitle",
       "reason": "Pending payments and balance certainty; unconfirmed change is never spendable confirmed value."
+    },
+    {
+      "key": "pending.amount_wam",
+      "reason": "PM-041: pending amount presentation; unknown values carry no unit. Pending native review."
+    },
+    {
+      "key": "pending.available_value",
+      "reason": "PM-041: pending amount presentation; unknown values carry no unit. Pending native review."
+    },
+    {
+      "key": "pending.total_value",
+      "reason": "PM-041: pending amount presentation; unknown values carry no unit. Pending native review."
+    },
+    {
+      "key": "pending.spent_value",
+      "reason": "PM-041: pending amount presentation; unknown values carry no unit. Pending native review."
+    },
+    {
+      "key": "pending.details_value",
+      "reason": "PM-041: pending amount presentation; unknown values carry no unit. Pending native review."
     }
   ]
 }

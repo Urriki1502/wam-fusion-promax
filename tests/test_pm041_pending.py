@@ -130,6 +130,94 @@ class PendingWidgets(unittest.TestCase):
         page.render_snapshot(replace(self.snapshot(), pending_atoms=None, pending_spent_atoms=None), operational=True)
         self.assertIn('unknown', page.fund_details.text())
 
+    def test_pending_row_fits_wrapped_details_in_six_languages_and_widths(self):
+        from itertools import product
+        from unittest.mock import patch
+        from PySide6.QtCore import QRect, Qt
+        from PySide6.QtGui import QFontMetrics
+        from PySide6.QtWidgets import QStyleOptionViewItem
+        from wam_regtest import bip39_locale
+        from wam_regtest.fusion_ui import FusionOverview, fusion_stylesheet
+        from wam_regtest.presentation.strings import SUPPORTED_LANGUAGES
+        for language, font_size in product(SUPPORTED_LANGUAGES, (14, 18)):
+            with patch.object(bip39_locale, '_lang', return_value=language):
+                page = FusionOverview()
+                page.setStyleSheet(fusion_stylesheet('dark') +
+                                  f'QTableWidget {{font-size:{font_size}px;}}')
+                try:
+                    snap = self.snapshot()
+                    snap = replace(snap, pending_history=(replace(
+                        snap.pending_history[0], fee_atoms=1234567890123,
+                        pending_change_atoms=987654321098765),))
+                    page.render_snapshot(snap, operational=True)
+                    page.show()
+                    # Resize the same page to exercise reflow in both directions.
+                    for width in (900, 1100, 1440, 900):
+                        with self.subTest(language=language, width=width, font_size=font_size):
+                            page.resize(width, 900)
+                            for _ in range(3):
+                                self.app.processEvents()
+                            table = page.activity_table
+                            index = table.model().index(0, 2)
+                            item = table.item(0, 2)
+                            self.assertIn('\n', item.text())
+                            option = QStyleOptionViewItem()
+                            option.initFrom(table)
+                            option.font = table.font()
+                            table.itemDelegate().initStyleOption(option, index)
+                            # Fusion item padding is 10px per edge; include the grid edge.
+                            rect = table.visualRect(index)
+                            required = QFontMetrics(option.font).boundingRect(
+                                QRect(0, 0, rect.width() - 21, 10000),
+                                Qt.TextFlag.TextWordWrap, item.text()).height() + 21
+                            self.assertGreaterEqual(table.rowHeight(0), required)
+                finally:
+                    page.close()
+                    page.deleteLater()
+
+    def test_unverified_fields_have_no_amount_unit_in_each_language(self):
+        from unittest.mock import patch
+        from wam_regtest import bip39_locale
+        from wam_regtest.fusion_ui import FusionOverview
+        from wam_regtest.fusion_pages import HistoryPage
+        from wam_regtest.presentation.strings import CATALOG
+        for language, catalog in CATALOG.items():
+            with self.subTest(language=language), patch.object(bip39_locale, '_lang', return_value=language):
+                overview, history = FusionOverview(), HistoryPage()
+                try:
+                    snap = self.snapshot()
+                    snap = replace(snap, available_atoms=None, pending_atoms=None,
+                                   pending_spent_atoms=None, pending_history=(replace(
+                                       snap.pending_history[0], fee_atoms=None,
+                                       pending_change_atoms=None),))
+                    overview.render_snapshot(snap, operational=True)
+                    funds = overview.fund_details.text()
+                    self.assertEqual(funds.count(catalog['pending.unknown']), 3)
+                    self.assertNotIn('WAM', funds)
+                    status = overview.activity_table.item(0, 2).text()
+                    history.render_snapshot(snap)
+                    history.table.selectRow(0)
+                    details = history.detail_values.text().split('\n')[1]
+                    for text in (status, details):
+                        self.assertEqual(text.count(catalog['pending.unknown']), 2)
+                        self.assertNotIn('WAM', text)
+                    # Verify mixed known/unknown fee and change independently.
+                    for fee, change in ((None, 6900), (100, None)):
+                        mixed = replace(snap, pending_history=(replace(
+                            snap.pending_history[0], fee_atoms=fee,
+                            pending_change_atoms=change),))
+                        overview.render_snapshot(mixed, operational=True)
+                        history.render_snapshot(mixed)
+                        history.table.selectRow(0)
+                        for text in (overview.activity_table.item(0, 2).text(),
+                                     history.detail_values.text().split('\n')[1]):
+                            self.assertNotIn(catalog['pending.unknown'] + ' WAM', text)
+                            self.assertEqual(text.count('WAM'), 1)
+                            self.assertIn('0.00006900' if fee is None else '0.00000100', text)
+                finally:
+                    overview.deleteLater()
+                    history.deleteLater()
+
     def test_six_locale_keys_and_review_queue(self):
         import json
         from pathlib import Path

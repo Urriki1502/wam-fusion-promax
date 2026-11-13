@@ -3,7 +3,7 @@ from __future__ import annotations
 from .bip39_locale import t as ui_text
 from .presentation.strings import CATALOG
 
-from PySide6.QtCore import QEvent, QObject, Qt, QRectF, QPointF, QSize, Signal, Property, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import QEvent, QObject, Qt, QRect, QRectF, QPointF, QSize, Signal, Property, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import (
     QColor, QPainter, QPen, QIcon, QPixmap, QPolygonF, QLinearGradient,
     QPainterPath, QFont, QFontMetrics, QRadialGradient,
@@ -11,7 +11,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication, QBoxLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea,
     QVBoxLayout, QWidget, QToolTip, QSizePolicy, QTableWidget, QTableWidgetItem,
-    QPlainTextEdit, QCheckBox, QToolButton, QButtonGroup,
+    QPlainTextEdit, QCheckBox, QToolButton, QButtonGroup, QHeaderView, QStyledItemDelegate, QStyleOptionViewItem,
 )
 from .wallet_read import WalletReadSnapshot, format_wam
 from .branding import brand_image
@@ -1334,6 +1334,27 @@ class BalanceHistoryChart(QWidget):
         p.end()
 
 
+class WrappedActivityDelegate(QStyledItemDelegate):
+    """Measure wrapped text including fallback glyphs and Fusion item padding."""
+    def sizeHint(self, option, index):
+        size = super().sizeHint(option, index)
+        measured = QStyleOptionViewItem(option)
+        self.initStyleOption(measured, index)
+        # Match Fusion's 10px item padding, leaving one pixel for the row edge.
+        bounds = QFontMetrics(measured.font).boundingRect(
+            QRect(0, 0, max(1, self.parent().columnWidth(index.column()) - 21), 10000),
+            Qt.TextFlag.TextWordWrap, index.data(Qt.ItemDataRole.DisplayRole) or '')
+        size.setHeight(max(size.height(), bounds.height() + 21))
+        return size
+
+
+def pending_amount_text(value, *, grouped=False):
+    """Keep unknown presentation unitless; only verified amounts carry WAM."""
+    if type(value) is int and value >= 0:
+        return ui_text('pending.amount_wam').format(amount=format_wam(value, grouped=grouped))
+    return ui_text('pending.unknown')
+
+
 class FusionOverview(QScrollArea):
     transaction_selected = Signal(str)
 
@@ -1433,8 +1454,14 @@ class FusionOverview(QScrollArea):
         top.addWidget(self.open_history); alayout.addLayout(top)
         self.activity_table = QTableWidget(0, 3)
         self.activity_table.setObjectName('FusionActivityTable')
+        self.activity_table.setItemDelegate(WrappedActivityDelegate(self.activity_table))
         self.activity_table.setHorizontalHeaderLabels((ui_text('fusion.activity'), ui_text('fusion.amount'), ui_text('fusion.status')))
         self.activity_table.verticalHeader().hide()
+        self.activity_table.verticalHeader().setMinimumSectionSize(58)
+        self.activity_table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        # Reflow wrapped pending details when the status column changes width.
+        self.activity_table.horizontalHeader().sectionResized.connect(
+            lambda *_: self.activity_table.resizeRowsToContents())
         self.activity_table.setShowGrid(False)
         self.activity_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.activity_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -1568,11 +1595,9 @@ class FusionOverview(QScrollArea):
             + (ui_text('fusion.regtest_shared') if network.get('shared') else ui_text('fusion.regtest_isolated')))
         if available_atoms is None:
             available_atoms = snap.available_atoms
-        def amount_text(value):
-            return format_wam(value, grouped=True) if type(value) is int and value >= 0 else ui_text('pending.unknown')
-        funds = [ui_text('fusion.spendable') + ui_text('pending.available').format(amount=amount_text(available_atoms)),
-                 ui_text('pending.total').format(amount=amount_text(snap.pending_atoms)),
-                 ui_text('pending.spent').format(amount=amount_text(snap.pending_spent_atoms))]
+        funds = [ui_text('fusion.spendable') + ui_text('pending.available_value').format(amount=pending_amount_text(available_atoms, grouped=True)),
+                 ui_text('pending.total_value').format(amount=pending_amount_text(snap.pending_atoms, grouped=True)),
+                 ui_text('pending.spent_value').format(amount=pending_amount_text(snap.pending_spent_atoms, grouped=True))]
         if type(reservation_count) is int and reservation_count > 0:
             funds.append(str(reservation_count) + ui_text('fusion.reserved_input_s_stay_unavailable'))
         self.fund_details.setText('  ·  '.join(funds))
@@ -1606,8 +1631,9 @@ class FusionOverview(QScrollArea):
             if getattr(tx, 'state', None) == 'pending':
                 status = ui_text('pending.state')
                 if tx.debit_atoms:
-                    status += '\n' + ui_text('pending.details').format(
-                        fee=amount_text(tx.fee_atoms), change=amount_text(tx.pending_change_atoms))
+                    status += '\n' + ui_text('pending.details_value').format(
+                        fee=pending_amount_text(tx.fee_atoms, grouped=True),
+                        change=pending_amount_text(tx.pending_change_atoms, grouped=True))
             activity_text = direction + '\n' + tx.txid[:12] + '…'
             for j, text in enumerate((activity_text, amount, status)):
                 item = QTableWidgetItem(text)
@@ -1620,4 +1646,4 @@ class FusionOverview(QScrollArea):
                 if j == 1:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 self.activity_table.setItem(i, j, item)
-            self.activity_table.setRowHeight(i, 58)
+        self.activity_table.resizeRowsToContents()

@@ -757,4 +757,9 @@ KO = {
     "pending.details": "수수료: {fee} WAM · 대기 중인 거스름돈: {change} WAM",
     "pending.unverified": "멤풀 상태 알 수 없음",
     "pending.history_subtitle": "전파 후 대기 중인 거래가 먼저 표시됩니다.",
+    "pending.amount_wam": "{amount} WAM",
+    "pending.available_value": "(확인됨): {amount}",
+    "pending.total_value": "대기 중인 수신 / 거스름돈: {amount}",
+    "pending.spent_value": "지출 대기 중인 확인된 입력: {amount}",
+    "pending.details_value": "수수료: {fee} · 대기 중인 거스름돈: {change}",
 }

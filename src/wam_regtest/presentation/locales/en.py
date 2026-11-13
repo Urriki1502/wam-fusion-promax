@@ -755,4 +755,9 @@ EN = {
     "pending.details": "Fee: {fee} WAM · Pending change: {change} WAM",
     "pending.unverified": "Mempool unknown",
     "pending.history_subtitle": "Pending broadcasts are shown first.",
+    "pending.amount_wam": "{amount} WAM",
+    "pending.available_value": "(confirmed): {amount}",
+    "pending.total_value": "Pending incoming / change: {amount}",
+    "pending.spent_value": "Confirmed inputs pending spend: {amount}",
+    "pending.details_value": "Fee: {fee} · Pending change: {change}",
 }

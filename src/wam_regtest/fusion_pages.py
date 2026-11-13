@@ -4,7 +4,7 @@ from .bip39_locale import t as ui_text
 from PySide6.QtCore import Qt, Signal, QRectF, QTimer
 from PySide6.QtGui import QColor,QPainter,QFont,QFontDatabase
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QLineEdit,QComboBox,QCheckBox,QTableWidget,QTableWidgetItem,QHeaderView,QApplication,QDialog,QDialogButtonBox,QFrame
-from .fusion_ui import label,panel,page,action,ResponsiveRow,AdaptiveButtonRow,keyboard_table,vector_icon,fusion_palette,activity_by_block,grow_with_wrapped_text,direction_tone,QR
+from .fusion_ui import label,panel,page,action,ResponsiveRow,AdaptiveButtonRow,keyboard_table,vector_icon,fusion_palette,activity_by_block,grow_with_wrapped_text,direction_tone,QR,pending_amount_text
 from .wallet_read import format_wam
 
 
@@ -156,9 +156,9 @@ class HistoryPage(QWidget):
             text += ' · ' + ui_text('pages.credit_wam') + ': ' + format_wam(tx.credit_atoms)
             text += ' · ' + ui_text('pages.debit_wam') + ': ' + format_wam(tx.debit_atoms)
             if tx.debit_atoms:
-                text += '\n' + ui_text('pending.details').format(
-                    fee=ui_text('pending.unknown') if tx.fee_atoms is None else format_wam(tx.fee_atoms),
-                    change=ui_text('pending.unknown') if tx.pending_change_atoms is None else format_wam(tx.pending_change_atoms))
+                text += '\n' + ui_text('pending.details_value').format(
+                    fee=pending_amount_text(tx.fee_atoms),
+                    change=pending_amount_text(tx.pending_change_atoms))
             self.detail_values.setText(text)
         else:
             self.detail_values.setText(ui_text('pages.block_amounts').format(height=tx.block_height, confirmations=tx.confirmations, credit=format_wam(tx.credit_atoms), debit=format_wam(tx.debit_atoms)))

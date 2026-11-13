@@ -757,4 +757,9 @@ ZH_HANS = {
     "pending.details": "手续费: {fee} WAM · 待确认找零: {change} WAM",
     "pending.unverified": "内存池状态未知",
     "pending.history_subtitle": "已广播的待确认交易优先显示。",
+    "pending.amount_wam": "{amount} WAM",
+    "pending.available_value": "（已确认）: {amount}",
+    "pending.total_value": "待确认收款／找零: {amount}",
+    "pending.spent_value": "待花费的已确认输入: {amount}",
+    "pending.details_value": "手续费: {fee} · 待确认找零: {change}",
 }
