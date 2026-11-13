@@ -215,8 +215,16 @@ def gate(report, *, cases_dir, source_sha, checkout_sha, inventory_sha256,
     """Return the list of failed checks; empty means the frozen report PASSES.
 
     Fails closed on a missing/unknown row, a NOT RUN or non-PASS required row,
-    a PASS claimed for a non-frozen row, a changed per-case result file, or any
-    disagreement with the bundle's source, executable, Core or WSP identity.
+    a PASS claimed for a non-frozen row, a changed per-case result file, a
+    case filed under another row, or any disagreement with the bundle's
+    source, executable, Core or WSP identity.
+
+    Row binding: each row's result.json must name that row's case_id and
+    fixture, be a regular file in that row's own folder, and have a digest and
+    disposable profile that no other row uses. Its artifact digests must match
+    regular files in that same folder. Artifact digests themselves are NOT
+    required to be unique: refusal rows legitimately write identical bytes
+    (e.g. an empty tma.json).
     """
     problems = []
 
@@ -233,6 +241,9 @@ def gate(report, *, cases_dir, source_sha, checkout_sha, inventory_sha256,
     check(report.get("frozen") is True, "F3_FROZEN_NOT_FROZEN")
     check(report.get("test_layer") == FROZEN_TEST_LAYER, "F3_FROZEN_LAYER")
     check(report.get("source_unchanged") is True, "F3_FROZEN_SOURCE_CHANGED")
+    check(report.get("flag") == FLAG, "F3_FROZEN_FLAG")
+    check(report.get("accepted") is False, "F3_FROZEN_ACCEPTED_CLAIMED")
+    check(report.get("engineering_handoff") is False, "F3_FROZEN_HANDOFF_CLAIMED")
     os_info = report.get("os")
     check(type(os_info) is dict and os_info.get("qt_platform") == "cocoa", "F3_FROZEN_QT_PLATFORM")
     expected_source = {"candidate_source_sha": source_sha, "checkout_sha": checkout_sha,
@@ -264,6 +275,7 @@ def gate(report, *, cases_dir, source_sha, checkout_sha, inventory_sha256,
         check(type(row.get("reason")) is str and _CODE.match(row["reason"]) is not None,
               "F3_FROZEN_NON_FROZEN_ROW_REASON:" + name)
     folder = Path(cases_dir)
+    seen_results, seen_profiles = {}, {}
     for fixture in FROZEN_FIXTURES:
         name = row_name(fixture)
         row = rows.get(name)
@@ -276,6 +288,8 @@ def gate(report, *, cases_dir, source_sha, checkout_sha, inventory_sha256,
         path = folder / fixture.case / fixture.name / "result.json"
         digest = row.get("result_sha256")
         try:
+            if path.is_symlink() or path.parent.is_symlink():
+                raise OSError("linked")
             raw = path.read_bytes()
             result = json.loads(raw)
         except (OSError, ValueError):
@@ -286,7 +300,18 @@ def gate(report, *, cases_dir, source_sha, checkout_sha, inventory_sha256,
         check(type(result) is dict and valid_frozen_pass_result(result),
               "F3_FROZEN_CASE_CONTRACT:" + name)
         if type(result) is not dict:
+            problems.append("F3_FROZEN_CASE_IDENTITY:" + name)
             continue
+        # The file under this row must BE this row's case, not another row's.
+        check(result.get("case_id") == fixture.case and result.get("fixture") == fixture.name,
+              "F3_FROZEN_CASE_IDENTITY:" + name)
+        for seen, value, code in ((seen_results, digest, "F3_FROZEN_CASE_RESULT_REUSED:"),
+                                  (seen_profiles, result.get("profile_fixture_id"),
+                                   "F3_FROZEN_CASE_PROFILE_REUSED:")):
+            if type(value) is str and value in seen:
+                problems.append(code + name)
+            elif type(value) is str:
+                seen[value] = name
         check(result.get("source") == source, "F3_FROZEN_CASE_SOURCE_MISMATCH:" + name)
         check(type(result.get("core")) is dict
               and result["core"].get("members") == core_sha256, "F3_FROZEN_CASE_CORE_MISMATCH:" + name)
@@ -296,6 +321,7 @@ def gate(report, *, cases_dir, source_sha, checkout_sha, inventory_sha256,
         for artifact in ("policy.json", "events.json", "tma.json"):
             artifact_path = path.parent / artifact
             check(type(artifacts) is dict and artifact_path.is_file()
+                  and not artifact_path.is_symlink()
                   and artifacts.get(artifact) == _file_sha256(artifact_path),
                   "F3_FROZEN_CASE_ARTIFACT_DIGEST:" + name + "/" + artifact)
     return problems

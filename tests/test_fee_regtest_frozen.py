@@ -2,7 +2,9 @@
 import ast
 import contextlib
 import copy
+import hashlib
 import importlib.util
+import shutil
 import io
 import json
 import os
@@ -49,7 +51,8 @@ def passing_fields(fixture):
         "core_runtime": {"version": 113, "peers": 0, "genesis": "4" * 64, "chain": "regtest",
                          "subversion": "/WAM:0.1.13/", "funding": []},
         "baseline": {"quote": {"floor_atoms_per_kvb": 1000}},
-        "profile_fixture_id": "5" * 64,
+        # run() gives every case a NEW mkdtemp profile, so ids are per-row unique.
+        "profile_fixture_id": hashlib.sha256(frozen.row_name(fixture).encode()).hexdigest(),
         "cleanup": {"verified_original_owner_shutdown": True, "profile_retained": True,
                     "actor": "test", "action": "none"},
     }
@@ -236,6 +239,83 @@ class ReportGate(unittest.TestCase):
             bad = copy.deepcopy(report)
             bad[key] = value
             self.assertIn(code, self.gate(bad, cases), key)
+
+    # --- PEER-124 round 1: row binding and report claims -------------------
+
+    def _move_case(self, cases, source_fixture, target_fixture):
+        """Overwrite target's four files with source's bytes (no rewrite)."""
+        source = cases / source_fixture.case / source_fixture.name
+        target = cases / target_fixture.case / target_fixture.name
+        for name in ("policy.json", "events.json", "tma.json", "result.json"):
+            (target / name).chmod(0o600)
+            (target / name).write_bytes((source / name).read_bytes())
+
+    def _fixture(self, case, name):
+        return next(f for f in frozen.FROZEN_FIXTURES if (f.case, f.name) == (case, name))
+
+    def test_reviewer_swap_f3_02_change_filed_as_f3_01_floor_is_refused(self):
+        report, cases = write_report(self.folder.name)
+        floor, change = self._fixture("F3-01", "floor"), self._fixture("F3-02", "change")
+        self._move_case(cases, change, floor)
+        report["rows"]["F3-01/floor"]["result_sha256"] = hashlib.sha256(
+            (cases / "F3-01" / "floor" / "result.json").read_bytes()).hexdigest()
+        problems = self.gate(report, cases)
+        self.assertIn("F3_FROZEN_CASE_IDENTITY:F3-01/floor", problems)
+        # The same F3-02 run is now counted twice: its digest and profile repeat.
+        self.assertIn("F3_FROZEN_CASE_RESULT_REUSED:F3-02/change", problems)
+        self.assertIn("F3_FROZEN_CASE_PROFILE_REUSED:F3-02/change", problems)
+
+    def test_swap_between_two_otherwise_passing_rows_is_refused(self):
+        report, cases = write_report(self.folder.name)
+        low, high = self._fixture("F3-05", "change-330"), self._fixture("F3-05", "change-331")
+        holding = Path(self.folder.name) / "holding"
+        shutil.copytree(cases / low.case / low.name, holding)
+        self._move_case(cases, high, low)
+        for name in ("policy.json", "events.json", "tma.json", "result.json"):
+            target = cases / high.case / high.name / name
+            target.chmod(0o600)
+            target.write_bytes((holding / name).read_bytes())
+        for fixture in (low, high):
+            report["rows"][frozen.row_name(fixture)]["result_sha256"] = hashlib.sha256(
+                (cases / fixture.case / fixture.name / "result.json").read_bytes()).hexdigest()
+        # Each payload is a complete valid PASS case with a unique digest and
+        # profile: only the row identity check can see the exchange.
+        self.assertEqual(self.gate(report, cases), [
+            "F3_FROZEN_CASE_IDENTITY:F3-05/change-330",
+            "F3_FROZEN_CASE_IDENTITY:F3-05/change-331",
+        ])
+
+    def test_one_disposable_profile_reported_for_two_rows_is_refused(self):
+        def reuse(fixture, result):
+            if fixture.name in ("recipient-330", "recipient-331"):
+                result["profile_fixture_id"] = "7" * 64
+        report, cases = write_report(self.folder.name, reuse)
+        self.assertEqual(self.gate(report, cases), ["F3_FROZEN_CASE_PROFILE_REUSED:F3-05/recipient-331"])
+
+    def test_artifact_linked_from_another_row_is_refused(self):
+        report, cases = write_report(self.folder.name)
+        own = cases / "F3-01" / "floor" / "tma.json"
+        other = cases / "F3-02" / "change" / "tma.json"
+        self.assertEqual(own.read_bytes(), other.read_bytes())  # same digest on purpose
+        own.unlink()
+        own.symlink_to(other)
+        self.assertEqual(self.gate(report, cases), ["F3_FROZEN_CASE_ARTIFACT_DIGEST:F3-01/floor/tma.json"])
+
+    def test_wrong_flag_or_acceptance_or_handoff_claim_is_refused(self):
+        report, cases = write_report(self.folder.name)
+        for key, value, code in (("flag", "--ci-q06-fix-scenarios", "F3_FROZEN_FLAG"),
+                                 ("accepted", True, "F3_FROZEN_ACCEPTED_CLAIMED"),
+                                 ("accepted", None, "F3_FROZEN_ACCEPTED_CLAIMED"),
+                                 ("engineering_handoff", True, "F3_FROZEN_HANDOFF_CLAIMED"),
+                                 ("engineering_handoff", "false", "F3_FROZEN_HANDOFF_CLAIMED")):
+            bad = copy.deepcopy(report)
+            bad[key] = value
+            self.assertEqual(self.gate(bad, cases), [code], (key, value))
+        for key, code in (("flag", "F3_FROZEN_FLAG"), ("accepted", "F3_FROZEN_ACCEPTED_CLAIMED"),
+                          ("engineering_handoff", "F3_FROZEN_HANDOFF_CLAIMED")):
+            bad = copy.deepcopy(report)
+            del bad[key]
+            self.assertEqual(self.gate(bad, cases), [code], key)
 
 
 class FrozenRunShell(unittest.TestCase):
