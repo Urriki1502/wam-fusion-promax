@@ -10,7 +10,7 @@ import tempfile
 import threading
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from wam_regtest.qualification.fee_regtest import (
     CHARACTERIZATION_PENDING_STATUS, FIXTURES, OUTSIDE_STEP,
@@ -151,11 +151,11 @@ class Evidence(unittest.TestCase):
         )
 
     def test_outside_step_lists_f3_11_through_f3_14_and_contextual_actor(self):
-        for case_id in ("F3-07", "F3-08", "F3-09-low-fee", "F3-10", "F3-14",
+        for case_id in ("F3-07", "F3-08", "F3-09-low-fee", "F3-10", "F3-14/remaining-authority-publication-duplicates",
                         "frozen", "Windows/Linux"):
             self.assertIn(case_id, OUTSIDE_STEP)
             self.assertTrue(OUTSIDE_STEP[case_id].startswith("BLOCKED_"), case_id)
-        self.assertIn("SIGN_BROADCAST_SAFETY_INVARIANTS", OUTSIDE_STEP["F3-14"])
+        self.assertIn("SIGN_BROADCAST_SAFETY_INVARIANTS", OUTSIDE_STEP["F3-14/remaining-authority-publication-duplicates"])
         with patch.dict(os.environ, {"WAM_QUALIFICATION_ACTOR": "verifier-agent"}, clear=False):
             self.assertEqual(resolve_actor(), "verifier-agent")
             self.assertEqual(resolve_actor("explicit-actor"), "explicit-actor")
@@ -668,14 +668,14 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
 
         return FakeBackend
 
-    def test_qualification_executor_admits_only_seven_fee_actions_while_production_refuses(self):
+    def test_qualification_executor_admits_only_closed_fee_actions_while_production_refuses(self):
         self.assertTrue(QUALIFICATION_COMMANDS.isdisjoint(COMMANDS))
         self.assertEqual(
             set(QUALIFICATION_COMMANDS),
-            {"fee_fixture", "fee_inspect", "fee_baseline", "fee_observe", "fee_preflight", "fee_signed_evidence", "fee_resume_replay"},
+            {"fee_fixture", "fee_inspect", "fee_baseline", "fee_observe", "fee_preflight", "fee_signed_evidence", "fee_resume_replay", "fee_safety"},
         )
 
-        # Production WalletExecutor must still refuse all seven actions with the exact code.
+        # Production WalletExecutor must still refuse all eight actions with the exact code.
         prod_calls = []
         prod = WalletExecutor(self._fake_backend_factory(prod_calls))
         try:
@@ -930,6 +930,7 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
                 vault=SimpleNamespace(anchor=SimpleNamespace(read=lambda: (1, "a"*64))),
                 faulted=False,
                 _prepared=None,
+                _review=None,
                 _signed=None,
             )
             with patch.object(Wallet, "balance", return_value={
@@ -1685,6 +1686,324 @@ class RecoveryObserverExecution(unittest.TestCase):
         expected = {"raw_sha256": sha256(bytes.fromhex("00ff")).hexdigest(), "txid": "c"*64}
         self.assertTrue(submission_order_holds(backend.observations["events"],
             backend.observations["submissions"], expected))
+
+
+
+
+class SafetyOracles(unittest.TestCase):
+    """PURE_ORCHESTRATION: realistic public replies, never native/Core proof."""
+    def snapshot(self):
+        return dict(reservation_sha256='a'*64, anchor_sha256='b'*64,
+                    review_sha256='c'*64, identity_sha256='d'*64,
+                    balance={'confirmed_atoms': 1000000, 'available_atoms': 0},
+                    mempool=[], tip=[102, 'e'*64], prepared=True, signed=False,
+                    faulted=False, reservation_states=['draft'])
+
+    def test_refusal_requires_exact_code_and_unchanged_authority(self):
+        from wam_regtest.qualification.fee_regtest_safety import unchanged_holds
+        before = self.snapshot()
+        for code in ('FEE_QUOTE_STALE', 'WALLET_REVIEW_UTXO_CHANGED',
+                     'WALLET_EXACT_INTENT_APPROVAL_REQUIRED', 'WALLET_BROADCAST_APPROVAL_REQUIRED'):
+            self.assertTrue(unchanged_holds(before, copy.deepcopy(before), ['GETTXOUT'], code, code))
+            self.assertFalse(unchanged_holds(before, before, [], None, code))
+            for event in ('MARK_SIGNED', 'SIGN', 'SENDRAWTRANSACTION', 'RELEASE_DRAFT'):
+                self.assertFalse(unchanged_holds(before, before, [event], code, code))
+            for key in before:
+                if key == 'reservation_states':
+                    continue
+                after = copy.deepcopy(before)
+                after.pop(key)
+                self.assertFalse(unchanged_holds(before, after, [], code, code), key)
+                after[key] = 'changed'
+                self.assertFalse(unchanged_holds(before, after, [], code, code), key)
+
+    def test_irreversible_failure_requires_durable_mark_before_crypto(self):
+        from wam_regtest.qualification.fee_regtest_safety import irreversible_holds
+        state = dict(reservation_states=['signed'], faulted=True, signed=False)
+        events = ['GETTXOUT', 'POLICY_READ', 'MARK_SIGNED', 'SAVE', 'SIGN']
+        code = 'WALLET_SIGN_UNCERTAIN_LOCK_RETAINED'
+        self.assertTrue(irreversible_holds(state, events, code))
+        for bad in (events[:-1], ['MARK_SIGNED', 'SIGN', 'SAVE'],
+                    events + ['SIGN'], events + ['RELEASE_DRAFT'], events + ['SENDRAWTRANSACTION']):
+            self.assertFalse(irreversible_holds(state, bad, code))
+        for key, value in (('faulted', False), ('signed', True), ('reservation_states', ['draft']),
+                           ('reservation_states', ['signed', 'draft'])):
+            self.assertFalse(irreversible_holds(dict(state, **{key:value}), events, code))
+        self.assertFalse(irreversible_holds(state, events, 'FEE_QUOTE_STALE'))
+
+    def test_readonly_preflight_requires_real_acceptance_checks_and_no_writes(self):
+        from wam_regtest.qualification.fee_regtest_safety import preflight_holds
+        state = self.snapshot()
+        reply = {'mempool_unchanged': True, 'checks': {k: True for k in (
+            'single_response', 'allowed', 'vsize', 'txid', 'wtxid', 'base_fee', 'effective_rate', 'effective_includes')}}
+        self.assertTrue(preflight_holds(state, state, ['TESTMEMPOOLACCEPT'], reply))
+        for bad in ({}, dict(reply, mempool_unchanged=False), dict(reply, checks={}),
+                    dict(reply, checks={'allowed': False}), dict(reply, checks={'allowed': 1}),
+                    dict(reply, checks={'unrelated': True}), dict(reply, checks={'allowed': True}),
+                    dict(reply, checks=[]), dict(reply, checks=None)):
+            self.assertFalse(preflight_holds(state, state, ['TESTMEMPOOLACCEPT'], bad))
+        for events in ([], ['TESTMEMPOOLACCEPT']*2, ['TESTMEMPOOLACCEPT', 'SENDRAWTRANSACTION']):
+            self.assertFalse(preflight_holds(state, state, events, reply))
+        self.assertFalse(preflight_holds(state, dict(state, mempool=['a'*64]), ['TESTMEMPOOLACCEPT'], reply))
+
+    def test_lost_send_requires_one_exact_submission_and_retained_uncertainty(self):
+        from wam_regtest.qualification.fee_regtest_safety import uncertain_send_holds
+        original = dict(raw_sha256='5'*64, txid='6'*64)
+        before = self.snapshot()
+        after = dict(before, reservation_states=['uncertain'], faulted=True,
+                     signed=False, mempool=[original['txid']])
+        events = ['ACTION_FEE_SAFETY', 'TESTMEMPOOLACCEPT', 'EVIDENCE_UNCERTAIN_SAVED',
+                  'SAVE', 'SAVE_UNCERTAIN', 'TESTMEMPOOLACCEPT', 'SENDRAWTRANSACTION']
+        submissions = [dict(states=['uncertain'], raw_sha256=original['raw_sha256'],
+                            uncertain_evidence_txid=original['txid'])]
+        code = 'WALLET_BROADCAST_UNCERTAIN_LOCK_RETAINED'
+        self.assertTrue(uncertain_send_holds(before, after, events, submissions, original, code))
+        for key, value in (('mempool', []), ('faulted', False), ('signed', True),
+                           ('reservation_states', ['signed']), ('identity_sha256', 'e'*64),
+                           ('tip', [103, 'f'*64]), ('balance', {})):
+            self.assertFalse(uncertain_send_holds(before, dict(after, **{key: value}), events,
+                                                 submissions, original, code), key)
+        for bad in (events[::-1], events + ['SENDRAWTRANSACTION'], events + ['SIGN'],
+                    events + ['MARK_SIGNED'], events + ['RELEASE_DRAFT']):
+            self.assertFalse(uncertain_send_holds(before, after, bad, submissions, original, code))
+        self.assertFalse(uncertain_send_holds(before, after, events, [], original, code))
+        self.assertFalse(uncertain_send_holds(before, after, events,
+            [dict(submissions[0], raw_sha256='7'*64)], original, code))
+        self.assertFalse(uncertain_send_holds(before, after, events, submissions, original, None))
+
+    def test_no_automatic_retry_or_release_rejects_all_duplicate_writes(self):
+        from wam_regtest.qualification.fee_regtest_safety import no_automatic_holds
+        events = ['MARK_SIGNED', 'SAVE', 'SIGN', 'SENDRAWTRANSACTION']
+        self.assertTrue(no_automatic_holds(events))
+        for event in ('MARK_SIGNED', 'SIGN', 'SENDRAWTRANSACTION', 'RELEASE_DRAFT'):
+            self.assertFalse(no_automatic_holds(events + [event]))
+
+    def test_single_fault_boundaries_run_real_read_or_send_first_and_restore(self):
+        from wam_regtest.qualification.fee_regtest_safety import fault_boundary
+        from wam_regtest.wallet_session import WalletCoreCli
+        from wam_sp.wallet import Signer
+        from wam_regtest.infrastructure import fee_rpc
+        from wam_regtest.domain.fee_policy import PolicyInputs
+        policy = PolicyInputs('regtest', 113, 1000, 1000, 1000, (), ())
+        session = SimpleNamespace(_review=SimpleNamespace(rate_atoms_per_kvb=2000))
+        o = {'events': []}
+        with patch.object(fee_rpc, 'read_policy_inputs', return_value=policy) as real:
+            with fault_boundary('stale-quote', session, o):
+                changed = fee_rpc.read_policy_inputs('rpc', 'regtest')
+                self.assertEqual(changed.floor, 2001)
+                self.assertEqual(changed.relayfee, policy.relayfee)
+                real.assert_called_once_with('rpc', 'regtest')
+            self.assertIs(fee_rpc.read_policy_inputs(), policy)
+        with patch.object(WalletCoreCli, 'call', return_value={'value': Decimal('.01'), 'scriptPubKey': {'hex':'5120'+'a'*64}}) as real:
+            with fault_boundary('utxo-changed', session, o):
+                self.assertIsNone(WalletCoreCli.call('rpc', 'gettxout', ['b'*64, 0, True]))
+                self.assertIsNotNone(WalletCoreCli.call('rpc', 'getnetworkinfo', []))
+                self.assertEqual(real.call_count, 2)
+        with patch.object(WalletCoreCli, '_call', return_value='a'*64) as real:
+            with fault_boundary('lost-send-response', session, o):
+                self.assertEqual(WalletCoreCli._call('rpc', 'getrawmempool', []), 'a'*64)
+                with self.assertRaisesRegex(ValueError, 'F3_INJECTED_RESPONSE_LOSS'):
+                    WalletCoreCli._call('rpc', 'sendrawtransaction', ['private-not-logged'])
+                self.assertEqual(real.call_count, 2)
+        with patch.object(Signer, 'sign') as real:
+            with fault_boundary('crypto-failure', session, o):
+                with self.assertRaisesRegex(ValueError, 'F3_INJECTED_CRYPTO_FAILURE'):
+                    Signer.sign('signer')
+                real.assert_not_called()
+            self.assertIs(Signer.sign, real)
+        self.assertEqual(o['fault_hits'], ['stale-quote', 'utxo-changed', 'lost-send-response', 'crypto-failure'])
+        self.assertEqual(o['events'], ['SIGN'])
+        with patch('sys.frozen', True, create=True):
+            with self.assertRaisesRegex(ValueError, 'F3_SOURCE_ONLY_FAULT_DENIED_FROZEN'):
+                with fault_boundary('crypto-failure', session, o):
+                    self.fail('frozen fault admitted')
+        with self.assertRaisesRegex(ValueError, 'F3_SAFETY_FAULT_DENIED'):
+            with fault_boundary('foreign-owner', session, o):
+                self.fail('unknown seam admitted')
+
+    def test_fault_boundary_does_not_mask_underlying_read_or_send_failure(self):
+        from wam_regtest.qualification.fee_regtest_safety import fault_boundary
+        from wam_regtest.wallet_session import WalletCoreCli
+        from wam_regtest.infrastructure import fee_rpc
+        for name, cls, method, args in (
+            ('utxo-changed', WalletCoreCli, 'call', ('rpc', 'gettxout', [])),
+            ('lost-send-response', WalletCoreCli, '_call', ('rpc', 'sendrawtransaction', [])),
+            ('stale-quote', fee_rpc, 'read_policy_inputs', ('rpc', 'regtest'))):
+            o = {'events': []}
+            with patch.object(cls, method, side_effect=ValueError('REAL_FAILURE')):
+                with fault_boundary(name, None, o):
+                    with self.assertRaisesRegex(ValueError, 'REAL_FAILURE'):
+                        getattr(cls, method)(*args)
+            self.assertNotIn('fault_hits', o)
+
+    def test_source_and_frozen_contracts_never_promote_faults(self):
+        from wam_regtest.qualification.fee_regtest_safety import FAULTS, NATURAL
+        from wam_regtest.qualification import fee_regtest_frozen as frozen
+        from wam_regtest.qualification.fee_regtest import safety_layer_holds
+        cases = [f for f in FIXTURES if f.case == 'F3-14']
+        self.assertEqual({f.name for f in cases}, set(NATURAL) | set(FAULTS))
+        for fixture in cases:
+            result = Evidence().passing_result()
+            result.update(case_id=fixture.case, fixture=fixture.name,
+                          assertions={key: True for key in required_assertions(fixture)})
+            if fixture.name in FAULTS:
+                self.assertFalse(valid_pass_result(result))
+                result.update(test_layer='FAULT_INJECTED_REAL_CORE', fault_boundary=FAULTS[fixture.name])
+                self.assertTrue(valid_pass_result(result))
+                self.assertFalse(safety_layer_holds(fixture, result, 'frozen'))
+                result['fault_boundary'] = 'wrong boundary'
+                self.assertFalse(valid_pass_result(result))
+                self.assertNotIn('F3-14/' + fixture.name, frozen.REQUIRED_ROWS)
+                self.assertEqual(frozen.NON_FROZEN_ROWS['F3-14/' + fixture.name][0], 'BLOCKED')
+            else:
+                self.assertTrue(valid_pass_result(result))
+                self.assertIn('F3-14/' + fixture.name, frozen.REQUIRED_ROWS)
+            for key in ('safety_invariant', 'no_automatic_retry_or_release', 'review_unchanged'):
+                bad = copy.deepcopy(result)
+                bad['assertions'].pop(key)
+                self.assertFalse(valid_pass_result(bad))
+
+    def test_all_safety_branches_drive_the_owned_backend_request_protocol(self):
+        """PURE_ORCHESTRATION doubles check wiring; this is not real-Core evidence."""
+        from wam_regtest.qualification.fee_regtest_safety import run_safety, FAULTS
+        from wam_regtest.wallet_session import PaymentReview
+        from wam_regtest.bip39_locale import t
+        for fixture in (f for f in FIXTURES if f.case == 'F3-14'):
+            with self.subTest(name=fixture.name):
+                review = PaymentReview('wamrtsp1disposable', 100000, 310, 0, 1, 'c'*64)
+                state = self.snapshot()
+                # review_evidence deliberately excludes the destination.
+                from wam_regtest.qualification.fee_regtest_runner import review_evidence
+                from hashlib import sha256
+                state['review_sha256'] = sha256(
+                    json.dumps(review_evidence(review), sort_keys=True).encode()).hexdigest()
+                events = []
+                o = dict(events=events, proposals=[310], releases=[], policy=[], submissions=[])
+                checks, result = {}, {'test_layer': 'REAL_CORE'}
+                original = dict(raw_sha256='a'*64, txid='b'*64, commitment=review.commitment,
+                                fee=review.fee, atoms=review.atoms)
+                window = SimpleNamespace(recipient_input=SimpleNamespace(setText=lambda _:None),
+                    amount_input=SimpleNamespace(setText=lambda _:None), send=object(), broadcast=object(),
+                    _last_review=review, _signed_ready=False, _pending_confirm_txid=None,
+                    status=SimpleNamespace(text=lambda:t('owner.draft_cancelled')))
+                def send():
+                    events.extend(['EVIDENCE_UNCERTAIN_SAVED', 'SAVE_UNCERTAIN', 'SAVE',
+                                   'TESTMEMPOOLACCEPT', 'SENDRAWTRANSACTION'])
+                    o['submissions'].append(dict(states=['uncertain'], raw_sha256=original['raw_sha256'],
+                        uncertain_evidence_txid=original['txid']))
+                    state.update(reservation_states=['broadcast'], signed=False, prepared=False,
+                                 mempool=[original['txid']], reservation_sha256='f'*64)
+                def request(action, *args, **kwargs):
+                    if action == 'fee_inspect':
+                        return copy.deepcopy(state)
+                    events.append('ACTION_' + action.upper())
+                    if action == 'prepare_auto':
+                        events.extend(['POLICY_READ', 'PROPOSE', 'SAVE'])
+                        return review
+                    if action == 'fee_signed_evidence':
+                        return original
+                    if action == 'fee_preflight':
+                        events.append('TESTMEMPOOLACCEPT')
+                        return dict(mempool_unchanged=True, checks={k: True for k in (
+                            'single_response', 'allowed', 'vsize', 'txid', 'wtxid', 'base_fee', 'effective_rate', 'effective_includes')})
+                    if action in ('sign', 'broadcast'):
+                        raise ValueError('WALLET_EXACT_INTENT_APPROVAL_REQUIRED' if action == 'sign'
+                                         else 'WALLET_BROADCAST_APPROVAL_REQUIRED')
+                    if action == 'fee_safety':
+                        name = args[0]
+                        o['fault_hits'] = [name]
+                        if name == 'stale-quote':
+                            raise ValueError('FEE_QUOTE_STALE')
+                        if name == 'utxo-changed':
+                            raise ValueError('WALLET_REVIEW_UTXO_CHANGED')
+                        if name == 'crypto-failure':
+                            events.extend(['MARK_SIGNED','SAVE','SIGN'])
+                            state.update(reservation_states=['signed'], faulted=True)
+                            raise ValueError('WALLET_SIGN_UNCERTAIN_LOCK_RETAINED')
+                        send()
+                        state.update(reservation_states=['uncertain'], faulted=True)
+                        raise ValueError('WALLET_BROADCAST_UNCERTAIN_LOCK_RETAINED')
+                    self.fail('unexpected request: ' + action)
+                def approval(app, w, button, caption, done, wait, checks, result, kind, decision='approve', captured=None):
+                    self.assertEqual(caption, t('pages.approve_sign' if kind == 'sign' else 'pages.approve_broadcast_2'))
+                    checks.update({'gui_'+kind+'_review':True, 'gui_'+kind+'_cancel_default':True})
+                    if kind == 'sign':
+                        events.extend(['ACTION_PREPARE_AUTO','POLICY_READ','PROPOSE','SAVE'])
+                        if captured is not None:
+                            captured.update(review=review, draft=copy.deepcopy(state))
+                        if decision == 'approve':
+                            events.extend(['ACTION_SIGN','GETTXOUT','POLICY_READ','MARK_SIGNED','SAVE','SIGN'])
+                            state.update(signed=True, reservation_states=['signed'])
+                            w._signed_ready=True
+                        else:
+                            events.extend(['ACTION_CANCEL','RELEASE_DRAFT'])
+                            state.update(reservations=0, signed=False)
+                    elif decision == 'approve':
+                        events.extend(['ACTION_BROADCAST', 'TESTMEMPOOLACCEPT'])
+                        send()
+                        events.append('SAVE')
+                        w._pending_confirm_txid=original['txid']
+                with patch('wam_regtest.qualification.fee_regtest_runner.quote_checks', return_value={'quote':True}):
+                    run_safety(fixture, app=SimpleNamespace(processEvents=lambda:None), window=window,
+                        request=request, idle=lambda:True, wait=lambda done, code:None,
+                        approve_payment=approval, observations=o, destination=review.code,
+                        checks=checks, result=result)
+                self.assertTrue(checks['safety_invariant'], (fixture.name, checks, events))
+                self.assertTrue(checks['no_automatic_retry_or_release'])
+                self.assertTrue(checks['review_unchanged'])
+                self.assertEqual(result['test_layer'], 'FAULT_INJECTED_REAL_CORE' if fixture.name in FAULTS else 'REAL_CORE')
+
+    def test_safety_oracles_fail_closed_on_missing_or_malformed_replies(self):
+        from wam_regtest.qualification.fee_regtest_safety import (
+            unchanged_holds, irreversible_holds, preflight_holds, no_automatic_holds)
+        for malformed in (None, (), "SIGN", 1):
+            self.assertFalse(unchanged_holds({}, {}, malformed, None, None))
+            self.assertFalse(irreversible_holds({}, malformed, None))
+            self.assertFalse(preflight_holds({}, {}, malformed, {}))
+            self.assertFalse(no_automatic_holds(malformed))
+        self.assertFalse(no_automatic_holds([None]))
+        self.assertFalse(irreversible_holds({}, [], None))
+        self.assertFalse(preflight_holds({}, {}, [], None))
+
+    def test_sign_order_distinguishes_readonly_preflight_from_approved_submission(self):
+        events = Oracles()._prepare_and_sign_events()
+        events += ['ACTION_FEE_PREFLIGHT', 'TESTMEMPOOLACCEPT', 'ACTION_BROADCAST',
+                   'TESTMEMPOOLACCEPT', 'SAVE', 'TESTMEMPOOLACCEPT', 'SENDRAWTRANSACTION', 'SAVE']
+        self.assertTrue(sign_order_holds(events))
+        broken = list(events)
+        broken.pop(broken.index('TESTMEMPOOLACCEPT', broken.index('ACTION_BROADCAST')))
+        self.assertFalse(sign_order_holds(broken))
+
+    def test_faulted_inspection_attests_only_the_same_owned_core_and_closes_transport(self):
+        owner = object()
+        rpc = SimpleNamespace(_transport=SimpleNamespace(close=Mock()))
+        with patch('wam_regtest.wallet_session.WalletCoreCli', return_value=rpc) as constructor:
+            FeeBackend = backend_type()
+            backend = FeeBackend.__new__(FeeBackend)
+            backend.owner = SimpleNamespace(cli=Path('/owned/wam-cli'), directory=Path('/owned/disposable'))
+            guard = SimpleNamespace(check=Mock())
+            backend._spend_session = SimpleNamespace(faulted=True, _q06_owner=backend.owner, _q06_guard=guard)
+            with patch('wam_regtest.managed_wallet_checkpoint._owned') as owned:
+                with patch.object(FeeBackend, '_inspect_with_rpc', return_value=self.snapshot()) as inspect:
+                    self.assertEqual(backend.inspect(), self.snapshot())
+                    owned.assert_called_once_with(backend.owner)
+                    constructor.assert_called_once_with(backend.owner.cli, backend.owner.directory)
+                    guard.check.assert_called_once_with()
+                    inspect.assert_called_once_with(backend._spend_session, rpc)
+                    rpc._transport.close.assert_called_once()
+                rpc._transport.close.reset_mock()
+                guard.check.reset_mock()
+                with patch.object(FeeBackend, '_inspect_with_rpc', side_effect=ValueError('ATTEST_DENIED')):
+                    with self.assertRaisesRegex(ValueError, 'ATTEST_DENIED'):
+                        backend.inspect()
+                    rpc._transport.close.assert_called_once()
+                owned.reset_mock()
+                constructor.reset_mock()
+                backend._spend_session._q06_owner = owner
+                with self.assertRaisesRegex(ValueError, 'F3_INSPECT_SAME_OWNER_REQUIRED'):
+                    backend.inspect()
+                owned.assert_not_called()
+                constructor.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 Runs the integrated runner's fixture logic (``fee_regtest_runner.run_fixture``)
 inside the frozen qualification app on native Cocoa, against the bundled signed
 Core and pinned WSP, for the CLOSED frozen-required set of FEE-3 plan §6:
-F3-01..F3-06, F3-09 positive and F3-11..F3-13 recovery cases. It accepts no argument, rate, flag,
+F3-01..F3-06, F3-09 positive, F3-11..F3-13 recovery and F3-14 natural safety cases. It accepts no argument, rate, flag,
 case list or developer test import. Each case uses a NEW retained disposable
 REGTEST profile and requires verified original-owner shutdown. Every other
 FEE-3 row is written BLOCKED or NOT_IN_SCOPE, never PASS.
@@ -19,6 +19,8 @@ from pathlib import Path
 import platform
 import re
 import sys
+
+from .fee_regtest_safety import NATURAL, FAULTS
 
 from .fee_regtest import (
     FIXTURES, FROZEN_RESULT_SCHEMA, FROZEN_SOURCE_KEYS, FROZEN_TEST_LAYER,
@@ -40,7 +42,8 @@ def row_name(fixture):
 FROZEN_FIXTURES = tuple(
     f for f in FIXTURES
     if not f.characterization
-    and (f.case in FROZEN_REQUIRED_CASES or (f.case, f.name) == ("F3-09", "positive")))
+    and (f.case in FROZEN_REQUIRED_CASES or (f.case, f.name) == ("F3-09", "positive")
+         or (f.case == "F3-14" and f.name in NATURAL)))
 REQUIRED_ROWS = tuple(row_name(f) for f in FROZEN_FIXTURES)
 
 # Plan §6. BLOCKED: the plan wants frozen coverage that is not implemented or
@@ -50,13 +53,16 @@ NON_FROZEN_ROWS = {
     "F3-08": ("BLOCKED", "BLOCKED_STARTUP_FILLER_SEAM_NOT_PACKAGED"),
     "F3-10": ("BLOCKED", "BLOCKED_FILLER_SEAM_NOT_PACKAGED"),
     "F3-09/low-fee": ("NOT_IN_SCOPE", "NOT_IN_SCOPE_SOURCE_ONLY_EXPLICIT_FEE_SEAM"),
-    "F3-14": ("BLOCKED", "BLOCKED_SIGN_BROADCAST_SAFETY_INVARIANTS_NOT_IMPLEMENTED"),
+    **{"F3-14/" + name: ("BLOCKED", "BLOCKED_SOURCE_ONLY_FAULT_EXECUTION_DENIED_" + name.upper().replace("-", "_"))
+       for name, boundary in FAULTS.items()},
+    "F3-14/remaining-authority-publication-duplicates": (
+        "BLOCKED", "BLOCKED_ADDITIONAL_AUTHORITY_PUBLICATION_DUPLICATE_SCENARIOS_NOT_IMPLEMENTED"),
     "D-FEE2-2/subdust-sweep-characterization": (
         "NOT_IN_SCOPE", "NOT_IN_SCOPE_SOURCE_CHARACTERIZATION_OWNER_DECISION_PENDING"),
 }
 NON_FROZEN_STATUSES = ("BLOCKED", "NOT_IN_SCOPE")
 
-if (len(FROZEN_FIXTURES) != 19 or len(set(REQUIRED_ROWS)) != 19
+if (len(FROZEN_FIXTURES) != 26 or len(set(REQUIRED_ROWS)) != 26
         or set(REQUIRED_ROWS) & set(NON_FROZEN_ROWS)):
     raise RuntimeError("F3_FROZEN_CLOSED_SET_DENIED")
 

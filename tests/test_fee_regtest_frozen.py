@@ -107,15 +107,18 @@ class ClosedCaseSet(unittest.TestCase):
     def test_required_set_is_exactly_f3_01_to_06_and_f3_09_positive(self):
         expected = [(f.case, f.name) for f in FIXTURES
                     if f.case in ("F3-01", "F3-02", "F3-03", "F3-04", "F3-05", "F3-06", "F3-11", "F3-12", "F3-13")
-                    or (f.case, f.name) == ("F3-09", "positive")]
+                    or (f.case, f.name) == ("F3-09", "positive")
+                    or (f.case == "F3-14" and f.name in frozen.NATURAL)]
         self.assertEqual([(f.case, f.name) for f in frozen.FROZEN_FIXTURES], expected)
-        self.assertEqual(len(frozen.REQUIRED_ROWS), 19)
+        self.assertEqual(len(frozen.REQUIRED_ROWS), 26)
         self.assertFalse(any(f.characterization for f in frozen.FROZEN_FIXTURES))
         self.assertNotIn("D-FEE2-2/subdust-sweep-characterization", frozen.REQUIRED_ROWS)
 
     def test_every_non_frozen_row_is_present_and_never_pass(self):
         self.assertEqual(set(frozen.NON_FROZEN_ROWS), {
-            "F3-07", "F3-08", "F3-10", "F3-09/low-fee", "F3-14",
+            "F3-07", "F3-08", "F3-10", "F3-09/low-fee",
+            *("F3-14/" + name for name in frozen.FAULTS),
+            "F3-14/remaining-authority-publication-duplicates",
             "D-FEE2-2/subdust-sweep-characterization"})
         for name, (status, reason) in frozen.NON_FROZEN_ROWS.items():
             self.assertIn(status, ("BLOCKED", "NOT_IN_SCOPE"), name)

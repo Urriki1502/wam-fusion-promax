@@ -1,4 +1,4 @@
-"""Pure oracles and public evidence for source-only FEE-3 qualification.
+"""Pure oracles and public evidence for FEE-3 qualification.
 
 No wallet authority lives here. A schema describes ORIGINAL RPC JSON types;
 Decimal strings are storage, never evidence that Core returned a string.
@@ -24,7 +24,7 @@ OUTSIDE_STEP = {
     "F3-08": "BLOCKED_STARTUP_FILLER_SEAM_NOT_IMPLEMENTED",
     "F3-10": "BLOCKED_FILLER_SEAM_NOT_IMPLEMENTED",
     "F3-09-low-fee": "BLOCKED_OUTSIDE_STEP_POSITIVE_ONLY",
-    "F3-14": "BLOCKED_OUTSIDE_STEP_UNCHANGED_SIGN_BROADCAST_SAFETY_INVARIANTS",
+    "F3-14/remaining-authority-publication-duplicates": "BLOCKED_SIGN_BROADCAST_SAFETY_INVARIANTS_ADDITIONAL_SCENARIOS_NOT_IMPLEMENTED",
     # The source run never qualifies frozen bytes; --ci-fee-regtest does, in
     # the separate full macOS build (FROZEN_FEE3_REGTEST stage).
     "frozen": "BLOCKED_SEPARATE_FROZEN_BUILD_STAGE",
@@ -67,6 +67,10 @@ FIXTURES = (
     Fixture("F3-12", "pending-recovery", (1_000_000,), 100_000),
     Fixture("F3-13", "fresh-cancel", (1_000_000,), 100_000),
     Fixture("F3-13", "recovered-cancel", (1_000_000,), 100_000),
+    *(Fixture("F3-14", name, (1_000_000,), 100_000) for name in (
+        "tamper-sign", "tamper-broadcast", "dismiss-sign", "close-sign",
+        "dismiss-broadcast", "close-broadcast", "separate-approvals",
+        "utxo-changed", "stale-quote", "crypto-failure", "lost-send-response")),
     # D-FEE2-2 characterization: 100_000 + 310 < 100_400 < 100_000 + 310 + 330
     # and no exact-remainder fee. Manifest must report OWNER DECISION PENDING, never PASS.
     Fixture("D-FEE2-2", "subdust-sweep-characterization", (100_400,), 100_000,
@@ -242,7 +246,7 @@ def sign_order_holds(events):
         mark = events.index("MARK_SIGNED")
         sign = events.index("SIGN")
         broadcast_action = events.index("ACTION_BROADCAST")
-        tma = events.index("TESTMEMPOOLACCEPT")
+        tma = events.index("TESTMEMPOOLACCEPT", broadcast_action)
         send = events.index("SENDRAWTRANSACTION")
     except ValueError:
         return False
@@ -401,6 +405,9 @@ POSITIVE_ASSERTIONS = {
 
 def required_assertions(fixture):
     common = {"confirmed_inventory", "empty_loaded_mempool", "observer_integrity"}
+    if fixture.case == "F3-14":
+        from .fee_regtest_safety import safety_assertions
+        return common | QUOTE_ASSERTIONS | safety_assertions(fixture)
     if fixture.case in ("F3-11", "F3-12", "F3-13"):
         from .fee_regtest_recovery import recovery_assertions
         return common | QUOTE_ASSERTIONS | recovery_assertions(fixture)
@@ -425,9 +432,16 @@ def _digest(value, length=64):
     return type(value) is str and re.fullmatch("[0-9a-f]{%d}" % length, value) is not None
 
 
+def source_layer(result):
+    from .fee_regtest_safety import FAULTS
+    if result.get("case_id") == "F3-14" and result.get("fixture") in FAULTS:
+        return "FAULT_INJECTED_REAL_CORE"
+    return "REAL_CORE"
+
+
 def _source_identity_holds(result):
     source, core = result["source"], result["core"]
-    return (result["schema"] == "wam-fee3-source/v1" and result["test_layer"] == "REAL_CORE"
+    return (result["schema"] == "wam-fee3-source/v1" and result["test_layer"] == source_layer(result)
             and _digest(source["sha"], 40) and _digest(source["tree"], 40)
             and _digest(source["inventory_sha256"]) and type(source["dirty_inventory"]) is list
             and core["signature_verified_now"] is True and _digest(core["archive_sha256"]))
@@ -449,6 +463,13 @@ def _frozen_identity_holds(result):
             and core["trust"] == "official-signed-v0.1.13" and _digest(core["archive_sha256"]))
 
 
+def safety_layer_holds(fixture, result, layer):
+    from .fee_regtest_safety import FAULTS
+    if fixture.name in FAULTS:
+        return layer == "source" and result.get("fault_boundary") == FAULTS[fixture.name]
+    return "fault_boundary" not in result
+
+
 def _valid_result_with_status(result, expected_status, expect_characterization, layer="source"):
     """Fail-closed report contract, independent of runner control flow."""
     digest = _digest
@@ -461,7 +482,9 @@ def _valid_result_with_status(result, expected_status, expect_characterization, 
         from datetime import datetime
         start, end = (datetime.fromisoformat(result[k]) for k in ("started_utc", "ended_utc"))
         return (fixture.characterization is expect_characterization
-            and identity(result) and result["status"] == expected_status
+            and identity(result)
+            and (fixture.case != "F3-14" or safety_layer_holds(fixture, result, layer))
+            and result["status"] == expected_status
             and result["network"] == "regtest"
             and result["mainnet_allowed"] is False and result["exit_code"] == 0
             and start.tzinfo is not None and end.tzinfo is not None and end >= start
@@ -476,7 +499,7 @@ def _valid_result_with_status(result, expected_status, expect_characterization, 
             and result["safe_startup_flags"] == [] and digest(result["profile_fixture_id"])
             and result["baseline"]["quote"]["floor_atoms_per_kvb"] == 1000
             and required <= set(result["assertions"]) and assertions_pass(result["assertions"])
-            and (fixture.refusal or fixture.case in ("F3-01", "F3-13") or (
+            and (fixture.refusal or fixture.case in ("F3-01", "F3-13", "F3-14") or (
                 type(result.get("confirmed_atoms")) is dict
                 and set(result["confirmed_atoms"]) == {"pre", "post"}
                 and type(result["confirmed_atoms"]["pre"]) is int

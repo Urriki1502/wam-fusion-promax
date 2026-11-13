@@ -36,12 +36,12 @@ from .fee_regtest import (
 
 QUALIFICATION_COMMANDS = frozenset((
     "fee_fixture", "fee_inspect", "fee_baseline", "fee_observe", "fee_preflight",
-    "fee_signed_evidence", "fee_resume_replay",
+    "fee_signed_evidence", "fee_resume_replay", "fee_safety",
 ))
 
 
 class QualificationFeeExecutor(WalletExecutor):
-    """Qualification-only executor admitting the 7 harness actions alongside COMMANDS."""
+    """Qualification-only executor admitting the 8 harness actions alongside COMMANDS."""
 
     ALLOWED_COMMANDS = COMMANDS | QUALIFICATION_COMMANDS
 
@@ -163,7 +163,7 @@ def backend_type():
                 return self.fund(args[0])
             if action == "fee_inspect":
                 return self.inspect()
-            if action == "fee_preflight":
+            if action == "fee_preflight" and "events" not in self.observations:
                 return self.preflight()
             if action == "fee_baseline":
                 from dataclasses import asdict
@@ -250,6 +250,8 @@ def backend_type():
                             "uncertain_evidence_txid": body["txid"] if body else None})
 
                 def rpc_after(_obj, a, result):
+                    if a[0] == "gettxout":
+                        o["events"].append("GETTXOUT")
                     if a[0] in WalletCoreCli.FEE_POLICY_READS:
                         # Restrict networkinfo to relevant public fields.
                         if a[0] == "getnetworkinfo":
@@ -288,6 +290,13 @@ def backend_type():
                     wrap(type(session), "_retain_signed_payment", after=lambda obj, a, r:
                          o["events"].append("EVIDENCE_" + a[0].upper() + "_SAVED"))
                 try:
+                    if action == "fee_preflight":
+                        return self.preflight()
+                    if action == "fee_safety":
+                        from .fee_regtest_safety import fault_boundary
+                        require(len(args) == 2 and not kwargs, "F3_SAFETY_ARGUMENTS")
+                        with fault_boundary(args[0], session, o):
+                            return super().execute("broadcast" if args[0] == "lost-send-response" else "sign", (args[1],), {})
                     if action == "fee_signed_evidence":
                         return self.signed_evidence()
                     if action == "fee_resume_replay":
@@ -378,9 +387,25 @@ def backend_type():
                     "fee_quote": body.get("fee_quote")}
 
         def inspect(self):
-            from wam_sp.wallet import Wallet
             session = self._spend_session
-            rpc = session._rpc()
+            fresh_transport = session.faulted
+            if fresh_transport:
+                from ..managed_wallet_checkpoint import _owned
+                owner = session._q06_owner
+                require(self.owner is owner, "F3_INSPECT_SAME_OWNER_REQUIRED")
+                _owned(owner)
+                session._q06_guard.check()
+                rpc = WalletCoreCli(owner.cli, owner.directory)
+            else:
+                rpc = session._rpc()
+            try:
+                return self._inspect_with_rpc(session, rpc)
+            finally:
+                if fresh_transport and rpc._transport is not None:
+                    rpc._transport.close()
+
+        def _inspect_with_rpc(self, session, rpc):
+            from wam_sp.wallet import Wallet
             rpc.attest()
             coins = session.scanner.coins()
             groups = {(c["account"], c["label"]) for c in coins}
@@ -403,6 +428,7 @@ def backend_type():
                     "anchor_sha256": sha256(anchor).hexdigest(),
                     "mempool": rpc._call("getrawmempool", []),
                     "mempool_info": json_capture(rpc.call("getmempoolinfo", [])),
+                    "review_sha256": sha256(json.dumps(review_evidence(session._review), sort_keys=True).encode()).hexdigest() if session._review else None,
                     "faulted": session.faulted, "prepared": session._prepared is not None,
                     "signed": session._signed is not None}
 
@@ -596,7 +622,9 @@ def approve_payment(app, window, button, caption, done, wait, checks, result, ki
                 failed.append(True)
                 dialog.cancel.click()
                 return
-            if decision == "cancel":
+            if decision == "close":
+                dialog.close()
+            elif decision == "cancel":
                 click_visible_approval(app, dialog.cancel.text())
             else:
                 click_visible_approval(app, caption)
@@ -697,7 +725,12 @@ def run_fixture(fixture, app, adapter, core, source, result, actor=None):
                                source=source, authorized_disposable=True) as payee:
             destination = payee.public_metadata()["receive_code"]
         request("fee_observe")
-        if fixture.case in ("F3-11", "F3-12", "F3-13"):
+        if fixture.case == "F3-14":
+            from .fee_regtest_safety import run_safety
+            run_safety(fixture, app=app, window=window, request=request, idle=idle,
+                wait=wait, approve_payment=approve_payment, observations=observations,
+                destination=destination, checks=checks, result=result)
+        elif fixture.case in ("F3-11", "F3-12", "F3-13"):
             from .fee_regtest_recovery import run_recovery
 
             def restart_recovery():
@@ -1014,6 +1047,9 @@ def main(argv=None):
                   "wsp_source_commit": "ac55f13423620252bdbf848c7e8a280c3b84721e",
                   "safe_startup_flags": [], "assertions": {}, "artifacts": {},
                   "profile_fixture_id": None, "cleanup": {"not_started": True}}
+        from .fee_regtest_safety import FAULTS
+        if fixture.case == "F3-14" and fixture.name in FAULTS:
+            result.update(test_layer="FAULT_INJECTED_REAL_CORE", fault_boundary=FAULTS[fixture.name])
         if setup:
             result["blocker"] = {"actor": actor, "action": "provide native host and authenticated inputs",
                                  "code": setup}
