@@ -48,27 +48,27 @@ class Fixture:
     characterization: bool = False
 
 
-# The 155 initial fee is the reviewed FEE-2 contract, NOT a policy override.
+# The 310 initial fee is the reviewed FEE-2 contract, NOT a policy override.
 # Runtime requires the measured floor to be 1000 for these exact fixtures.
 FIXTURES = (
     Fixture("F3-01", "floor", (1_000_000,), 100_000),
     Fixture("F3-02", "change", (1_000_000,), 100_000),
-    Fixture("F3-03", "exact", (100_155,), 100_000, vsize=112, change=0),
-    Fixture("F3-03", "smaller-diagnostic", (100_112,), 100_000, refusal=True),
+    Fixture("F3-03", "exact", (100_310,), 100_000, vsize=112, change=0),
+    Fixture("F3-03", "smaller-diagnostic", (100_224,), 100_000, refusal=True),
     Fixture("F3-04", "three-inputs", (100_000,)*3, 250_000, inputs=3, vsize=270),
     Fixture("F3-05", "recipient-329", (1_000_000,), 329, refusal=True),
-    Fixture("F3-05", "recipient-330", (1_000_000,), 330),
-    Fixture("F3-05", "recipient-331", (1_000_000,), 331),
-    Fixture("F3-05", "change-329", (100_484,), 100_000, refusal=True),
-    Fixture("F3-05", "change-330", (100_485,), 100_000, change=330),
-    Fixture("F3-05", "change-331", (100_486,), 100_000, change=331),
-    Fixture("F3-05", "oscillation", (100_155, 200_000), 100_000, vsize=112, change=0),
+    Fixture("F3-05", "recipient-330", (1_000_000,), 330, refusal=True),
+    Fixture("F3-05", "recipient-331", (1_000_000,), 331, refusal=True),
+    Fixture("F3-05", "change-329", (100_639,), 100_000, refusal=True),
+    Fixture("F3-05", "change-330", (100_640,), 100_000, change=330),
+    Fixture("F3-05", "change-331", (100_641,), 100_000, change=331),
+    Fixture("F3-05", "oscillation", (100_310, 200_000), 100_000, vsize=112, change=0),
     Fixture("F3-06", "fee-unaffordable", (100_000,), 100_000, refusal=True),
     Fixture("F3-06", "affordable-control", (100_000,), 50_000),
     Fixture("F3-09", "positive", (1_000_000,), 100_000),
-    # D-FEE2-2 characterization: 100_000 + 155 < 100_200 < 100_000 + 155 + 330
+    # D-FEE2-2 characterization: 100_000 + 310 < 100_400 < 100_000 + 310 + 330
     # and no exact-remainder fee. Manifest must report OWNER DECISION PENDING, never PASS.
-    Fixture("D-FEE2-2", "subdust-sweep-characterization", (100_200,), 100_000,
+    Fixture("D-FEE2-2", "subdust-sweep-characterization", (100_400,), 100_000,
             refusal=True, characterization=True),
 )
 

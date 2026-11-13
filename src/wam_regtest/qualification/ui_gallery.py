@@ -56,12 +56,12 @@ def _fixture_snapshot():
 
 
 def _review():
-    amount, fee = 25_000_000, 155
+    amount, fee = 25_000_000, 310
     available = 149_990_000
     return SimpleNamespace(
         code=_fixture_snapshot()[0].receive_code, atoms=amount, fee=fee,
         change_atoms=available - amount - fee, input_count=1,
-        rate_atoms_per_kvb=1_000, rate_source='NETWORK_FLOOR',
+        rate_atoms_per_kvb=2_000, rate_source='NETWORK_FLOOR_2X',
         rate_classification='UNAVAILABLE', vsize=155, total_debit=amount + fee,
         available_before=available, available_after=0, commitment='ab' * 32)
 

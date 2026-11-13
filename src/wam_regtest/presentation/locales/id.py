@@ -731,6 +731,7 @@ ID = {
     "operational.backup_passphrase_prompt": "Frasa sandi cadangan dompet (12+ karakter).\nPemulihan memindai ulang rantai uji yang baru dan membuat epoch penerimaan uji yang baru.",
     "operational.passphrase_length_title": "Panjang frasa sandi",
     "operational.passphrase_length": "Pakai frasa sandi yang lebih panjang (paling sedikit 12 karakter).",
+    "fee.source.NETWORK_FLOOR_2X": "2× tarif minimum jaringan",
     "fee.source.NETWORK_FLOOR": "minimum jaringan",
     "fee.source.ESTIMATOR": "penaksir",
     "pages.payment_review_auto": "Jumlah    {amount} WAM\nBiaya     {fee} WAM ({source}, {rate} WAM/kvB, {classification})\nTotal debit  {total} WAM\nTersedia sebelum  {available_before} WAM\nTersedia sesudah  {available_after} WAM\nKembali   {change} WAM\nInput     {inputs}",

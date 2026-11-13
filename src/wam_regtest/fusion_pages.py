@@ -215,10 +215,12 @@ def _quoted(review):
     before = getattr(review, 'available_before', None)
     after = getattr(review, 'available_after', None)
     total = getattr(review, 'total_debit', None)
-    if (source in ('NETWORK_FLOOR', 'ESTIMATOR') and type(rate) is int
+    if (source in ('NETWORK_FLOOR', 'NETWORK_FLOOR_2X', 'ESTIMATOR') and type(rate) is int
             and type(classification) is str and type(before) is int
             and type(after) is int and type(total) is int):
-        if source == 'NETWORK_FLOOR':
+        if source == 'NETWORK_FLOOR_2X':
+            source_label = ui_text('fee.source.NETWORK_FLOOR_2X')
+        elif source == 'NETWORK_FLOOR':
             source_label = ui_text('fee.source.NETWORK_FLOOR')
         else:
             source_label = ui_text('fee.source.ESTIMATOR')

@@ -731,6 +731,7 @@ KO = {
     "operational.backup_passphrase_prompt": "지갑 백업 암호 구문 (12자 이상).\n복구는 새 테스트 체인을 다시 스캔하고 새 테스트 수신 에포크를 만듭니다.",
     "operational.passphrase_length_title": "암호 구문 길이",
     "operational.passphrase_length": "더 긴 암호 구문을 사용하십시오 (12자 이상).",
+    "fee.source.NETWORK_FLOOR_2X": "네트워크 최저 수수료율의 2배",
     "fee.source.NETWORK_FLOOR": "네트워크 최저 수수료",
     "fee.source.ESTIMATOR": "추정",
     "pages.payment_review_auto": "금액     {amount} WAM\n수수료   {fee} WAM ({source}, {rate} WAM/kvB, {classification})\n총 출금  {total} WAM\n결제 전 가용  {available_before} WAM\n결제 후 가용  {available_after} WAM\n거스름   {change} WAM\n입력     {inputs}",

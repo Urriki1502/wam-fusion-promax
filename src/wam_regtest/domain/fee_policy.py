@@ -15,6 +15,8 @@ Rules:
     exactly (at most 8 decimals) or the input is refused.
   * Floor = max(mempoolminfee, minrelaytxfee, relayfee). incrementalfee is
     replacement/eviction policy and is NOT added to new transactions.
+    relayfee is an extra input beyond the maintainer's two-floor rule; it
+    equals minrelaytxfee on v0.1.13 and can only raise the effective floor.
   * The estimator (estimatesmartfee, with estimaterawfee as diagnostic
     evidence) is classified UNAVAILABLE, UNVALIDATED or USABLE from all
     the evidence together. An empty mempool alone does not decide it.
@@ -27,9 +29,10 @@ Rules:
     horizons of QUOTE_TARGET is below ESTIMATOR_MIN_CONFIRMED_SAMPLES.
     Only QUOTE_TARGET's raw evidence is read (target 25 legitimately has
     no short horizon). Else USABLE.
-  * Selected rate: max(floor, estimate) only when USABLE; otherwise the
-    floor. No margin and no multiplier above that (owner decision pending;
-    see MARGIN_ABOVE_FLOOR_ATOMS_PER_KVB).
+  * Selected rate: exactly 2 * effective floor, with no margin. Estimator
+    classification, reasons and digest remain evidence only by default.
+    Allowing a USABLE estimator to raise this rate is an owner decision;
+    ALLOW_USABLE_ESTIMATOR_TO_RAISE_RATE is OFF.
   * fee_atoms = ceil(vsize * rate / 1000), integer arithmetic only.
   * Anything missing, mistyped, contradictory or unverifiable fails closed.
 """
@@ -52,9 +55,10 @@ QUOTE_TARGET = 6
 CORE_DEFAULT_FALLBACK_FEE_ATOMS_PER_KVB = 20_000
 
 # --- Owner decisions pending (FEE-0 section 8); conservative provisional values.
-# Margin above the verified floor. 0: the floor is re-validated before Sign
-# instead (quote_still_valid), so no invented multiplier is needed.
-MARGIN_ABOVE_FLOOR_ATOMS_PER_KVB = 0
+# FE-002: exact integer multiplier; no additive or hidden margin.
+FLOOR_MULTIPLIER = 2
+# OFF pending owner authorization. Estimator evidence never lowers the target.
+ALLOW_USABLE_ESTIMATOR_TO_RAISE_RATE = False
 # Minimum confirmed samples in the horizon used before an estimate can count as
 # USABLE. The maintainer observed about 43.93 medium-horizon samples, largely
 # self-referential pool payouts; this threshold keeps such evidence UNVALIDATED.
@@ -67,7 +71,7 @@ DISPROPORTIONATE_PERCENT = 10
 UNAVAILABLE = 'UNAVAILABLE'
 UNVALIDATED = 'UNVALIDATED'
 USABLE = 'USABLE'
-SOURCE_FLOOR = 'NETWORK_FLOOR'
+SOURCE_FLOOR_2X = 'NETWORK_FLOOR_2X'
 SOURCE_ESTIMATOR = 'ESTIMATOR'
 
 
@@ -318,8 +322,8 @@ def quote(inputs):
     """The automatic fee rate for a new transaction, with its provenance."""
     floor = inputs.floor
     classification, reasons = classify_estimator(inputs)
-    rate, source = floor + MARGIN_ABOVE_FLOOR_ATOMS_PER_KVB, SOURCE_FLOOR
-    if classification == USABLE:
+    rate, source = FLOOR_MULTIPLIER * floor, SOURCE_FLOOR_2X
+    if ALLOW_USABLE_ESTIMATOR_TO_RAISE_RATE and classification == USABLE:
         estimate = next(s.rate for s in inputs.smart if s.target == QUOTE_TARGET)
         if estimate is not None and estimate > rate:
             rate, source = estimate, SOURCE_ESTIMATOR

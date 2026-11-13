@@ -59,8 +59,8 @@ class PaymentReview:
 
 
 def quoted_fee_holds(review):
-    """REGTEST GUI review: floor rate, size is covered, debit and balance agree."""
-    from .domain.fee_policy import SOURCE_FLOOR, fee_for_vsize
+    """REGTEST GUI review: 2x floor rate, size is covered, debit and balance agree."""
+    from .domain.fee_policy import FLOOR_MULTIPLIER, SOURCE_FLOOR_2X, fee_for_vsize
     quote = getattr(review, "fee_quote", None)
     numbers = (
         getattr(review, "vsize", None), getattr(review, "fee", None),
@@ -71,8 +71,8 @@ def quoted_fee_holds(review):
         getattr(review, "change_atoms", None))
     if quote is None or any(type(value) is not int for value in numbers):
         raise ValueError("FEE_QUOTE_REQUIRED")
-    if (review.rate_source != SOURCE_FLOOR
-            or review.rate_atoms_per_kvb != quote.floor_atoms_per_kvb):
+    if (review.rate_source != SOURCE_FLOOR_2X
+            or review.rate_atoms_per_kvb != FLOOR_MULTIPLIER * quote.floor_atoms_per_kvb):
         raise ValueError("FEE_QUOTE_NOT_NETWORK_FLOOR")
     need = fee_for_vsize(review.vsize, review.rate_atoms_per_kvb)
     if review.fee < need or review.overpay_atoms != review.fee - need:

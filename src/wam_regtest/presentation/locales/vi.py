@@ -731,6 +731,7 @@ VI = {
     "operational.backup_passphrase_prompt": "Mật khẩu sao lưu ví (12 ký tự trở lên).\nKhôi phục quét lại một chuỗi thử mới và tạo một epoch nhận thử mới.",
     "operational.passphrase_length_title": "Độ dài mật khẩu",
     "operational.passphrase_length": "Hãy dùng mật khẩu dài hơn (ít nhất 12 ký tự).",
+    "fee.source.NETWORK_FLOOR_2X": "2× mức phí sàn của mạng",
     "fee.source.NETWORK_FLOOR": "mức tối thiểu của mạng",
     "fee.source.ESTIMATOR": "bộ ước lượng",
     "pages.payment_review_auto": "Số tiền   {amount} WAM\nPhí        {fee} WAM ({source}, {rate} WAM/kvB, {classification})\nTổng ghi nợ  {total} WAM\nSố dư trước  {available_before} WAM\nSố dư sau    {available_after} WAM\nTiền thối  {change} WAM\nĐầu vào    {inputs}",

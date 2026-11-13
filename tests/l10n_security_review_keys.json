@@ -10,6 +10,10 @@
   "note": "Machine-assisted translations. Not verified by a native speaker. This list is the native-speaker review queue, not a review receipt.",
   "keys": [
     {
+      "key": "fee.source.NETWORK_FLOOR_2X",
+      "reason": "FE-002: 2× effective network floor rate in PaymentReview and Sign. Pending native review; does not authorize raising caps."
+    },
+    {
       "key": "backup_subtitle",
       "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
     },

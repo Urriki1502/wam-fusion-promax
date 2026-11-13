@@ -731,6 +731,7 @@ ZH_HANS = {
     "operational.backup_passphrase_prompt": "钱包备份密码（12 个字符以上）。\n恢复会重新扫描一条新的测试链，并创建新的测试接收纪元。",
     "operational.passphrase_length_title": "密码长度",
     "operational.passphrase_length": "请使用更长的密码（至少 12 个字符）。",
+    "fee.source.NETWORK_FLOOR_2X": "2× 网络最低费率",
     "fee.source.NETWORK_FLOOR": "网络最低额",
     "fee.source.ESTIMATOR": "估算",
     "pages.payment_review_auto": "金额       {amount} WAM\n手续费     {fee} WAM（{source}，{rate} WAM/kvB，{classification}）\n合计借记   {total} WAM\n付款前可用  {available_before} WAM\n付款后可用  {available_after} WAM\n找零       {change} WAM\n输入       {inputs}",

@@ -117,8 +117,8 @@ class ActualRegtestCore(unittest.TestCase):
         self.assertEqual((inputs.relayfee, inputs.mempoolminfee, inputs.minrelaytxfee), (1000, 1000, 1000))
         self.assertEqual(fp.classify_estimator(inputs)[0], fp.UNAVAILABLE)
         quote = fp.quote(inputs)
-        self.assertEqual((quote.rate_atoms_per_kvb, quote.source), (1000, fp.SOURCE_FLOOR))
-        self.assertEqual(fp.fee_for_vsize(154, quote.rate_atoms_per_kvb), 154)
+        self.assertEqual((quote.rate_atoms_per_kvb, quote.source), (2000, fp.SOURCE_FLOOR_2X))
+        self.assertEqual(fp.fee_for_vsize(154, quote.rate_atoms_per_kvb), 308)
 
 
 class HistoricalMaintainerMeasurement(unittest.TestCase):
@@ -130,7 +130,7 @@ class HistoricalMaintainerMeasurement(unittest.TestCase):
             self.assertIn(reason, reasons)
         quote = fp.quote(inputs)
         # The floor-based policy, not the 0.00020064 estimate or the fallback.
-        self.assertEqual((quote.rate_atoms_per_kvb, quote.source), (1000, fp.SOURCE_FLOOR))
+        self.assertEqual((quote.rate_atoms_per_kvb, quote.source), (2000, fp.SOURCE_FLOOR_2X))
 
     def test_an_estimate_equal_to_cores_fallback_is_not_evidence(self):
         inputs = simulated_inputs(smart_rates=('0.00020000', '0.00020000', '0.00010000'))
@@ -138,15 +138,15 @@ class HistoricalMaintainerMeasurement(unittest.TestCase):
 
 
 class SimulatedMarkets(unittest.TestCase):
-    def test_usable_independent_estimate_above_the_floor_is_used(self):
+    def test_usable_independent_estimate_is_evidence_only_by_default(self):
         quote = fp.quote(simulated_inputs())
         self.assertEqual(fp.classify_estimator(simulated_inputs())[0], fp.USABLE)
-        self.assertEqual((quote.rate_atoms_per_kvb, quote.source), (5000, fp.SOURCE_ESTIMATOR))
+        self.assertEqual((quote.rate_atoms_per_kvb, quote.source), (2000, fp.SOURCE_FLOOR_2X))
 
     def test_usable_estimate_below_the_floor_never_undercuts_it(self):
         inputs = simulated_inputs(mempoolmin='0.00009000')
         quote = fp.quote(inputs)
-        self.assertEqual((quote.rate_atoms_per_kvb, quote.source), (9000, fp.SOURCE_FLOOR))
+        self.assertEqual((quote.rate_atoms_per_kvb, quote.source), (18000, fp.SOURCE_FLOOR_2X))
 
     def test_an_empty_mempool_alone_does_not_discard_good_evidence(self):
         self.assertEqual(fp.classify_estimator(simulated_inputs(mempool_size=0))[0], fp.USABLE)
@@ -160,16 +160,17 @@ class SimulatedMarkets(unittest.TestCase):
                 inputs = simulated_inputs(relay=relay, mempoolmin=mempoolmin, minrelay=minrelay,
                                           smart_rates=('0.00001000',) * 3, raw_errors=True)
                 self.assertEqual(fp.quote(inputs).floor_atoms_per_kvb, expected)
-                self.assertEqual(fp.quote(inputs).rate_atoms_per_kvb, expected)
+                self.assertEqual(fp.quote(inputs).rate_atoms_per_kvb, 2 * expected)
 
     def test_incremental_fee_is_not_added_to_new_transactions(self):
         inputs = simulated_inputs(incremental='0.00050000', raw_errors=True)
-        self.assertEqual(fp.quote(inputs).rate_atoms_per_kvb, 1000)
+        self.assertEqual(fp.quote(inputs).rate_atoms_per_kvb, 2000)
 
     def test_rising_mempool_floor_invalidates_an_unsigned_quote(self):
         quote = fp.quote(simulated_inputs(raw_errors=True))
         self.assertTrue(fp.quote_still_valid(quote, simulated_inputs(raw_errors=True)))
-        self.assertFalse(fp.quote_still_valid(quote, simulated_inputs(mempoolmin='0.00002000', raw_errors=True)))
+        self.assertTrue(fp.quote_still_valid(quote, simulated_inputs(mempoolmin='0.00002000', raw_errors=True)))
+        self.assertFalse(fp.quote_still_valid(quote, simulated_inputs(mempoolmin='0.00002001', raw_errors=True)))
         lower = fp.quote(simulated_inputs(mempoolmin='0.00002000', raw_errors=True))
         self.assertTrue(fp.quote_still_valid(lower, simulated_inputs(raw_errors=True)))  # floor fell
 
@@ -186,7 +187,7 @@ class SimulatedMarkets(unittest.TestCase):
         classification, reasons = fp.classify_estimator(inputs)
         self.assertEqual(classification, fp.UNVALIDATED)
         self.assertIn('RAW_EVIDENCE_MISSING', reasons)
-        self.assertEqual(fp.quote(inputs).source, fp.SOURCE_FLOOR)
+        self.assertEqual(fp.quote(inputs).source, fp.SOURCE_FLOOR_2X)
 
     def test_digest_tracks_every_input_a_quote_depends_on(self):
         a, b = simulated_inputs(), simulated_inputs(mempoolmin='0.00002000')
@@ -270,7 +271,7 @@ class ReadOnlyAdapter(unittest.TestCase):
         from wam_regtest.infrastructure.fee_rpc import READ_ONLY_METHODS, read_policy_inputs
         rpc = self._Rpc()
         quote = fp.quote(read_policy_inputs(rpc, 'regtest'))
-        self.assertEqual(quote.rate_atoms_per_kvb, 1000)
+        self.assertEqual(quote.rate_atoms_per_kvb, 2000)
         self.assertTrue(set(rpc.calls) <= READ_ONLY_METHODS)
         self.assertNotIn('sendrawtransaction', rpc.calls)
 
@@ -346,8 +347,8 @@ class CodexPeer099Regressions(unittest.TestCase):
 
     def test_digest_includes_the_raw_evidence_that_decides_the_quote(self):
         usable, weak = simulated_inputs(short_samples='500'), simulated_inputs(short_samples='0')
-        self.assertEqual(fp.quote(usable).rate_atoms_per_kvb, 5000)
-        self.assertEqual(fp.quote(weak).rate_atoms_per_kvb, 1000)
+        self.assertEqual(fp.quote(usable).rate_atoms_per_kvb, 2000)
+        self.assertEqual(fp.quote(weak).rate_atoms_per_kvb, 2000)
         self.assertNotEqual(usable.digest(), weak.digest())
         # A changed estimate alone does not invalidate an approved quote.
         approved = fp.quote(simulated_inputs(raw_errors=True))
@@ -382,7 +383,7 @@ class CodexPeer099Regressions(unittest.TestCase):
                 classification, reasons = fp.classify_estimator(inputs)
                 self.assertEqual(classification, fp.UNVALIDATED)
                 self.assertIn('RAW_EVIDENCE_MALFORMED', reasons)
-                self.assertEqual(fp.quote(inputs).source, fp.SOURCE_FLOOR)
+                self.assertEqual(fp.quote(inputs).source, fp.SOURCE_FLOOR_2X)
 
 
 class SupportedTransportBoundary(unittest.TestCase):
@@ -448,4 +449,94 @@ class SupportedTransportBoundary(unittest.TestCase):
                    'estimaterawfee': ACTUAL['estimaterawfee_6']}
         cli._call = lambda method, args: (replies[method] if method in replies
                                           else ACTUAL['estimatesmartfee_%s_conservative' % args[0]])
-        self.assertEqual(fp.quote(read_policy_inputs(cli, 'regtest')).rate_atoms_per_kvb, 1000)
+        self.assertEqual(fp.quote(read_policy_inputs(cli, 'regtest')).rate_atoms_per_kvb, 2000)
+
+
+class TwoTimesFloor(unittest.TestCase):
+    def test_exact_multiplier_once_and_rate_overflow(self):
+        self.assertIs(type(fp.FLOOR_MULTIPLIER), int)
+        self.assertEqual(fp.FLOOR_MULTIPLIER, 2)
+        self.assertIs(fp.ALLOW_USABLE_ESTIMATOR_TO_RAISE_RATE, False)
+        for floor, expected in (("0.00001001", 2002), ("0.50000000", 100_000_000)):
+            q = fp.quote(simulated_inputs(mempoolmin=floor))
+            self.assertIs(type(q.rate_atoms_per_kvb), int)
+            self.assertEqual(q.rate_atoms_per_kvb, expected)
+        with self.assertRaisesRegex(fp.FeePolicyError, 'FEE_POLICY_RATE_RANGE'):
+            fp.quote(simulated_inputs(mempoolmin="0.50000001"))
+
+    def test_every_floor_refuses_malformed_nan_negative_or_float(self):
+        for field in ('relayfee', 'mempoolminfee', 'minrelaytxfee'):
+            for value, code in (("bad", 'FEE_POLICY_RATE_TYPE'),
+                                (0.00001, 'FEE_POLICY_RATE_TYPE'),
+                                (Decimal('NaN'), 'FEE_POLICY_RATE_PRECISION'),
+                                (Decimal('-0.00001'), 'FEE_POLICY_RATE_RANGE')):
+                with self.subTest(field=field, value=value):
+                    def mutate(n, m, s):
+                        (n if field == 'relayfee' else m)[field] = value
+                    with self.assertRaisesRegex(fp.FeePolicyError, code):
+                        InvalidInputs()._parse(mutate)
+
+    def test_d_fe02_1_exact_proportional_boundaries_refuse_by_default(self):
+        # OWNER DECISION D-FE02-1: (a) target-fee allowance, (b) 1x fallback,
+        # or (c) refuse. Keep (c); neither alternative is authorized.
+        q = fp.quote(actual_inputs())
+        for size, fee, minimum in ((155, 310, 3100), (112, 224, 2240)):
+            with self.subTest(size=size):
+                self.assertEqual(fp.fee_for_vsize(size, q.rate_atoms_per_kvb), fee)
+                self.assertEqual(fp.fee_for_vsize(size, q.floor_atoms_per_kvb), size)
+                with self.assertRaisesRegex(fp.FeePolicyError, 'FEE_DISPROPORTIONATE'):
+                    fp.check_fee_limits(fee, minimum - 1, size, q)
+                fp.check_fee_limits(fee, minimum, size, q)
+                fp.check_fee_limits(fee, minimum + 1, size, q)
+
+
+class TwoTimesFloorLocales(unittest.TestCase):
+    def test_six_locale_key_parity_and_pending_native_review(self):
+        from wam_regtest.presentation.strings import CATALOG, SUPPORTED_LANGUAGES, text
+        key = 'fee.source.NETWORK_FLOOR_2X'
+        self.assertEqual(set(SUPPORTED_LANGUAGES), {'en', 'zh-Hans', 'vi', 'ko', 'id', 'ja'})
+        for language in SUPPORTED_LANGUAGES:
+            with self.subTest(language=language):
+                self.assertIn(key, CATALOG[language])
+                self.assertEqual(set(CATALOG[language]), set(CATALOG['en']))
+                self.assertTrue(text(key, language))
+                self.assertNotEqual(text(key, language), key)
+        self.assertEqual(text(key, 'en'), '2× network floor')
+        queue = json.loads((ROOT / 'tests/l10n_security_review_keys.json').read_text())
+        self.assertEqual(queue['review_status'], 'pending native review')
+        self.assertIn(key, {entry['key'] for entry in queue['keys']})
+
+
+class TwoTimesFloorPresentation(unittest.TestCase):
+    def test_review_and_sign_label_in_all_six_locales(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from wam_regtest import fusion_pages
+        from wam_regtest.presentation.strings import SUPPORTED_LANGUAGES, text
+        review = SimpleNamespace(
+            rate_source='NETWORK_FLOOR_2X', rate_atoms_per_kvb=2000,
+            rate_classification='UNAVAILABLE', available_before=100_000,
+            available_after=0, total_debit=50_310, atoms=50_000, fee=310,
+            change_atoms=49_690, input_count=1, code='wamrtsp1public',
+            commitment='a' * 64)
+        for language in SUPPORTED_LANGUAGES:
+            with self.subTest(language=language), patch.object(
+                    fusion_pages, 'ui_text', side_effect=lambda k: text(k, language)):
+                for render in (fusion_pages.fusion_review_text,
+                               fusion_pages.approval_amount_text,
+                               fusion_pages.owner_approval_text):
+                    shown = render(review)
+                    self.assertIn(text('fee.source.NETWORK_FLOOR_2X', language), shown)
+                    self.assertIn('0.00000310', shown)
+                    self.assertIn('0.00002000', shown)
+
+    def test_policy_arithmetic_has_no_binary_float_or_true_division(self):
+        import ast
+        tree = ast.parse((ROOT / 'src/wam_regtest/domain/fee_policy.py').read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant):
+                self.assertIsNot(type(node.value), float)
+            if isinstance(node, ast.BinOp):
+                self.assertNotIsInstance(node.op, ast.Div)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                self.assertNotEqual(node.func.id, 'float')

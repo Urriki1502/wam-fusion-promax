@@ -106,17 +106,17 @@ class UnsignedDraftControls(unittest.TestCase):
         from wam_regtest.wallet_session import PaymentReview
         import inspect
         review=PaymentReview(
-            'wamrtsp1public', 25_000_000, 155, 124_989_845, 1, 'b'*64,
-            rate_atoms_per_kvb=1000, rate_source='NETWORK_FLOOR',
+            'wamrtsp1public', 25_000_000, 310, 124_989_690, 1, 'b'*64,
+            rate_atoms_per_kvb=2000, rate_source='NETWORK_FLOOR_2X',
             rate_classification='UNAVAILABLE', vsize=155,
-            total_debit=25_000_155, available_before=149_990_000,
+            total_debit=25_000_310, available_before=149_990_000,
             available_after=0, overpay_atoms=0, fee_quote=object())
         for text in (fusion_review_text(review), approval_amount_text(review), owner_approval_text(review)):
-            self.assertIn('network minimum', text)
-            self.assertIn('0.00000155', text)
-            self.assertIn('0.25000155', text)
+            self.assertIn('2× network floor', text)
+            self.assertIn('0.00000310', text)
+            self.assertIn('0.25000310', text)
             self.assertIn('1.49990000', text)
-            self.assertIn('0.00001000', text)
+            self.assertIn('0.00002000', text)
             for preset in ('Fast', 'Normal', 'Slow'):
                 self.assertNotIn(preset, text)
         w=self.window
@@ -128,9 +128,9 @@ class UnsignedDraftControls(unittest.TestCase):
         recipient=dialog.findChild(QWidget, 'ReceiveCode')
         self.assertEqual(recipient.toPlainText(), review.code)
         self.assertIn(review.code, w.review_summary.text())
-        self.assertIn('network minimum', shown)
-        self.assertIn('0.00000155', shown)
-        self.assertIn('0.25000155', shown)
+        self.assertIn('2× network floor', shown)
+        self.assertIn('0.00000310', shown)
+        self.assertIn('0.25000310', shown)
         self.assertIn('1.49990000', shown)
         dialog.cancel.click();self.app.processEvents()
         self.assertEqual(self.calls,[('cancel',)])
@@ -170,16 +170,16 @@ class UnsignedDraftControls(unittest.TestCase):
         window.prepare_payment()
         self.assertEqual(calls,[('prepare_auto','wamrtsp1public',100_000_000)])
         review=PaymentReview(
-            'wamrtsp1public', 100_000_000, 155, 0, 1, 'c'*64,
-            rate_atoms_per_kvb=1000, rate_source='NETWORK_FLOOR',
-            rate_classification='UNAVAILABLE', vsize=155, total_debit=100_000_155,
-            available_before=100_000_155, available_after=0, overpay_atoms=0,
+            'wamrtsp1public', 100_000_000, 310, 0, 1, 'c'*64,
+            rate_atoms_per_kvb=2000, rate_source='NETWORK_FLOOR_2X',
+            rate_classification='UNAVAILABLE', vsize=155, total_debit=100_000_310,
+            available_before=100_000_310, available_after=0, overpay_atoms=0,
             fee_quote=object())
         window._operation_ready('prepare_auto', review)
         shown=window.review_text.text()
-        self.assertIn('network minimum', shown)
-        self.assertIn('0.00000155', shown)
-        self.assertIn('1.00000155', shown)
+        self.assertIn('2× network floor', shown)
+        self.assertIn('0.00000310', shown)
+        self.assertIn('1.00000310', shown)
         self.assertEqual(shown, operational_review_text(review, signed=False))
 
 if __name__=='__main__':unittest.main(verbosity=2)

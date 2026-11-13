@@ -271,7 +271,7 @@ def backend_type():
                 try:
                     return super().execute(action, args, kwargs)
                 except Exception as error:
-                    if error.args in (("PAYMENT_AMOUNT",), ("INSUFFICIENT_SINGLE_CLUSTER_FUNDS",)):
+                    if error.args in (("PAYMENT_AMOUNT",), ("INSUFFICIENT_SINGLE_CLUSTER_FUNDS",), ("FEE_DISPROPORTIONATE",)):
                         o["original_refusal"] = error.args[0]
                     raise
 
@@ -636,7 +636,8 @@ def run_fixture(fixture, app, adapter, core, source, result, actor=None):
         baseline_evidence = request("fee_baseline", timeout=240)
         result["baseline"] = baseline_evidence
         baseline = baseline_evidence["quote"]
-        if not (baseline["floor_atoms_per_kvb"] == baseline["rate_atoms_per_kvb"] == 1000
+        if not (baseline["floor_atoms_per_kvb"] == 1000
+                and baseline["rate_atoms_per_kvb"] == 2000
                 and baseline["estimator"] == "UNAVAILABLE"):
             raise Blocked("F3_DEFAULT_FLOOR_FIXTURE_UNAVAILABLE")
         with Bip39Regtest12Keys(Mnemonic("english").to_mnemonic(bytes([1]*16)),
@@ -651,10 +652,14 @@ def run_fixture(fixture, app, adapter, core, source, result, actor=None):
                 refusal = failure_code(error)
             result["refusal"] = refusal
             after = request("fee_inspect", timeout=240)
-            expected = "WALLET_INPUT_AMOUNT_INVALID" if fixture.amount == 329 else "WALLET_INPUT_FUNDS_UNAVAILABLE"
+            expected = ("WALLET_INPUT_AMOUNT_INVALID" if fixture.amount == 329
+                        else "FEE_DISPROPORTIONATE" if fixture.amount in (330, 331)
+                        else "WALLET_INPUT_FUNDS_UNAVAILABLE")
             checks["exact_refusal"] = refusal == expected
             checks["original_refusal"] = observations.get("original_refusal") == (
-                "PAYMENT_AMOUNT" if fixture.amount == 329 else "INSUFFICIENT_SINGLE_CLUSTER_FUNDS")
+                "PAYMENT_AMOUNT" if fixture.amount == 329
+                else "FEE_DISPROPORTIONATE" if fixture.amount in (330, 331)
+                else "INSUFFICIENT_SINGLE_CLUSTER_FUNDS")
             checks["no_state_change"] = (after["reservation_sha256"] == before["reservation_sha256"]
                 and after["anchor_sha256"] == before["anchor_sha256"]
                 and after["balance"] == before["balance"]
@@ -861,12 +866,12 @@ def quote_checks(review, fixture, observations):
             and len(smart_entries) == 3 * policy_reads
             and all(_unavailable_smart_entry_holds(entry) for entry in smart_entries)
         ),
-        "floor_quote": floors_consistent and q.estimator == "UNAVAILABLE" and q.source == "NETWORK_FLOOR"
-            and q.rate_atoms_per_kvb == q.floor_atoms_per_kvb == floor == 1000,
+        "floor_quote": floors_consistent and q.estimator == "UNAVAILABLE" and q.source == "NETWORK_FLOOR_2X"
+            and q.rate_atoms_per_kvb == 2 * q.floor_atoms_per_kvb == 2 * floor == 2000,
         "structure": review.input_count == fixture.inputs and review.vsize == fixture.vsize,
         "exact_intent": review.atoms == fixture.amount,
         "fee_covers_quote": review.fee >= need and review.overpay_atoms == review.fee - need,
-        "bounded_overpay": review.overpay_atoms == (43 if fixture.change == 0 else 0),
+        "bounded_overpay": review.overpay_atoms == (86 if fixture.change == 0 else 0),
         "bounded_proposals": proposal_trace_holds(fees),
         "released_unsaved_drafts": len(built) >= 1 and release_count == len(built) - 1,
         "exact_change": review.change_atoms == selected - fixture.amount - review.fee

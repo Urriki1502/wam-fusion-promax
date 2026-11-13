@@ -729,6 +729,7 @@ EN = {
     "operational.backup_passphrase_prompt": "Wallet backup passphrase (12+ characters).\nRecovery rescans a fresh test chain and creates a new test receive epoch.",
     "operational.passphrase_length_title": "Passphrase length",
     "operational.passphrase_length": "Use a longer passphrase (at least 12 characters).",
+    "fee.source.NETWORK_FLOOR_2X": "2× network floor",
     "fee.source.NETWORK_FLOOR": "network minimum",
     "fee.source.ESTIMATOR": "estimator",
     "pages.payment_review_auto": "Amount     {amount} WAM\nFee          {fee} WAM ({source}, {rate} WAM/kvB, {classification})\nTotal debit  {total} WAM\nAvailable before  {available_before} WAM\nAvailable after   {available_after} WAM\nChange    {change} WAM\nInputs      {inputs}",

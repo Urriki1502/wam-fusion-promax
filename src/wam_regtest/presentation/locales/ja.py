@@ -731,6 +731,7 @@ JA = {
     "operational.backup_passphrase_prompt": "ウォレットのバックアップパスワード（12 文字以上）。\n復元は新しいテストチェーンを再スキャンし、新しいテスト受取エポックを作ります。",
     "operational.passphrase_length_title": "パスワードの長さ",
     "operational.passphrase_length": "より長いパスワードを使ってください（12 文字以上）。",
+    "fee.source.NETWORK_FLOOR_2X": "ネットワーク最低手数料率の2倍",
     "fee.source.NETWORK_FLOOR": "ネットワーク最低額",
     "fee.source.ESTIMATOR": "推定",
     "pages.payment_review_auto": "金額       {amount} WAM\n手数料     {fee} WAM ({source}、{rate} WAM/kvB、{classification})\n合計引出   {total} WAM\n支払前の残高  {available_before} WAM\n支払後の残高  {available_after} WAM\nおつり     {change} WAM\n入力       {inputs}",

@@ -130,7 +130,7 @@ class Evidence(unittest.TestCase):
         fixture = next(f for f in FIXTURES if f.case == "D-FEE2-2")
         self.assertTrue(fixture.characterization)
         self.assertTrue(fixture.refusal)
-        self.assertEqual(fixture.coins, (100_200,))
+        self.assertEqual(fixture.coins, (100_400,))
         self.assertEqual(fixture.amount, 100_000)
         result = self.passing_result()
         result["fixture"] = fixture.name
@@ -201,13 +201,13 @@ class Oracles(unittest.TestCase):
 
     def test_quote_oracle_detects_floor_arithmetic_and_structure_mismatches(self):
         review = SimpleNamespace(
-            fee_quote=SimpleNamespace(estimator="UNAVAILABLE", source="NETWORK_FLOOR",
-                rate_atoms_per_kvb=1000, floor_atoms_per_kvb=1000),
-            vsize=155, rate_atoms_per_kvb=1000, available_after=0, input_count=1,
-            atoms=100_000, fee=155, overpay_atoms=0, change_atoms=899_845,
-            available_before=1_000_000, total_debit=100_155)
+            fee_quote=SimpleNamespace(estimator="UNAVAILABLE", source="NETWORK_FLOOR_2X",
+                rate_atoms_per_kvb=2000, floor_atoms_per_kvb=1000),
+            vsize=155, rate_atoms_per_kvb=2000, available_after=0, input_count=1,
+            atoms=100_000, fee=310, overpay_atoms=0, change_atoms=899_690,
+            available_before=1_000_000, total_debit=100_310)
         observations = {
-            "proposals": [155],
+            "proposals": [310],
             "releases": [],
             "events": self._prepare_events(),
             "policy": self._empty_smart_policy(),
@@ -218,17 +218,17 @@ class Oracles(unittest.TestCase):
 
     def test_unavailable_smart_matches_policy_read_count_and_blocks_target_bound(self):
         review = SimpleNamespace(
-            fee_quote=SimpleNamespace(estimator="UNAVAILABLE", source="NETWORK_FLOOR",
-                rate_atoms_per_kvb=1000, floor_atoms_per_kvb=1000),
-            vsize=155, rate_atoms_per_kvb=1000, available_after=0, input_count=1,
-            atoms=100_000, fee=155, overpay_atoms=0, change_atoms=899_845,
-            available_before=1_000_000, total_debit=100_155)
+            fee_quote=SimpleNamespace(estimator="UNAVAILABLE", source="NETWORK_FLOOR_2X",
+                rate_atoms_per_kvb=2000, floor_atoms_per_kvb=1000),
+            vsize=155, rate_atoms_per_kvb=2000, available_after=0, input_count=1,
+            atoms=100_000, fee=310, overpay_atoms=0, change_atoms=899_690,
+            available_before=1_000_000, total_debit=100_310)
 
         # 1 policy read -> 3 captures (blocks=0 and blocks=1 <= target) pass.
         for blocks in (0, 1, 2):
             with self.subTest(reads=1, blocks=blocks):
                 checks = quote_checks(review, FIXTURES[0], {
-                    "proposals": [155],
+                    "proposals": [310],
                     "releases": [],
                     "events": self._prepare_events(),
                     "policy": self._empty_smart_policy(blocks=blocks, reads=1),
@@ -240,7 +240,7 @@ class Oracles(unittest.TestCase):
         for blocks in (0, 1):
             with self.subTest(reads=2, blocks=blocks):
                 checks = quote_checks(review, FIXTURES[1], {
-                    "proposals": [155],
+                    "proposals": [310],
                     "releases": [],
                     "events": self._prepare_and_sign_events(),
                     "policy": self._empty_smart_policy(blocks=blocks, reads=2),
@@ -276,7 +276,7 @@ class Oracles(unittest.TestCase):
         for label, events, policy in bad_cases:
             with self.subTest(label=label):
                 checks = quote_checks(review, FIXTURES[0], {
-                    "proposals": [155],
+                    "proposals": [310],
                     "releases": [],
                     "events": events,
                     "policy": policy,
@@ -410,21 +410,21 @@ class Oracles(unittest.TestCase):
     def test_f3_03_exact_refused_lower_proposal_and_cancel_release_counting(self):
         exact_fixture = next(f for f in FIXTURES if f.case == "F3-03" and f.name == "exact")
         exact_review = SimpleNamespace(
-            fee_quote=SimpleNamespace(estimator="UNAVAILABLE", source="NETWORK_FLOOR",
-                rate_atoms_per_kvb=1000, floor_atoms_per_kvb=1000),
-            vsize=112, rate_atoms_per_kvb=1000, available_after=0, input_count=1,
-            atoms=100_000, fee=155, overpay_atoms=43, change_atoms=0,
-            available_before=100_155, total_debit=100_155)
-        refused = {"fee": 112, "refused": True, "code": "WALLET_INPUT_FUNDS_UNAVAILABLE"}
+            fee_quote=SimpleNamespace(estimator="UNAVAILABLE", source="NETWORK_FLOOR_2X",
+                rate_atoms_per_kvb=2000, floor_atoms_per_kvb=1000),
+            vsize=112, rate_atoms_per_kvb=2000, available_after=0, input_count=1,
+            atoms=100_000, fee=310, overpay_atoms=86, change_atoms=0,
+            available_before=100_310, total_debit=100_310)
+        refused = {"fee": 224, "refused": True, "code": "WALLET_INPUT_FUNDS_UNAVAILABLE"}
         checks = quote_checks(exact_review, exact_fixture, {
-            "proposals": [155, refused, 155],
+            "proposals": [310, refused, 310],
             "releases": ["r1"],
             "events": self._prepare_events(),
             "policy": self._empty_smart_policy(),
         })
         self.assertTrue(assertions_pass(checks))
         bad_releases = quote_checks(exact_review, exact_fixture, {
-            "proposals": [155, refused, 155],
+            "proposals": [310, refused, 310],
             "releases": ["r1", "r2"],
             "events": self._prepare_events(),
             "policy": self._empty_smart_policy(),
@@ -432,13 +432,13 @@ class Oracles(unittest.TestCase):
         self.assertFalse(bad_releases["released_unsaved_drafts"])
 
         floor_review = SimpleNamespace(
-            fee_quote=SimpleNamespace(estimator="UNAVAILABLE", source="NETWORK_FLOOR",
-                rate_atoms_per_kvb=1000, floor_atoms_per_kvb=1000),
-            vsize=155, rate_atoms_per_kvb=1000, available_after=0, input_count=1,
-            atoms=100_000, fee=155, overpay_atoms=0, change_atoms=899_845,
-            available_before=1_000_000, total_debit=100_155)
+            fee_quote=SimpleNamespace(estimator="UNAVAILABLE", source="NETWORK_FLOOR_2X",
+                rate_atoms_per_kvb=2000, floor_atoms_per_kvb=1000),
+            vsize=155, rate_atoms_per_kvb=2000, available_after=0, input_count=1,
+            atoms=100_000, fee=310, overpay_atoms=0, change_atoms=899_690,
+            available_before=1_000_000, total_debit=100_310)
         f301_checks = quote_checks(floor_review, FIXTURES[0], {
-            "proposals": [155],
+            "proposals": [310],
             "releases": ["cancel-release"],
             "events": ["ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE", "ACTION_CANCEL", "RELEASE_DRAFT", "SAVE"],
             "policy": self._empty_smart_policy(),
@@ -1054,23 +1054,23 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
         review = PaymentReview(
             code="wam1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
             atoms=100_000,
-            fee=155,
+            fee=310,
             change_atoms=899_845,
             input_count=1,
             commitment="a" * 64,
-            rate_atoms_per_kvb=1000,
-            rate_source="NETWORK_FLOOR",
+            rate_atoms_per_kvb=2000,
+            rate_source="NETWORK_FLOOR_2X",
             rate_classification="UNAVAILABLE",
             vsize=155,
-            total_debit=100_155,
+            total_debit=100_310,
             available_before=1_000_000,
             available_after=0,
             overpay_atoms=0,
             fee_quote=FeeQuote(
                 network="regtest",
-                rate_atoms_per_kvb=1000,
+                rate_atoms_per_kvb=2000,
                 floor_atoms_per_kvb=1000,
-                source="NETWORK_FLOOR",
+                source="NETWORK_FLOOR_2X",
                 estimator="UNAVAILABLE",
                 reasons=("NO_FEERATE_WITHOUT_ERRORS",),
                 inputs_digest="0" * 64,
@@ -1191,30 +1191,30 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
         from wam_regtest.wallet_session import PaymentReview
 
         app = SimpleNamespace(processEvents=lambda: None)
-        fixture = next(f for f in FIXTURES if f.case == "F3-05" and f.name == "recipient-330")
+        fixture = next(f for f in FIXTURES if f.case == "F3-02" and f.name == "change")
         result = {"assertions": {}}
         txid = "aa" * 32
         funding_txid = "11" * 32
         review = PaymentReview(
             code="wamrtsp1payee",
-            atoms=330,
-            fee=155,
-            change_atoms=999_515,
+            atoms=100_000,
+            fee=310,
+            change_atoms=899_690,
             input_count=1,
             commitment="cc" * 32,
-            rate_atoms_per_kvb=1000,
-            rate_source="NETWORK_FLOOR",
+            rate_atoms_per_kvb=2000,
+            rate_source="NETWORK_FLOOR_2X",
             rate_classification="UNAVAILABLE",
             vsize=155,
-            total_debit=485,
+            total_debit=100_310,
             available_before=1_000_000,
             available_after=0,
             overpay_atoms=0,
             fee_quote=FeeQuote(
                 network="regtest",
-                rate_atoms_per_kvb=1000,
+                rate_atoms_per_kvb=2000,
                 floor_atoms_per_kvb=1000,
-                source="NETWORK_FLOOR",
+                source="NETWORK_FLOOR_2X",
                 estimator="UNAVAILABLE",
                 reasons=("NO_FEERATE_WITHOUT_ERRORS",),
                 inputs_digest="0" * 64,
@@ -1266,7 +1266,7 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
                 if action == "fee_baseline":
                     return {"quote": {
                         "floor_atoms_per_kvb": 1000,
-                        "rate_atoms_per_kvb": 1000,
+                        "rate_atoms_per_kvb": 2000,
                         "estimator": "UNAVAILABLE",
                     }}
                 if action == "fee_observe":
@@ -1274,7 +1274,7 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
                         events=[
                             "ACTION_PREPARE_AUTO", "POLICY_READ", "PROPOSE", "SAVE",
                         ],
-                        proposals=[155],
+                        proposals=[310],
                         releases=[],
                         policy=[],
                     )
@@ -1284,15 +1284,15 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
                         "checks": {"allowed": True},
                         "final_vsize": 155,
                         "witness_sizes": [65],
-                        "outputs": [330, 999_515],
+                        "outputs": [100_000, 899_690],
                         "selected_inputs": [{"txid": funding_txid, "vout": 0, "atoms": 1_000_000}],
                         "txid": txid,
                         "mempool_unchanged": True,
                     }
                 if action == "snapshot":
                     return {
-                        "confirmed_atoms": 999_515,
-                        "available_atoms": 999_515,
+                        "confirmed_atoms": 899_690,
+                        "available_atoms": 899_690,
                         "reservation_count": 1,
                         "reservation_states": ["broadcast"],
                         "reservation_state_counts": [["broadcast", 1]],
@@ -1324,7 +1324,7 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
                 self.activate = SimpleNamespace()
                 self.confirm = SimpleNamespace(isEnabled=lambda: False)
                 self.history_page = SimpleNamespace(rows=[
-                    SimpleNamespace(txid=txid, credit_atoms=0, debit_atoms=485),
+                    SimpleNamespace(txid=txid, credit_atoms=0, debit_atoms=100_310),
                 ])
 
             def show(self):
