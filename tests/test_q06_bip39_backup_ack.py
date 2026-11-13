@@ -226,7 +226,7 @@ class BackupPageContract(unittest.TestCase):
 
     def test_back_up_now_disabled_until_written_checkbox(self):
         self._show_required()
-        now = _find_button(self.window.backup_page, "Back up now")
+        now = _find_button(self.window.backup_page, "Confirm backup")
         self.assertFalse(now.isEnabled())
         check = self.window.backup_page.findChildren(QCheckBox)[0]
         check.setChecked(True)
@@ -252,7 +252,7 @@ class BackupPageContract(unittest.TestCase):
     def test_backup_verify_back_returns_to_phrase_page(self):
         self._show_required()
         self.window.backup_page.findChildren(QCheckBox)[0].setChecked(True)
-        _find_button(self.window.backup_page, "Back up now").click()
+        _find_button(self.window.backup_page, "Confirm backup").click()
         self.app.processEvents()
         self.window.backup_page._verify_back.click()
         self.app.processEvents()
@@ -261,7 +261,7 @@ class BackupPageContract(unittest.TestCase):
     def test_backup_verify_page_shows_step_2_of_2_progress_and_three_cards(self):
         self._show_required()
         self.window.backup_page.findChildren(QCheckBox)[0].setChecked(True)
-        _find_button(self.window.backup_page, "Back up now").click()
+        _find_button(self.window.backup_page, "Confirm backup").click()
         self.app.processEvents()
         self.assertIn("STEP 2 OF 2", self.window.backup_page._step_label.text())
         self.assertEqual(self.window.backup_page._step_progress.value(), 2)
@@ -272,7 +272,7 @@ class BackupPageContract(unittest.TestCase):
         self.assertEqual(len(set(positions)), 3)
         self.assertTrue(all(1 <= position <= 12 for position in positions))
         for index, (card, title, edit) in enumerate(self.window.backup_page._verify_cards):
-            self.assertEqual(title.text(), f"WORD #{positions[index]}")
+            self.assertEqual(title.text(), f"Word #{positions[index]}")
             self.assertEqual(edit.echoMode(), QLineEdit.EchoMode.Password)
         privacy = [w.text() for w in self.window.backup_page.findChildren(QLabel) if "locally" in w.text()]
         self.assertEqual(privacy, ["Verification happens locally."])
@@ -293,7 +293,7 @@ class BackupPageContract(unittest.TestCase):
     def test_successful_verification_unlocks_and_schedules_snapshot(self):
         self._show_required()
         self.window.backup_page.findChildren(QCheckBox)[0].setChecked(True)
-        _find_button(self.window.backup_page, "Back up now").click()
+        _find_button(self.window.backup_page, "Confirm backup").click()
         self.app.processEvents()
 
         positions = self.window.backup_page._challenge_positions
@@ -317,7 +317,7 @@ class BackupPageContract(unittest.TestCase):
     def test_backup_success_continue_unlocks_fund_lock_and_keeps_send_locked(self):
         self._show_required()
         self.window.backup_page.findChildren(QCheckBox)[0].setChecked(True)
-        _find_button(self.window.backup_page, "Back up now").click()
+        _find_button(self.window.backup_page, "Confirm backup").click()
         self.app.processEvents()
         positions = self.window.backup_page._challenge_positions
         words = _DISPLAY_PHRASE_WORDS.split()
@@ -349,7 +349,7 @@ class BackupPageContract(unittest.TestCase):
     def test_failed_verification_keeps_wallet_locked_then_retry_unlocks(self):
         self._show_required()
         self.window.backup_page.findChildren(QCheckBox)[0].setChecked(True)
-        _find_button(self.window.backup_page, "Back up now").click()
+        _find_button(self.window.backup_page, "Confirm backup").click()
         self.app.processEvents()
         for edit in self.window.backup_page._verify_inputs:
             edit.setText("wrong")
@@ -385,7 +385,7 @@ class BackupPageContract(unittest.TestCase):
     def test_wrong_verification_shows_error_and_allows_retry(self):
         self._show_required()
         self.window.backup_page.findChildren(QCheckBox)[0].setChecked(True)
-        _find_button(self.window.backup_page, "Back up now").click()
+        _find_button(self.window.backup_page, "Confirm backup").click()
         self.app.processEvents()
 
         for edit in _find_line_edits(self.window.backup_page):
@@ -407,7 +407,7 @@ class BackupPageContract(unittest.TestCase):
         # correct words were shown "One or more words do not match".
         self._show_required()
         self.window.backup_page.findChildren(QCheckBox)[0].setChecked(True)
-        _find_button(self.window.backup_page, "Back up now").click()
+        _find_button(self.window.backup_page, "Confirm backup").click()
         self.app.processEvents()
         executor = self.window.executor
         original = executor.request
@@ -428,7 +428,7 @@ class BackupPageContract(unittest.TestCase):
         err = self.window.backup_page._verify_error
         self.assertFalse(err.isHidden())
         self.assertNotIn("do not match", err.text())
-        self.assertIn("not a wrong-word result", err.text())
+        self.assertIn("Your words were not checked.", err.text())
         self.window.resize(1100, 760)
         self.window.show()
         self.app.processEvents(); self.app.processEvents()
@@ -791,7 +791,7 @@ class RecoveryVerifyDialogContract(unittest.TestCase):
             field.setText(word)
         self.app.processEvents()
         self.assertTrue(dialog._verify_button.isEnabled())
-        _find_button(dialog, "Verify phrase").click()
+        _find_button(dialog, "Check recovery words").click()
         self.app.processEvents()
         self.assertEqual(self.verified_phrase, _DISPLAY_PHRASE_WORDS)
 

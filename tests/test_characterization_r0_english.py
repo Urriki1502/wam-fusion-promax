@@ -125,16 +125,14 @@ ENGLISH_GUI_ERRORS = {'FEE_ABSOLUTE_LIMIT': 'The fee exceeds 0.01 WAM. Nothing w
 
 ENGLISH_LOCALE = {'app_name': 'WAM Fusion',
  'back_up_later': 'Back up later',
- 'back_up_now': 'Back up now',
+ 'back_up_now': 'Confirm backup',
  'backup_back': 'Back',
  'backup_flow_kicker': 'Create your wallet / Backup verification · REGTEST',
  'backup_privacy_note': 'Verification happens locally.',
  'backup_step_progress': 'STEP {step} OF {total}',
- 'backup_subtitle': 'Your 12-word recovery phrase is the only way to restore this REGTEST wallet '
-                    'on a new device.',
+ 'backup_subtitle': 'Write down all 12 words in order. They are shown only once.',
  'backup_title': 'Back up your wallet',
- 'backup_warning': 'Never share these words. They control access to your funds. This is a '
-                   'disposable REGTEST wallet — never use mainnet words or real funds.',
+ 'backup_warning': 'Never share these recovery words, including with support. Use disposable REGTEST words only. Never use mainnet words or real funds.',
  'cancel': 'Cancel',
  'close_to_lock': 'Closing without verifying will lock the wallet. You can complete backup on '
                   'reopen.',
@@ -148,7 +146,7 @@ ENGLISH_LOCALE = {'app_name': 'WAM Fusion',
                          'order.',
  'leave_backup_stay': 'Stay',
  'leave_backup_title': 'Leave without finishing backup?',
- 'locked_subtitle': 'Backup was postponed. Reopen this wallet to complete the secure backup.',
+ 'locked_subtitle': 'Backup is unfinished and this REGTEST wallet is locked. Reopen it and enter the requested words from your written backup. The phrase will not be shown again.',
  'locked_title': 'Wallet locked',
  'ok': 'OK',
  'phrase_grid_title': 'Write these 12 words down in order',
@@ -157,30 +155,23 @@ ENGLISH_LOCALE = {'app_name': 'WAM Fusion',
  'recovery_invalid': 'Recovery phrase is not a valid 12-word BIP39 phrase. Check the words and try '
                      'again.',
  'recovery_paste_words': 'Paste 12 words',
- 'recovery_readonly_notice': 'Read-only recovery verification. This does not restore spending '
-                             'authority, import a seed into custody, or unlock signing.',
+ 'recovery_readonly_notice': 'This check only reads history on this REGTEST chain. It does not restore spending access or unlock signing. An empty new chain has no earlier transactions.',
  'recovery_verify_kicker': 'WAM Fusion / Independent Recovery · REGTEST',
- 'recovery_verify_phrase': 'Verify phrase',
- 'recovery_verify_subtitle': 'Enter your 12 recovery words in order to verify and scan wallet '
-                             'history.',
- 'recovery_verify_title': 'Verify your recovery phrase',
+ 'recovery_verify_phrase': 'Check recovery words',
+ 'recovery_verify_subtitle': 'Enter all 12 disposable REGTEST recovery words in order. Never enter mainnet words.',
+ 'recovery_verify_title': 'Check your recovery words',
  'recovery_word_count': '{entered}/12 words entered',
- 'recovery_word_position': 'WORD #{position}',
+ 'recovery_word_position': 'Word #{position}',
  'regtest_preview': 'REGTEST PREVIEW',
- 'success_subtitle': 'Your recovery phrase has been confirmed. You can now use your REGTEST '
-                     'wallet.',
- 'success_title': 'Backup verified',
+ 'success_subtitle': 'The requested words match your written backup. Keep all 12 words private. This check does not prove recovery on another device.',
+ 'success_title': 'Backup confirmed',
  'verify': 'Verify',
  'verify_backup': 'Verify backup',
- 'verify_error': 'One or more words do not match. Check your written backup and try again.',
+ 'verify_error': 'One or more words do not match. Check your written backup and enter the newly requested words.',
  'verify_prompt': 'Enter word #{position}',
  'verify_subtitle': 'Enter the requested words to confirm you saved the phrase.',
  'verify_title': 'Verify your backup',
- 'verify_unavailable': 'Your words were not checked and nothing was recorded. This is not a '
-                       'wrong-word result. Enter the newly requested words within 2 minutes. If '
-                       'this repeats, the wallet could not verify its own WAM Core session: choose '
-                       'Back up later, quit, and reopen this wallet to verify. On Shared REGTEST, '
-                       'first check that the peer IP address is correct.',
+ 'verify_unavailable': 'Your words were not checked. Enter the newly requested words within 2 minutes. If this keeps happening, leave and lock the wallet, then reopen it to verify your backup.',
  'word_label': 'Word',
  'written_checkbox': 'I have written these 12 words down in the correct order'}
 
