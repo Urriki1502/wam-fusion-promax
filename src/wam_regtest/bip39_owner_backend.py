@@ -539,7 +539,7 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                 raise Q06ReadOnlyError('Q06_SHARED_RECONCILIATION_DENIED') from None
         if action in ('network_status', 'network_active', 'core_start', 'core_status'):
             return super().execute(action, args, kwargs)
-        if self.shared_profile is not None and action in ('prepare','sign','broadcast','mine','confirm','ci_confirm'):
+        if self.shared_profile is not None and action in ('prepare','prepare_auto','sign','broadcast','mine','confirm','ci_confirm'):
             from .shared_regtest import peer_status
             if action in ('mine','confirm','ci_confirm') and not self.shared_profile.coordinator:
                 raise Q06ReadOnlyError('SHARED_SINGLE_COORDINATOR_REQUIRED')
@@ -586,10 +586,10 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                     or self.public_state()["faulted"]):
                 raise Q06ReadOnlyError("Q06_GUI_RESUME_ARGUMENTS_DENIED")
             return self._spend_session.resume_signed_intent(args[0], args[1], approved=True)
-        if action in ("prepare", "sign", "broadcast", "cancel"):
+        if action in ("prepare", "prepare_auto", "sign", "broadcast", "cancel"):
             if kwargs or self._spend_session is None:
                 raise Q06ReadOnlyError("Q06_GUI_SPEND_NOT_ACTIVE")
-            expected = {"prepare": 3, "sign": 1, "broadcast": 1, "cancel": 0}
+            expected = {"prepare": 3, "prepare_auto": 2, "sign": 1, "broadcast": 1, "cancel": 0}
             if len(args) != expected[action]:
                 raise Q06ReadOnlyError("Q06_GUI_SPEND_ARGUMENTS_DENIED")
             session = self._spend_session

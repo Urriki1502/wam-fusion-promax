@@ -26,6 +26,14 @@ class WalletSessionError(ValueError):
     pass
 
 
+def _fee_code(error):
+    """Public fee-policy token, or one generic refusal. Never a message string."""
+    code = error.args[0] if error.args and type(error.args[0]) is str else ""
+    if re.fullmatch(r"FEE_[A-Z0-9_]{3,64}", code):
+        return code
+    return "FEE_POLICY_UNVERIFIED"
+
+
 class _SessionHistoryDenied(WalletSessionError):
     def __init__(self,code):super().__init__('WALLET_'+code)
 
@@ -38,6 +46,16 @@ class PaymentReview:
     change_atoms: int
     input_count: int
     commitment: str
+    # FEE-2 quote facts. None when prepare() was given an explicit test fee.
+    rate_atoms_per_kvb: int | None = None
+    rate_source: str | None = None
+    rate_classification: str | None = None
+    vsize: int | None = None
+    total_debit: int | None = None
+    available_before: int | None = None
+    available_after: int | None = None
+    overpay_atoms: int | None = None
+    fee_quote: object | None = None
 
 
 class WalletCoreCli(LiveCoreReadOnlyCli):
@@ -87,6 +105,14 @@ class WalletCoreCli(LiveCoreReadOnlyCli):
         if type(reply) is not dict:
             raise WalletSessionError("WALLET_FEE_POLICY_REPLY_DENIED")
         return reply
+
+    @property
+    def verified_network(self):
+        """Chain name recorded by the last successful attest, or refuse."""
+        network = getattr(self, "_verified_network", None)
+        if network != "regtest":
+            raise WalletSessionError("FEE_POLICY_NETWORK")
+        return network
 
     def call(self, method, params=None):
         if method in self.FEE_POLICY_READS:
@@ -403,6 +429,15 @@ class WalletSession:
             )
 
     def prepare(self, code, atoms, fee):
+        """Explicit fee for tests and non-GUI probes. The production GUI uses prepare_auto.
+
+        There is no fee field and no privileged override on the Fusion window,
+        the owner window, or the operational window. Callers that still pass a
+        fee are the existing unit tests (draft release, broadcast rejection,
+        payment state, signed-intent recovery, signer bridge) and the non-GUI
+        probes linux_headless, linux_headless_probe, reopen_probe and
+        q05_checkpoint_scenario.
+        """
         from wam_sp.wallet import Wallet, Intent, Signer
         with self._lock:
             if self._prepared is not None:
@@ -430,6 +465,114 @@ class WalletSession:
             review = PaymentReview(code,atoms,fee,change,len(proposal.coins),commitment)
             self._prepared,self._review,self._tip = prepared,review,self.scanner.store.tip()
             return review
+
+    def prepare_auto(self, code, atoms):
+        """Quote a network fee and reserve one monotone draft. Never signs.
+
+        The fee starts from a one-input, two-output estimate and never falls.
+        A measured need that is already covered is accepted, so a change/dust
+        oscillation (155 then 112 then 155) stops on the higher fee. At most
+        four rounds. Every abandoned draft is released only while it is still
+        an unsaved, unreviewed draft. The accepted draft is saved exactly as
+        prepare() saves: an uncertain save keeps the reservation.
+        """
+        from wam_sp.wallet import Wallet, Intent, Signer
+        from .domain.fee_policy import (
+            MAX_FEE_ATOMS, FeePolicyError, check_fee_limits, fee_for_vsize, quote)
+        from .infrastructure.fee_rpc import read_policy_inputs
+        from .infrastructure.tx_size import estimated_one_input_vsize, psbt_vsize
+        with self._lock:
+            if self._prepared is not None:
+                raise WalletSessionError("WALLET_PAYMENT_ALREADY_PENDING")
+            self.snapshot()
+            intent = Intent(code, atoms)
+            intent.validate()
+            rpc = self._rpc()
+            rpc.attest()
+            try:
+                quoted = quote(read_policy_inputs(rpc, rpc.verified_network))
+            except FeePolicyError as error:
+                raise WalletSessionError(_fee_code(error)) from None
+            wallet = Wallet(self.scanner)
+            fee = fee_for_vsize(estimated_one_input_vsize(), quoted.rate_atoms_per_kvb)
+            accepted = None
+            for _round in range(4):
+                if type(fee) is not int or not 1 <= fee <= MAX_FEE_ATOMS:
+                    raise WalletSessionError("FEE_ABSOLUTE_LIMIT")
+                available_before = wallet.balance()["available_atoms"]
+                proposal = wallet.propose((intent,), fee)
+                try:
+                    prepared = Signer(self.ring).prepare(proposal)
+                    vsize = psbt_vsize(prepared.psbt)
+                    need = fee_for_vsize(vsize, quoted.rate_atoms_per_kvb)
+                except FeePolicyError as error:
+                    self._abort_unreviewed(wallet, proposal.token)
+                    raise WalletSessionError(_fee_code(error)) from None
+                except Exception:
+                    self._abort_unreviewed(wallet, proposal.token)
+                    raise WalletSessionError("WALLET_PREPARE_DENIED") from None
+                if need <= fee:
+                    accepted = (proposal, prepared, vsize, need, fee, available_before)
+                    break
+                self._abort_unreviewed(wallet, proposal.token)
+                fee = need
+            if accepted is None:
+                raise WalletSessionError("FEE_STRUCTURE_UNSTABLE")
+            proposal, prepared, vsize, need, fee, available_before = accepted
+            try:
+                check_fee_limits(fee, atoms, vsize, quoted)
+            except FeePolicyError as error:
+                self._abort_unreviewed(wallet, proposal.token)
+                raise WalletSessionError(_fee_code(error)) from None
+            try:
+                self._save()
+            except Exception:
+                # Publication may already contain this draft. Do not release it.
+                raise WalletSessionError("WALLET_PREPARE_DENIED") from None
+            change = sum(c["atoms"] for c in proposal.coins) - atoms - fee
+            if type(available_before) is not int or change < 0:
+                self.faulted = True
+                raise WalletSessionError("WALLET_PREPARE_DENIED")
+            available_after = wallet.balance()["available_atoms"]
+            review = PaymentReview(
+                code, atoms, fee, change, len(proposal.coins),
+                sha256(prepared.psbt).hexdigest(),
+                rate_atoms_per_kvb=quoted.rate_atoms_per_kvb,
+                rate_source=quoted.source,
+                rate_classification=quoted.estimator,
+                vsize=vsize,
+                total_debit=atoms + fee,
+                available_before=available_before,
+                available_after=available_after,
+                overpay_atoms=fee - need,
+                fee_quote=quoted)
+            self._prepared, self._review, self._tip = prepared, review, self.scanner.store.tip()
+            return review
+
+    def _abort_unreviewed(self, wallet, token):
+        """Release one never-saved draft, and stop the loop if that release fails."""
+        self._release_unreviewed_draft(wallet, token)
+        if self.faulted:
+            raise WalletSessionError("WALLET_PREPARE_DENIED")
+
+    def _require_fresh_fee_quote(self, rpc):
+        """Before mark_signed: the approved rate must still cover the floor.
+
+        An explicit-fee review has no quote and is unchanged. A stale quote
+        does not sign, mark, or alter the fee. The user prepares again.
+        """
+        quote_ = self._review.fee_quote
+        if quote_ is None:
+            return
+        from .domain.fee_policy import FeePolicyError, quote_still_valid
+        from .infrastructure.fee_rpc import read_policy_inputs
+        rpc.attest()
+        try:
+            fresh = read_policy_inputs(rpc, rpc.verified_network)
+        except FeePolicyError as error:
+            raise WalletSessionError(_fee_code(error)) from None
+        if not quote_still_valid(quote_, fresh):
+            raise WalletSessionError("FEE_QUOTE_STALE")
 
     def _release_unreviewed_draft(self, wallet, token):
         """Release a never-saved, never-reviewed draft; latch on any doubt.
@@ -465,6 +608,9 @@ class WalletSession:
                 rpc=self._rpc()
                 self._unchanged_inputs(rpc)
                 proposal=self._prepared.proposal
+                # A stale network quote refuses before the irreversible mark.
+                # The approved fee is never edited. Explicit-fee reviews skip this.
+                self._require_fresh_fee_quote(rpc)
                 # Approving Sign makes this reservation irreversible BEFORE
                 # entering native crypto. A crash/failure cannot restore a draft
                 # that is cancelable, even if no signature was returned.
@@ -472,7 +618,11 @@ class WalletSession:
                 self._save()
                 try:
                     signed=Signer(self.ring).sign(self._prepared,proposal.intents,self._review.fee)
-                    PSBT.decode(signed).finalize()  # Verify signatures and sender proof.
+                    raw=PSBT.decode(signed).finalize()  # Verify signatures and sender proof.
+                    if self._review.vsize is not None:
+                        from .infrastructure.tx_size import serialized_vsize
+                        if serialized_vsize(raw) != self._review.vsize:
+                            raise ValueError("FEE_SIGNED_VSIZE_MISMATCH")
                 except Exception:
                     self.faulted=True
                     raise WalletSessionError("WALLET_SIGN_UNCERTAIN_LOCK_RETAINED") from None

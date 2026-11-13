@@ -55,3 +55,67 @@ def psbt_vsize(psbt_bytes):
     from wam_sp.psbt import PSBT
     psbt = PSBT.decode(psbt_bytes)
     return taproot_keypath_vsize(psbt.tx, signature_sizes(psbt))
+
+
+def estimated_one_input_vsize():
+    """vsize of the usual first guess: one input, recipient and change.
+
+    Both outputs are P2TR and each input carries the 65-byte SIGHASH_ALL
+    signature this pinned sender path finalizes. The real vsize is measured
+    from the prepared PSBT; this value only chooses the first fee. A payment
+    that drops change is smaller, and the monotone loop keeps the higher fee.
+    """
+    from wam_sp.psbt import Tx
+    script = b'\x51\x20' + bytes(32)
+    tx = Tx((('11' * 32, 0),), ((330, script), (330, script)))
+    return taproot_keypath_vsize(tx, (EXPLICIT_SIGHASH_SIGNATURE_BYTES,))
+
+
+def serialized_vsize(raw):
+    """vsize of a consensus-serialized transaction, witness bytes included.
+
+    base excludes the witness marker, flag and witness stack. weight =
+    3 * base + len(raw), vsize = ceil(weight / 4). Fail closed on a shape
+    this wallet does not produce.
+    """
+    from wam_sp.psbt import Reader
+    if type(raw) is not bytes or not 10 <= len(raw) <= 1_000_000:
+        raise ValueError('FEE_POLICY_VSIZE')
+    reader = Reader(raw)
+    reader.take(4)
+    witness = raw[4:6] == b'\x00\x01'
+    if witness:
+        reader.take(2)
+    n_in = reader.size(128)
+    if n_in < 1:
+        raise ValueError('FEE_POLICY_VSIZE')
+    for _ in range(n_in):
+        reader.take(36)
+        reader.blob(10_000)
+        reader.take(4)
+    n_out = reader.size(256)
+    if n_out < 1:
+        raise ValueError('FEE_POLICY_VSIZE')
+    for _ in range(n_out):
+        reader.take(8)
+        reader.blob(10_000)
+    if not witness:
+        reader.take(4)
+        reader.finish()
+        return len(raw)
+    witness_start = reader.pos
+    for _ in range(n_in):
+        n_stack = reader.size(16)
+        if n_stack < 1:
+            raise ValueError('FEE_POLICY_VSIZE')
+        for _ in range(n_stack):
+            item = reader.blob(80)
+            if len(item) not in (SIGHASH_DEFAULT_SIGNATURE_BYTES, EXPLICIT_SIGHASH_SIGNATURE_BYTES):
+                raise ValueError('FEE_POLICY_VSIZE')
+    witness_len = reader.pos - witness_start
+    reader.take(4)
+    reader.finish()
+    base = len(raw) - 2 - witness_len
+    if base <= 0:
+        raise ValueError('FEE_POLICY_VSIZE')
+    return (3 * base + len(raw) + 3) // 4

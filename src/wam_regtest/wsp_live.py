@@ -266,7 +266,7 @@ def _public_fixture_payment(rpc, account, mining_address: str, *,
 class LiveCoreReadOnlyCli:
     """Strict method surface; actual signed wam-cli -> actual localhost wamd."""
 
-    __slots__ = ("_binary", "_datadir", "_genesis", "_scope", "_transport")
+    __slots__ = ("_binary", "_datadir", "_genesis", "_scope", "_transport", "_verified_network")
 
     # Subclasses may disable HTTP to force the signed CLI path (e.g. Q02 probe).
     _http_enabled = True
@@ -280,11 +280,13 @@ class LiveCoreReadOnlyCli:
         self._genesis = None
         self._scope = None
         self._transport = None
+        self._verified_network = None
 
     def _revoke_http(self):
         from .rpc_scope import quarantine
         quarantine(self._datadir)
         self._genesis = None
+        self._verified_network = None
         if self._transport is not None:
             self._transport.close()
             self._transport = None
@@ -391,6 +393,7 @@ class LiveCoreReadOnlyCli:
         # A failed fresh attestation never leaves an earlier cached grant.
         self._genesis=None
         self._scope=None
+        self._verified_network=None
         info = self._call("getblockchaininfo", [])
         if (type(info) is not dict or info.get("chain") != "regtest"
                 or type(info.get("blocks")) is not int
@@ -413,6 +416,7 @@ class LiveCoreReadOnlyCli:
                 or version.get('subversion')!=core_compat.RPC_SUBVERSION or type(version.get('protocolversion')) is not int or version.get('protocolversion')!=core_compat.PROTOCOL_VERSION):
             raise RealWspScanError('WSP_LIVE_VERSION_DENIED')
         self._genesis = genesis
+        self._verified_network = info["chain"]
         from .rpc_scope import identity
         self._scope = identity(self._datadir)
 

@@ -37,7 +37,7 @@ class ExecutorState:
     core_alive:bool|None=False
 
 
-COMMANDS=frozenset(('open','snapshot','prepare','sign','broadcast','cancel','lock',
+COMMANDS=frozenset(('open','snapshot','prepare','prepare_auto','sign','broadcast','cancel','lock',
     'unlock','backup','recover','complete_recovery','recovery_status','network',
     'disclose','mine','activate','ci_confirm','confirm','recovery_verify',
     'inspect_confirmed','intent_status','resume_intent','backup_verify','backup_challenge','backup_challenge_cancel',
@@ -288,6 +288,7 @@ class ManagedWalletBackend:
             return None
         if self.session is None:raise WalletExecutorError('WALLET_LOCKED_OR_FAULTED')
         methods={'snapshot':self.session.snapshot,'prepare':self.session.prepare,
+            'prepare_auto':self.session.prepare_auto,
             'sign':self.session.sign,'broadcast':self.session.broadcast,'cancel':self.session.cancel,
             'backup':self.session.backup,'network':self.session.network_diagnostics,
             'disclose':self.session.disclose_record,'mine':self.session.mine}
@@ -308,6 +309,7 @@ class ManagedWalletProxy:
     def _core_reauthentication_required(self):return self.executor.state.reauthentication_required
     def snapshot(self,history_offset=0):return self.executor.request('snapshot',history_offset=history_offset)
     def prepare(self,*args):return self.executor.request('prepare',*args)
+    def prepare_auto(self,*args):return self.executor.request('prepare_auto',*args)
     def sign(self,*args):return self.executor.request('sign',*args)
     def broadcast(self,*args):return self.executor.request('broadcast',*args)
     def cancel(self):return self.executor.request('cancel')

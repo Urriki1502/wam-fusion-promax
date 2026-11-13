@@ -35,7 +35,7 @@ def operation_error(action,error):
             return 'WALLET_UNLOCK_REFUSED'
         if code=='MANAGED_WALLET_ORIGINAL_OWNER_REQUIRED':
             return 'WALLET_CORE_IDENTITY_DENIED'
-    if action=='prepare' and type(error) is ValueError:
+    if action in ('prepare', 'prepare_auto') and type(error) is ValueError:
         if code in ('INVALID_ADDRESS','INVALID_ENCODING','INVALID_PADDING','WRONG_NETWORK_OR_ADDRESS',
                     'INVALID_VERSION_OR_CHECKSUM','INVALID_ADDRESS_LENGTH','INVALID_PUBLIC_KEY'):
             return 'WALLET_INPUT_RECIPIENT_INVALID'

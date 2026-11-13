@@ -1,0 +1,432 @@
+"""FEE-2: automatic fee on the payment session. Synthetic chain and RPC.
+
+Real pinned WSP selects coins, builds the PSBT and signs. The fee quote uses
+the captured empty-REGTEST policy fixture, not a live node. Real-Core
+qualification is FEE-3. Explicit prepare(code, atoms, fee) stays available
+for the historical tests; these cases drive prepare_auto.
+"""
+from contextlib import nullcontext
+from hashlib import sha256
+import importlib.util
+from pathlib import Path
+import tempfile
+import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from mnemonic import Mnemonic
+from wam_regtest.bip39_12 import Bip39Regtest12Keys
+from wam_regtest.domain.fee_policy import (
+    FeePolicyError, check_fee_limits, fee_for_vsize)
+from wam_regtest.infrastructure.tx_size import (
+    estimated_one_input_vsize, psbt_vsize, serialized_vsize)
+from wam_sp.core import Input, pub, send
+from wam_sp.psbt import PSBT
+from wam_sp.scanner import Scanner
+from wam_sp.transaction import p2wpkh
+from wam_sp.wallet import Signer, Wallet
+from wam_sp.watcher import GENESIS
+
+SOURCE = Path(importlib.util.find_spec("wam_sp").origin).resolve().parents[2]
+PASSWORD = b"fee-2 disposable public test password"
+FOREIGN = ("ee" * 32, 7, "f" * 32, "signed", 1)
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _rows(scanner):
+    return sorted(tuple(row) for row in scanner.store.db.execute(
+        "SELECT txid,vout,token,state,created FROM reservations"))
+
+
+def _policy():
+    import copy
+    import json
+    from decimal import Decimal
+    import re
+    number = re.compile(r'-?\d+(\.\d+)?(E[+-]?\d+)?\Z', re.I)
+
+    def decimalize(value, key=None):
+        if isinstance(value, dict):
+            return {name: decimalize(item, name) for name, item in value.items()}
+        if isinstance(value, list):
+            return [decimalize(item) for item in value]
+        if isinstance(value, str) and key != 'subversion' and number.match(value):
+            return Decimal(value)
+        return value
+
+    return decimalize(json.loads(
+        (ROOT / 'tests/fixtures/fee_rpc_regtest_v013_empty.json').read_text()))
+
+
+POLICY = _policy()
+
+
+class _Chain:
+    def __init__(self, block):
+        self.block = block
+
+    def attest(self):
+        return None
+
+    def call(self, method, params=None):
+        if method == "getbestblockhash":
+            return self.block["hash"]
+        if method == "getblockcount":
+            return 1
+        if method == "getblockhash":
+            return GENESIS if params[0] == 0 else self.block["hash"]
+        if method == "getblock":
+            return self.block
+        raise ValueError("FEE2_SYNTHETIC_RPC_METHOD_DENIED")
+
+
+class _Vault:
+    def __init__(self, keys, fail=False):
+        self.keys, self.fail, self.saved = keys, fail, []
+        self.anchor = SimpleNamespace(wallet_id="d" * 32, value=(1, "a" * 64),
+                                      lease=lambda: nullcontext())
+        self.anchor.read = lambda: self.anchor.value
+        self._expected = self.anchor.value
+
+    def save(self, keys, scanner, password):
+        if self.fail:
+            raise OSError("FEE2_PUBLIC_SAVE_FAULT")
+        self.saved.append(_rows(scanner))
+        self.anchor.value = (self.anchor.value[0] + 1,
+                             sha256(scanner.checkpoint(password)).hexdigest())
+        self._expected = self.anchor.value
+
+
+class _FeeRpc:
+    """Empty-REGTEST fee policy plus the chain reads Sign already performs."""
+
+    def __init__(self, outputs, tip_hash):
+        self.outputs, self.tip_hash = outputs, tip_hash
+        self.mempoolminfee = POLICY["getmempoolinfo"]["mempoolminfee"]
+        self.calls = []
+
+    @property
+    def verified_network(self):
+        return "regtest"
+
+    def attest(self):
+        return None
+
+    def call(self, method, params=None):
+        self.calls.append(method)
+        if method == "getnetworkinfo":
+            return dict(POLICY["getnetworkinfo"])
+        if method == "getmempoolinfo":
+            info = dict(POLICY["getmempoolinfo"])
+            info["mempoolminfee"] = self.mempoolminfee
+            return info
+        if method == "estimatesmartfee":
+            return dict(POLICY["estimatesmartfee_%d_conservative" % params[0]])
+        if method == "estimaterawfee":
+            return POLICY["estimaterawfee_%d" % params[0]]
+        if method == "getbestblockhash":
+            return self.tip_hash
+        if method == "gettxout":
+            coin = self.outputs[(params[0], params[1])]
+            atoms = coin["atoms"]
+            value = "%d.%08d" % divmod(atoms, 100_000_000)
+            return {"value": value,
+                    "scriptPubKey": {"hex": "5120" + coin["public_key"]}}
+        raise ValueError("FEE2_RPC_METHOD_DENIED")
+
+
+class Estimate(unittest.TestCase):
+    def test_first_guess_is_one_input_and_two_outputs(self):
+        self.assertEqual(estimated_one_input_vsize(), 155)
+
+
+class AutomaticFee(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory(prefix="fee2-")
+        self.addCleanup(temp.cleanup)
+        self.path = Path(temp.name)
+        self.keys = Bip39Regtest12Keys(Mnemonic("english").to_mnemonic(bytes(16)),
+                                       source=SOURCE, authorized_disposable=True)
+        recipient = Bip39Regtest12Keys(Mnemonic("english").to_mnemonic(bytes([2] * 16)),
+                                       source=SOURCE, authorized_disposable=True)
+        self.addCleanup(self.keys.close)
+        self.addCleanup(recipient.close)
+        self.code = recipient.accounts()[0].payment_code()
+        self.fees = []
+
+    def _fund(self, amounts):
+        account = self.keys.accounts()[0].payment_code()
+        transactions = []
+        for index, atoms in enumerate(amounts):
+            secret = 91 + index
+            funding = Input("%02x" % (index + 5) * 32, 0, p2wpkh(secret),
+                            witness=(bytes(72), pub(secret)), secret=secret)
+            output = send([funding], [account])[0]
+            whole, fraction = divmod(atoms, 100_000_000)
+            transactions.append({
+                "txid": "%02x" % (index + 10) * 32,
+                "vin": [{"txid": funding.txid, "vout": 0, "scriptSig": {"hex": ""},
+                         "txinwitness": [item.hex() for item in funding.witness],
+                         "prevout": {"scriptPubKey": {"hex": funding.script.hex()}}}],
+                "vout": [{"n": 0, "value": "%d.%08d" % (whole, fraction),
+                          "scriptPubKey": {"hex": (b"\x51\x20" + output).hex()}}]})
+        block = {"height": 1, "hash": sha256(repr(amounts).encode()).hexdigest(),
+                 "previousblockhash": GENESIS, "tx": transactions}
+        self.scanner = Scanner(self.path / "runtime.sqlite", self.keys.accounts())
+        self.addCleanup(self.scanner.close)
+        self.scanner.sync(_Chain(block))
+        self.scanner.assert_current()
+        self.scanner.store.db.execute(
+            "INSERT INTO reservations VALUES(?,?,?,?,?)", FOREIGN)
+        self.outputs = {(coin["txid"], coin["vout"]): coin
+                        for coin in self.scanner.coins()}
+        self.rpc = _FeeRpc(self.outputs, self.scanner.store.tip()[1])
+        self.vault = _Vault(self.keys)
+        from wam_regtest.wallet_session import WalletSession
+        self.session = WalletSession(self.path, self.path, SOURCE, self.keys,
+                                     self.scanner, self.vault, PASSWORD, None)
+        self.session.snapshot = lambda *args: None
+        self.session._rpc = lambda: self.rpc
+        real_propose = Wallet.propose
+
+        def propose(wallet, intents, fee, *args, **kwargs):
+            self.fees.append(fee)
+            return real_propose(wallet, intents, fee, *args, **kwargs)
+
+        patcher = patch.object(Wallet, "propose", propose)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _states(self):
+        return {row[3] for row in _rows(self.scanner)}
+
+    def test_one_input_with_change_converges_on_the_first_fee(self):
+        self._fund((100_000,))
+        review = self.session.prepare_auto(self.code, 50_000)
+        self.assertEqual(self.fees, [155])
+        self.assertEqual(review.fee, 155)
+        self.assertEqual(review.vsize, 155)
+        self.assertEqual(review.overpay_atoms, 0)
+        self.assertEqual(review.change_atoms, 100_000 - 50_000 - 155)
+        self.assertGreater(review.change_atoms, 330)
+        self.assertEqual(review.input_count, 1)
+        self.assertEqual(review.total_debit, 50_155)
+        self.assertEqual(review.available_before, 100_000)
+        self.assertEqual(review.available_after, 0)
+        self.assertEqual(review.rate_atoms_per_kvb, 1000)
+        self.assertEqual(review.rate_source, "NETWORK_FLOOR")
+        self.assertEqual(review.rate_classification, "UNAVAILABLE")
+        self.assertGreaterEqual(
+            review.fee, fee_for_vsize(review.vsize, review.fee_quote.floor_atoms_per_kvb))
+        self.assertEqual(review.commitment, sha256(self.session._prepared.psbt).hexdigest())
+        self.assertEqual(len(self.vault.saved), 1)
+        self.assertEqual(self._states(), {"draft", "signed"})
+
+    def test_change_dust_oscillation_accepts_the_higher_fee(self):
+        # Codex: coins 1155 and 2000, amount 1000, would flip 155 then 112.
+        # Amount 10_000 keeps the same shape and stays inside the 10% guard.
+        self._fund((10_155, 20_000))
+        review = self.session.prepare_auto(self.code, 10_000)
+        self.assertEqual(self.fees, [155])
+        self.assertEqual(review.input_count, 1)
+        self.assertEqual(review.change_atoms, 0)
+        self.assertEqual(review.vsize, 112)
+        self.assertEqual(review.fee, 155)
+        self.assertEqual(review.overpay_atoms, 43)
+        self.assertGreater(review.available_after, 0)
+        self.assertEqual(review.total_debit, 10_155)
+
+    def test_small_oscillation_is_refused_as_disproportionate_and_released(self):
+        from wam_regtest.wallet_session import WalletSessionError
+        self._fund((1_155, 2_000))
+        with self.assertRaisesRegex(WalletSessionError, "FEE_DISPROPORTIONATE"):
+            self.session.prepare_auto(self.code, 1_000)
+        self.assertEqual(self.fees, [155])
+        self.assertEqual(_rows(self.scanner), [FOREIGN])
+        self.assertEqual(self.vault.saved, [])
+        self.assertIsNone(self.session._prepared)
+        self.assertFalse(self.session.faulted)
+
+    def test_two_inputs_retry_once_and_keep_the_higher_fee(self):
+        self._fund((800, 800))
+        review = self.session.prepare_auto(self.code, 400)
+        self.assertEqual(review.input_count, 2)
+        self.assertGreater(review.change_atoms, 0)
+        self.assertEqual(self.fees, [155, review.fee])
+        self.assertGreater(review.fee, 155)
+        self.assertEqual(review.overpay_atoms, 0)
+        self.assertEqual(review.vsize, 212)
+        self.assertEqual(review.fee, 212)
+        self.assertIn(FOREIGN, _rows(self.scanner))
+        self.assertEqual(sum(row[3] == "draft" for row in _rows(self.scanner)), 2)
+
+    def test_amount_at_the_dust_floor_uses_the_network_minimum(self):
+        self._fund((100_000,))
+        review = self.session.prepare_auto(self.code, 330)
+        self.assertEqual(review.fee, 155)
+        self.assertEqual(review.vsize, 155)
+        self.assertEqual(review.total_debit, 485)
+        self.assertGreaterEqual(review.change_atoms, 330)
+
+    def test_a_payment_that_fits_without_the_fee_is_refused(self):
+        self._fund((10_000,))
+        with self.assertRaisesRegex(ValueError, "INSUFFICIENT_SINGLE_CLUSTER_FUNDS"):
+            # 9_600 alone leaves spendable change; 9_600 + the fee does not.
+            self.session.prepare_auto(self.code, 9_600)
+        self.assertEqual(_rows(self.scanner), [FOREIGN])
+        self.assertEqual(self.vault.saved, [])
+
+    def test_change_below_dust_is_refused_before_save(self):
+        self._fund((800,))
+        with self.assertRaisesRegex(ValueError, "INSUFFICIENT_SINGLE_CLUSTER_FUNDS"):
+            # 330 + 155 leaves a change below the 330 dust floor.
+            self.session.prepare_auto(self.code, 330)
+        self.assertEqual(_rows(self.scanner), [FOREIGN])
+        self.assertEqual(self.vault.saved, [])
+
+    def test_unstable_structure_releases_every_unsaved_draft(self):
+        from wam_regtest.wallet_session import WalletSessionError
+        self._fund((100_000,))
+        released = []
+        real = Wallet.release_draft
+
+        def release(wallet, token):
+            rows = wallet.db.execute(
+                "SELECT token,state FROM reservations WHERE token=?", (token,)).fetchall()
+            self.assertTrue(rows)
+            self.assertTrue(all(state == "draft" for _, state in rows))
+            self.assertNotEqual(token, FOREIGN[2])
+            self.assertEqual(self.vault.saved, [])
+            released.append(token)
+            return real(wallet, token)
+
+        sizes = iter((1000, 2000, 3000, 4000))
+        with patch.object(Wallet, "release_draft", release), \
+                patch("wam_regtest.infrastructure.tx_size.psbt_vsize",
+                      side_effect=lambda _psbt: next(sizes)):
+            with self.assertRaisesRegex(WalletSessionError, "FEE_STRUCTURE_UNSTABLE"):
+                self.session.prepare_auto(self.code, 50_000)
+        self.assertEqual(self.fees, [155, 1000, 2000, 3000])
+        self.assertEqual(self.fees, sorted(self.fees))
+        self.assertEqual(len(released), 4)
+        self.assertEqual(_rows(self.scanner), [FOREIGN])
+        self.assertFalse(self.session.faulted)
+        self.assertIsNone(self.session._prepared)
+
+    def test_uncertain_save_retains_the_accepted_draft(self):
+        from wam_regtest.wallet_session import WalletSessionError
+        self._fund((100_000,))
+        self.vault.fail = True
+        with self.assertRaisesRegex(WalletSessionError, "WALLET_PREPARE_DENIED"):
+            self.session.prepare_auto(self.code, 50_000)
+        self.assertTrue(self.session.faulted)
+        self.assertIsNone(self.session._prepared)
+        self.assertEqual(self.vault.saved, [])
+        self.assertEqual(self._states(), {"draft", "signed"})
+
+    def test_absolute_limit_is_refused_before_a_draft_exists(self):
+        from wam_regtest.wallet_session import WalletSessionError
+        self._fund((100_000,))
+        with patch("wam_regtest.infrastructure.tx_size.estimated_one_input_vsize",
+                   return_value=2_000_000):
+            with self.assertRaisesRegex(WalletSessionError, "FEE_ABSOLUTE_LIMIT"):
+                self.session.prepare_auto(self.code, 50_000)
+        self.assertEqual(self.fees, [])
+        self.assertEqual(_rows(self.scanner), [FOREIGN])
+
+    def test_fee_above_the_amount_is_refused_and_the_draft_is_released(self):
+        from wam_regtest.wallet_session import WalletSessionError
+        self._fund((100_000,))
+        with patch("wam_regtest.infrastructure.tx_size.psbt_vsize", return_value=400):
+            with self.assertRaisesRegex(WalletSessionError, "FEE_EXCEEDS_AMOUNT"):
+                self.session.prepare_auto(self.code, 330)
+        self.assertEqual(_rows(self.scanner), [FOREIGN])
+        self.assertEqual(self.vault.saved, [])
+
+    def test_a_fee_below_the_floor_is_unreachable_and_still_refused(self):
+        self._fund((100_000,))
+        review = self.session.prepare_auto(self.code, 50_000)
+        floor_fee = fee_for_vsize(review.vsize, review.fee_quote.floor_atoms_per_kvb)
+        self.assertGreaterEqual(review.fee, floor_fee)
+        self.assertGreaterEqual(review.fee_quote.rate_atoms_per_kvb,
+                                review.fee_quote.floor_atoms_per_kvb)
+        with self.assertRaisesRegex(FeePolicyError, "FEE_BELOW_NETWORK_FLOOR"):
+            check_fee_limits(floor_fee - 1, review.atoms, review.vsize, review.fee_quote)
+
+    def test_stale_quote_signs_nothing_and_a_fresh_prepare_works(self):
+        from wam_regtest.wallet_session import WalletSessionError
+        self._fund((100_000,))
+        review = self.session.prepare_auto(self.code, 50_000)
+        self.rpc.mempoolminfee = POLICY["getmempoolinfo"]["mempoolminfee"] * 2
+        with patch.object(Wallet, "mark_signed") as mark, patch.object(Signer, "sign") as sign:
+            with self.assertRaisesRegex(WalletSessionError, "FEE_QUOTE_STALE"):
+                self.session.sign(review.commitment)
+        mark.assert_not_called()
+        sign.assert_not_called()
+        self.assertIsNone(self.session._signed)
+        self.assertFalse(self.session.faulted)
+        self.assertIn("draft", self._states())
+        self.session.cancel()
+        self.assertEqual(_rows(self.scanner), [FOREIGN])
+        self.rpc.mempoolminfee = POLICY["getmempoolinfo"]["mempoolminfee"]
+        again = self.session.prepare_auto(self.code, 50_000)
+        self.assertEqual(again.fee, review.fee)
+        self.assertIsNotNone(self.session._prepared)
+
+    def test_signed_vsize_must_match_or_the_payment_faults_without_broadcast(self):
+        from wam_regtest.wallet_session import WalletSessionError
+        self._fund((100_000,))
+        review = self.session.prepare_auto(self.code, 50_000)
+        with patch("wam_regtest.infrastructure.tx_size.serialized_vsize",
+                   return_value=review.vsize + 1):
+            with self.assertRaisesRegex(WalletSessionError,
+                                        "WALLET_SIGN_UNCERTAIN_LOCK_RETAINED"):
+                self.session.sign(review.commitment)
+        self.assertTrue(self.session.faulted)
+        self.assertIsNone(self.session._signed)
+        self.assertNotIn("sendrawtransaction", self.rpc.calls)
+        self.assertEqual(self._states(), {"signed"})
+        # No signed bytes were retained, so broadcast has nothing to approve.
+        with self.assertRaisesRegex(WalletSessionError, "WALLET_BROADCAST_APPROVAL_REQUIRED"):
+            self.session.broadcast(review.commitment)
+        self.assertTrue(self.session.faulted)
+        self.assertNotIn("sendrawtransaction", self.rpc.calls)
+
+    def test_a_matching_signature_keeps_the_quoted_vsize(self):
+        self._fund((100_000,))
+        review = self.session.prepare_auto(self.code, 50_000)
+        self.session.sign(review.commitment)
+        raw = PSBT.decode(self.session._signed).finalize()
+        self.assertEqual(serialized_vsize(raw), review.vsize)
+        self.assertEqual(psbt_vsize(self.session._prepared.psbt), review.vsize)
+        self.assertIsNotNone(self.session._signed)
+        self.assertNotIn("sendrawtransaction", self.rpc.calls)
+        self.assertFalse(self.session.faulted)
+
+    def test_tampered_commitment_is_refused_before_signing(self):
+        from wam_regtest.wallet_session import WalletSessionError
+        self._fund((100_000,))
+        review = self.session.prepare_auto(self.code, 50_000)
+        with patch.object(Wallet, "mark_signed") as mark, patch.object(Signer, "sign") as sign:
+            with self.assertRaisesRegex(WalletSessionError,
+                                        "WALLET_EXACT_INTENT_APPROVAL_REQUIRED"):
+                self.session.sign("0" * 64)
+        mark.assert_not_called()
+        sign.assert_not_called()
+        self.assertEqual(review.commitment, sha256(self.session._prepared.psbt).hexdigest())
+        self.session.sign(review.commitment)
+        self.assertIsNotNone(self.session._signed)
+
+    def test_explicit_fee_prepare_still_skips_the_quote(self):
+        self._fund((100_000,))
+        review = self.session.prepare(self.code, 50_000, 1_000)
+        self.assertIsNone(review.fee_quote)
+        self.assertIsNone(review.vsize)
+        self.assertEqual(review.fee, 1_000)
+        self.session.sign(review.commitment)
+        self.assertIsNotNone(self.session._signed)
+        self.assertNotIn("estimatesmartfee", self.rpc.calls)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
