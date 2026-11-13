@@ -254,7 +254,6 @@ def qualify(core, source, root, receipt, *, confirmed=False,
         else:
             window.recipient_input.setText(destination)
             window.amount_input.setText(f"{atoms // 100_000_000}.{atoms % 100_000_000:08d}")
-            window.fee_input.setText("0.00001000")
             before = executor.request("snapshot", timeout=240)
             gui_approval(window.send, "Cancel", lambda: window._last_review is None)
             cancelled = executor.request("snapshot", timeout=240)
@@ -266,11 +265,15 @@ def qualify(core, source, root, receipt, *, confirmed=False,
             record["gui_cancel_does_not_sign"] = True
             window.recipient_input.setText(destination)
             window.amount_input.setText(f"{atoms // 100_000_000}.{atoms % 100_000_000:08d}")
-            window.fee_input.setText("0.00001000")
             step("SIGN")
             gui_approval(window.send, "Approve Sign", lambda: window._signed_ready, duplicate=True)
             draft = window._last_review
-            if (draft.code != destination or draft.atoms != atoms or draft.fee != 1_000
+            from .wallet_session import quoted_fee_holds
+            try:
+                quoted = quoted_fee_holds(draft)
+            except ValueError:
+                quoted = False
+            if (not quoted or draft.code != destination or draft.atoms != atoms
                     or len(draft.commitment) != 64):
                 raise Q06PlatformQualificationError("Q06_PLATFORM_INTENT_DENIED")
             signed_view = executor.request("snapshot", timeout=240)

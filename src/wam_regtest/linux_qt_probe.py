@@ -69,10 +69,11 @@ def probe(core,datadir,source,mining):
         network=_operation(app,window,'network',window.network_button.click)
         assert network['zero_peers'] is True and network['clearnet_fallback_allowed'] is False
         receiver=Keyring();code=receiver.accounts()[0].payment_code()
-        window.recipient.setText(code);window.amount.setText('0.00100000');window.fee.setText('0.00010000')
+        window.recipient.setText(code);window.amount.setText('0.00100000')
         stage='APPROVAL';print('LINUX_QT_STAGE='+stage,flush=True)
-        review=_operation(app,window,'prepare',window.prepare_button.click)
-        assert review.atoms==100000 and review.fee==10000 and not window.broadcast_button.isEnabled()
+        review=_operation(app,window,'prepare_auto',window.prepare_button.click)
+        from .wallet_session import quoted_fee_holds
+        assert review.atoms==100000 and quoted_fee_holds(review) and not window.broadcast_button.isEnabled()
         before=tuple(session.scanner.store.db.execute('SELECT * FROM reservations'))
         _approve_dialog(app,window,window.sign_button,approve=False)
         assert session._signed is None and tuple(session.scanner.store.db.execute('SELECT * FROM reservations'))==before
@@ -87,7 +88,7 @@ def probe(core,datadir,source,mining):
         window.apply_snapshot(session.snapshot())
         assert window._submitted_txid==txid and 'SUBMITTED' in window.status.text()
         confirmed=_operation(app,window,'mine',window.mine_button.click)
-        assert confirmed.height==104 and confirmed.confirmed_atoms==initial.confirmed_atoms-110000
+        assert confirmed.height==104 and confirmed.confirmed_atoms==initial.confirmed_atoms-review.total_debit
         assert window._submitted_txid is None and 'CONFIRMED' in window.review_text.text()
         assert window.history_table.rowCount()==2 and window._snapshot==confirmed
         scan=Scanner(datadir/'qt-recipient.sqlite',receiver.accounts());scan.sync(session._rpc())

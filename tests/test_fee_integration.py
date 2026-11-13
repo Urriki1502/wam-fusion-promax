@@ -461,5 +461,33 @@ class AutomaticFee(unittest.TestCase):
         self.assertNotIn("estimatesmartfee", self.rpc.calls)
 
 
+class RemovedFeeWidget(unittest.TestCase):
+    def test_qualification_code_does_not_drive_a_removed_fee_widget(self):
+        root = Path(__file__).resolve().parents[1]
+        needles = ("fee_input", ".fee.setText")
+        paths = [
+            root / "src/wam_regtest/qualification",
+            root / "src/wam_regtest/wallet_probe.py",
+            root / "src/wam_regtest/linux_qt_probe.py",
+            root / "src/wam_regtest/shared_network_probe.py",
+            root / "src/wam_regtest/q05_gui_scenario.py",
+            root / "src/wam_regtest/q06_spend_probe.py",
+            root / "src/wam_regtest/q06_platform_probe.py",
+            root / "scripts/owner_acceptance.py",
+            root / "src/wam_regtest/bip39_fusion_gui.py",
+            root / "src/wam_regtest/bip39_owner_gui.py",
+            root / "src/wam_regtest/operational_gui.py",
+        ]
+        hits = []
+        for path in paths:
+            files = sorted(path.rglob("*.py")) if path.is_dir() else [path]
+            for source in files:
+                text = source.read_text()
+                for needle in needles:
+                    if needle in text:
+                        hits.append(f"{source.relative_to(root)}:{needle}")
+        self.assertEqual(hits, [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -8,7 +8,7 @@ from PySide6.QtGui import QImage,QFontInfo
 from PySide6.QtWidgets import QApplication
 from wam_regtest.core import verified_core_paths,_port,_write_private_config,_read_cli
 from wam_regtest.wsp_live import _pinned_source,public_regtest_mining_address,scan_actual_core_blocks
-from wam_regtest.wallet_session import WalletSession,WalletCoreCli
+from wam_regtest.wallet_session import WalletSession,WalletCoreCli,quoted_fee_holds
 from wam_regtest.wallet_read import format_wam
 from wam_regtest.desktop import qt_application,shutdown_qt
 from wam_regtest.operational_gui import OperationalWalletWindow
@@ -109,27 +109,27 @@ def audit(core,source):
    record('six_screen_navigation',window.navigation.count()==6)
    for i in range(7):window.navigation.setCurrentRow(i);app.processEvents();assert window.stack.currentIndex()==i
    # Use a real malformed-input matrix; all denials must leave chain/reservations untouched.
-   tests=[('amount_empty',receiver.accounts()[0].payment_code(),'','0.00010000'),('amount_negative',initial.receive_code,'-1','0.00010000'),('amount_comma',initial.receive_code,'0,001','0.00010000'),('amount_dust',initial.receive_code,'0.00000001','0.00010000'),('amount_precision',initial.receive_code,'0.000000001','0.00010000'),('fee_zero',initial.receive_code,'0.00100000','0'),('fee_negative',initial.receive_code,'0.00100000','-0.01'),('fee_excess',initial.receive_code,'0.00100000','0.01000001'),('fee_precision',initial.receive_code,'0.00100000','0.000000001'),('recipient_empty','','0.00100000','0.00010000'),('recipient_garbage','not-an-address','0.00100000','0.00010000'),('recipient_standard_core',mining,'0.00100000','0.00010000'),('recipient_bad_checksum',initial.receive_code[:-1]+('q' if initial.receive_code[-1]!='q' else 'p'),'0.00100000','0.00010000'),('insufficient_funds',initial.receive_code,'999999.00000000','0.00010000')]
+   tests=[('amount_empty',receiver.accounts()[0].payment_code(),''),('amount_negative',initial.receive_code,'-1'),('amount_comma',initial.receive_code,'0,001'),('amount_dust',initial.receive_code,'0.00000001'),('amount_precision',initial.receive_code,'0.000000001'),('recipient_empty','','0.00100000'),('recipient_garbage','not-an-address','0.00100000'),('recipient_standard_core',mining,'0.00100000'),('recipient_bad_checksum',initial.receive_code[:-1]+('q' if initial.receive_code[-1]!='q' else 'p'),'0.00100000'),('insufficient_funds',initial.receive_code,'999999.00000000')]
    ui_codes={};ux={}
-   for name,code,amount,fee in tests:
+   for name,code,amount in tests:
     sync(app,window);before=(reservations(session),rpc._call('getrawmempool',[]),session.vault.anchor.read())
-    window.navigation.setCurrentRow(3);window.recipient.setText(code);window.amount.setText(amount);window.fee.setText(fee)
-    response=operation(app,window,'prepare',window.prepare_button.click,denied=True)
+    window.navigation.setCurrentRow(3);window.recipient.setText(code);window.amount.setText(amount)
+    response=operation(app,window,'prepare_auto',window.prepare_button.click,denied=True)
     after=(reservations(session),rpc._call('getrawmempool',[]),session.vault.anchor.read())
     record(name+'_safe_refusal',before==after and session._signed is None and session._prepared is None)
     ui_codes[name]=response['code'];ux[name]={'status':window.status.text(),'badge':window.verification_badge.text(),'faulted':session.faulted,'locked':session.locked}
-    if name in ('fee_zero','recipient_standard_core','insufficient_funds'):assert window.grab().save(str(OUT/(name+'.png')))
+    if name in ('amount_empty','recipient_standard_core','insufficient_funds'):assert window.grab().save(str(OUT/(name+'.png')))
    (OUT/'INPUT_FAILURE_REPRODUCTION.json').write_text(json.dumps({'cases':ux,'signals':ui_codes},indent=2)+'\n')
-   record('specific_input_error_feedback',len(set(ui_codes.values()))>=4,signals=ui_codes)
+   record('specific_input_error_feedback',len(set(ui_codes.values()))>=3,signals=ui_codes)
    record('validation_error_not_core_failure',all(v['badge']!='Not verified' for v in ux.values()),cases=ux)
    sync(app,window)
    # Two genuine transactions: another random WSP wallet, then self-payment.
-   for mode,code,atoms,fee in [('other',receiver.accounts()[0].payment_code(),100000,10000),('self',initial.receive_code,200000,10000)]:
+   for mode,code,atoms in [('other',receiver.accounts()[0].payment_code(),100000),('self',initial.receive_code,200000)]:
     start=session.snapshot();window.apply_snapshot(start);window.navigation.setCurrentRow(3)
-    window.recipient.setText(code);window.amount.setText(format_wam(atoms));window.fee.setText('0.00010000')
-    review=operation(app,window,'prepare',window.prepare_button.click)['value']
+    window.recipient.setText(code);window.amount.setText(format_wam(atoms))
+    review=operation(app,window,'prepare_auto',window.prepare_button.click)['value']
     selected=sum(c['atoms'] for c in session._prepared.proposal.coins)
-    record(mode+'_exact_review',review.code==code and review.atoms==atoms and review.fee==fee and review.change_atoms==selected-atoms-fee and code in window.review_text.text())
+    record(mode+'_exact_review',quoted_fee_holds(review) and review.code==code and review.atoms==atoms and review.change_atoms==selected-atoms-review.fee and code in window.review_text.text())
     before=reservations(session);_approve_dialog(app,window,window.sign_button,approve=False)
     record(mode+'_sign_cancel',session._signed is None and reservations(session)==before and not rpc._call('getrawmempool',[]))
     operation(app,window,'sign',lambda:_approve_dialog(app,window,window.sign_button,approve=True))
@@ -141,9 +141,9 @@ def audit(core,source):
     record(mode+'_real_pending',txid in rpc._call('getrawmempool',[]) and pending.confirmed_atoms==start.confirmed_atoms,pending_label=window.status.text(),review_text=window.review_text.text(),confirmed_balance_unchanged=True)
     record(mode+'_pending_gui_feedback',any(word in (window.status.text()+' '+window.review_text.text()).lower() for word in ('pending','submitted','unconfirmed')))
     final=operation(app,window,'mine',window.mine_button.click)['value'];final=sync(app,window)
-    expect=start.confirmed_atoms-fee-(atoms if mode=='other' else 0)
+    expect=start.confirmed_atoms-review.fee-(atoms if mode=='other' else 0)
     rows=[r for r in final.history if r.txid==txid];rscan.sync(rpc)
-    record(mode+'_confirmed_math',final.confirmed_atoms==expect and len(rows)==1 and rows[0].confirmations==1,before_atoms=start.confirmed_atoms,after_atoms=final.confirmed_atoms,payment_atoms=atoms,fee_atoms=fee,history_credit=rows[0].credit_atoms,history_debit=rows[0].debit_atoms)
+    record(mode+'_confirmed_math',final.confirmed_atoms==expect and len(rows)==1 and rows[0].confirmations==1,before_atoms=start.confirmed_atoms,after_atoms=final.confirmed_atoms,payment_atoms=atoms,fee_atoms=review.fee,history_credit=rows[0].credit_atoms,history_debit=rows[0].debit_atoms)
     if mode=='other':record('recipient_independent_scanner',Wallet(rscan).balance()['confirmed_atoms']==atoms)
     assert window.grab().save(str(OUT/(mode+'-confirmed.png')))
    # Native background sync while a timer verifies responsiveness.

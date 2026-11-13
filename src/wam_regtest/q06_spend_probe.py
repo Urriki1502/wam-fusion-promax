@@ -184,7 +184,6 @@ def qualify(core, source):
             stage("PREPARE_START")
             window.recipient_input.setText(destination)
             window.amount_input.setText('3')
-            window.fee_input.setText('0.00010000')
             # Match the existing Windows/Linux Q06 negative: genuine native
             # custody + default-Cancel GUI must dispatch no signature and
             # release only this unsigned draft before a later approved payment.
@@ -199,7 +198,6 @@ def qualify(core, source):
             stage('GUI_UNSIGNED_CANCEL_PASS')
             window.recipient_input.setText(destination)
             window.amount_input.setText('1.23456789')
-            window.fee_input.setText('0.00010000')
             # The GUI caller's Decimal precision must never round approved
             # money. The owner executor still validates the exact integer intent.
             from decimal import localcontext
@@ -209,10 +207,15 @@ def qualify(core, source):
             data['gui_low_decimal_precision_exact_atoms'] = atoms
             data['gui_raw_amount_input'] = '1.23456789'
             prepared = window._last_review
-            if (prepared.code != destination or prepared.atoms != atoms
-                    or prepared.fee != 10000 or len(prepared.commitment) != 64
+            from .wallet_session import quoted_fee_holds
+            try:
+                quoted = quoted_fee_holds(prepared)
+            except ValueError:
+                quoted = False
+            if (not quoted or prepared.code != destination or prepared.atoms != atoms
+                    or len(prepared.commitment) != 64
                     or prepared.input_count != 1
-                    or prepared.change_atoms != funded['atoms'] - atoms - 10000):
+                    or prepared.change_atoms != funded['atoms'] - atoms - prepared.fee):
                 raise ValueError("Q06_SPEND_INTENT_DENIED")
             stage("PREPARE_ANCHORED_PASS")
             signed = window._last_review
@@ -235,7 +238,7 @@ def qualify(core, source):
             if (after["height"] != confirmed["height"]
                     or after["history_count_shown"] < 2
                     or after["receive_code"] != created["receive_code"]
-                    or after['confirmed_atoms'] != funded['atoms'] - atoms - 10000):
+                    or after['confirmed_atoms'] != funded['atoms'] - atoms - prepared.fee):
                 raise ValueError("Q06_SPEND_HISTORY_DENIED")
             data['confirmed_height'] = after['height']
             data['confirmed_tip'] = after['tip']

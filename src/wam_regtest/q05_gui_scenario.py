@@ -195,10 +195,15 @@ class Driver:
                     raise ValueError('Q05_GUI_REAL_RECEIVING_DENIED')
                 self.record['observations'].append({'real_bip352_received':True,
                     'fixture_txid':self.funding['fixture_payment'],'history_sha256':snap.history_sha256})
-                w.recipient.setText(self.funding['recipient']);w.amount.setText('0.00100000');w.fee.setText('0.00010000')
+                w.recipient.setText(self.funding['recipient']);w.amount.setText('0.00100000')
                 w.prepare_payment();self.stage='prepared'
             elif self.stage=='prepared' and self.idle():
-                if w.review is None:raise ValueError('Q05_GUI_PREPARE_DENIED')
+                from .wallet_session import quoted_fee_holds
+                try:
+                    quoted = w.review is not None and quoted_fee_holds(w.review)
+                except ValueError:
+                    quoted = False
+                if not quoted:raise ValueError('Q05_GUI_PREPARE_DENIED')
                 self.stage='signing';self.approve('sign')
             elif self.stage=='signing' and self.idle():
                 if not w.signed:raise ValueError('Q05_GUI_SIGN_DENIED')

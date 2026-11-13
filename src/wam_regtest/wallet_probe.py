@@ -199,7 +199,6 @@ def probe_wallet(core_dir,datadir,source,mining_address):
             auto_verified=True
         window.recipient.setText(code)
         window.amount.setText("0.00100000")
-        window.fee.setText("0.00010000")
         network=_operation(app,window,'network',window.network_button.click)
         assert network['status']=='LOCAL_REGTEST_NETWORK_POLICY_PASS' and network['zero_peers'] is True
         assert network['clearnet_fallback_allowed'] is False
@@ -236,10 +235,11 @@ def probe_wallet(core_dir,datadir,source,mining_address):
         stage="PREPARE"
         # Authenticated Lock/Unlock intentionally cleared the earlier form.
         # Re-enter the exact disposable payment as a real operator would.
-        window.recipient.setText(code);window.amount.setText('0.00100000');window.fee.setText('0.00010000')
+        window.recipient.setText(code);window.amount.setText('0.00100000')
         print("WALLET_E2E_STAGE=PREPARE",flush=True)
-        review=_operation(app,window,'prepare',window.prepare_button.click)
-        assert review.code==code and review.atoms==100000 and review.fee==10000
+        review=_operation(app,window,'prepare_auto',window.prepare_button.click)
+        from .wallet_session import quoted_fee_holds
+        assert review.code==code and review.atoms==100000 and quoted_fee_holds(review)
         assert str(review.atoms) in window.review_text.text() and code in window.review_text.text()
         assert window.sign_button.isEnabled() and not window.broadcast_button.isEnabled()
         # A rejected native approval must not enter signer or alter reservations.
@@ -367,7 +367,7 @@ def probe_wallet(core_dir,datadir,source,mining_address):
         # then execute exactly once through the normally enabled control.
         waited=getattr(window,'_acceptance_dispatch_waits',0)
         QTimer.singleShot(0,window.request_sync)
-        _operation(app,window,'prepare',window.prepare_button.click)
+        _operation(app,window,'prepare_auto',window.prepare_button.click)
         assert window._acceptance_dispatch_waits>waited
         _capture_fusion_views(app,window)
         # Deterministically reproduce the observed Windows capture/sync overlap
@@ -597,22 +597,20 @@ def _validation_feedback_probe(app,window,session):
     from .gui_errors import INPUT_ERRORS
     initial=session.snapshot()
     code=initial.receive_code
-    cases=(('',code,'0.00010000','WALLET_INPUT_AMOUNT_INVALID'),
-           ('0.00000001',code,'0.00010000','WALLET_INPUT_AMOUNT_INVALID'),
-           ('0.00100000',code,'0','WALLET_INPUT_FEE_INVALID'),
-           ('0.00100000',code,'0.01000001','WALLET_INPUT_FEE_INVALID'),
-           ('0.00100000','not-an-address','0.00010000','WALLET_INPUT_RECIPIENT_INVALID'),
-           ('0.00100000',code[:-1]+('q' if code[-1]!='q' else 'p'),'0.00010000','WALLET_INPUT_RECIPIENT_INVALID'),
-           ('999999.00000000',code,'0.00010000','WALLET_INPUT_FUNDS_UNAVAILABLE'))
+    cases=(('',code,'WALLET_INPUT_AMOUNT_INVALID'),
+           ('0.00000001',code,'WALLET_INPUT_AMOUNT_INVALID'),
+           ('0.00100000','not-an-address','WALLET_INPUT_RECIPIENT_INVALID'),
+           ('0.00100000',code[:-1]+('q' if code[-1]!='q' else 'p'),'WALLET_INPUT_RECIPIENT_INVALID'),
+           ('999999.00000000',code,'WALLET_INPUT_FUNDS_UNAVAILABLE'))
     rpc=session._rpc()
-    for amount,recipient,fee,expected in cases:
+    for amount,recipient,expected in cases:
         window.apply_snapshot(session.snapshot())
-        window.recipient.setText(recipient);window.amount.setText(amount);window.fee.setText(fee)
+        window.recipient.setText(recipient);window.amount.setText(amount)
         before=(tuple(tuple(r) for r in session.scanner.store.db.execute('SELECT * FROM reservations')),
                 session.vault.anchor.read(),tuple(rpc._call('getrawmempool',[])))
         seen=[];handler=seen.append
         window.operation_failed.connect(handler)
-        try:_operation(app,window,'prepare',window.prepare_button.click,denied=True)
+        try:_operation(app,window,'prepare_auto',window.prepare_button.click,denied=True)
         finally:window.operation_failed.disconnect(handler)
         after=(tuple(tuple(r) for r in session.scanner.store.db.execute('SELECT * FROM reservations')),
                session.vault.anchor.read(),tuple(rpc._call('getrawmempool',[])))

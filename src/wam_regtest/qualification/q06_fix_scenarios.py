@@ -22,7 +22,6 @@ from .. import custody
 EVIDENCE_NAME = "q06-fix-scenarios-evidence.json"
 _PASSWORD = b"public-disposable-q06-fix-scenarios-only"
 _PAYMENT_ATOMS = 100_000_000
-_FEE_ATOMS = 10_000
 _ATOM_MAX = 22_000_000 * 100_000_000
 _HEX16 = re.compile(r"[0-9A-Fa-f]{16}")
 _TOKEN = re.compile(r"[A-Z][A-Za-z0-9_]{0,94}\Z")
@@ -510,12 +509,17 @@ def scenario_unconfirmed_restart(app, adapter, core, source, report):
             destination = payee.public_metadata()["receive_code"]
         window.recipient_input.setText(destination)
         window.amount_input.setText("1.00000000")
-        window.fee_input.setText("0.00010000")
         destination = None
         approve(window.send, "Approve Sign", lambda: window._signed_ready, "S1_SIGN")
         prepared = window._last_review
-        if (prepared.atoms != _PAYMENT_ATOMS or prepared.fee != _FEE_ATOMS
-                or prepared.change_atoms != funded_atoms - _PAYMENT_ATOMS - _FEE_ATOMS):
+        from ..wallet_session import quoted_fee_holds
+        try:
+            quoted = quoted_fee_holds(prepared)
+        except ValueError:
+            quoted = False
+        if (not quoted or prepared.atoms != _PAYMENT_ATOMS
+                or prepared.change_atoms != funded_atoms - prepared.atoms - prepared.fee
+                or prepared.available_before != funded_atoms):
             raise ValueError("Q06_FIX_S1_PREPARE_DENIED")
         approve(window.broadcast, "Approve Broadcast",
                 lambda: window._pending_confirm_txid is not None, "S1_BROADCAST")

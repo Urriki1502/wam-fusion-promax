@@ -199,7 +199,6 @@ def qualify(core, source):
         w=a['window']
         w.recipient_input.setText(b['receive_code'])
         w.amount_input.setText('3')
-        w.fee_input.setText('0.00010000')
         approve(a,w.send,'Approve Sign',lambda:w._signed_ready)
         report['cases']['V9']='PASS'
         approve(a,w.broadcast,'Approve Broadcast',lambda:w._pending_confirm_txid is not None)
