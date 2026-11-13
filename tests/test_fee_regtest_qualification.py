@@ -1,8 +1,11 @@
 """Pure FEE-3 evidence/oracle tests. No daemon, profile or native anchor."""
+import copy
 from decimal import Decimal, localcontext
 import json
 import os
 from pathlib import Path
+import re
+import sqlite3
 import tempfile
 import threading
 from types import SimpleNamespace
@@ -78,8 +81,19 @@ class Evidence(unittest.TestCase):
 
     def test_unknown_rpc_fields_cannot_leak_secret_text(self):
         self.assertNotIn("secret words here", json.dumps(json_capture({"unknown": "secret words here"})))
-        for value in ({"password": "secret"},
-                      {"raw": b"secret"}, {"number": float("nan")}):
+        for value in (
+            {"password": "secret"},
+            {"raw": b"secret"},
+            {"estimaterawfee": {"short": {"raw": 1}}},
+            {"estimaterawfee": {"short": {"seed": "word"}}},
+            {"nested": {"SEED": "word"}},
+            {"nested": {"Raw": "hex"}},
+            {"mnemonic": "words"},
+            {"key": "priv"},
+            {"psbt": "cHNidP8="},
+            {"config": {}},
+            {"number": float("nan")},
+        ):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 json_capture(value)
 
@@ -139,6 +153,9 @@ class Evidence(unittest.TestCase):
                         "frozen", "Windows/Linux"):
             self.assertIn(case_id, OUTSIDE_STEP)
             self.assertTrue(OUTSIDE_STEP[case_id].startswith("BLOCKED_"), case_id)
+        self.assertIn("UNCONFIRMED_RESTART", OUTSIDE_STEP["F3-12"])
+        self.assertIn("CANCEL_BEFORE_SIGN", OUTSIDE_STEP["F3-13"])
+        self.assertIn("SIGN_BROADCAST_SAFETY_INVARIANTS", OUTSIDE_STEP["F3-14"])
         with patch.dict(os.environ, {"WAM_QUALIFICATION_ACTOR": "verifier-agent"}, clear=False):
             self.assertEqual(resolve_actor(), "verifier-agent")
             self.assertEqual(resolve_actor("explicit-actor"), "explicit-actor")
@@ -412,6 +429,260 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
         )
         self.assertEqual(len(observations["releases"]), 1)
         self.assertTrue(proposal_trace_holds(observations["proposals"]))
+
+    @staticmethod
+    def _load_actual_v013():
+        root = Path(__file__).resolve().parents[1]
+        number_re = re.compile(r"-?\d+(\.\d+)?(E[+-]?\d+)?\Z", re.I)
+
+        def decimalize(value, key=None):
+            if isinstance(value, dict):
+                return {k: decimalize(v, k) for k, v in value.items()}
+            if isinstance(value, list):
+                return [decimalize(v) for v in value]
+            if isinstance(value, str) and key not in ("subversion",) and number_re.match(value):
+                return Decimal(value)
+            return value
+
+        return decimalize(json.loads((root / "tests/fixtures/fee_rpc_regtest_v013_empty.json").read_text()))
+
+    def test_fee_baseline_captures_realistic_v013_replies_and_refuses_nested_secret_keys(self):
+        actual = self._load_actual_v013()
+        FeeBackend = backend_type()
+
+        def run_baseline(raw_reply):
+            class FakeRpc:
+                verified_network = "regtest"
+
+                def attest(self):
+                    return None
+
+                def call(self, method, params=None):
+                    if method == "getnetworkinfo":
+                        return copy.deepcopy(actual["getnetworkinfo"])
+                    if method == "getmempoolinfo":
+                        return copy.deepcopy(actual["getmempoolinfo"])
+                    if method == "estimatesmartfee":
+                        return copy.deepcopy(actual[f"estimatesmartfee_{params[0]}_conservative"])
+                    if method == "estimaterawfee":
+                        return copy.deepcopy(raw_reply)
+                    raise AssertionError(f"unexpected RPC {method}")
+
+            backend = FeeBackend.__new__(FeeBackend)
+            backend.observations = {}
+            backend._spend_session = SimpleNamespace(_rpc=lambda: FakeRpc())
+            return backend.execute("fee_baseline", (), {})
+
+        with tempfile.TemporaryDirectory() as folder:
+            baseline = run_baseline(actual["estimaterawfee_6"])
+            self.assertEqual(baseline["quote"]["floor_atoms_per_kvb"], 1000)
+            self.assertEqual(baseline["quote"]["estimator"], "UNAVAILABLE")
+            response = baseline["rpc"]["response"]
+            self.assertIn("estimaterawfee", response)
+            self.assertNotIn("raw", response)
+            self.assertEqual(response["estimaterawfee"]["short"]["decay"], "0.962")
+            digest = write_artifact(Path(folder) / "baseline.json", baseline)
+            self.assertEqual(len(digest), 64)
+            loaded = json.loads((Path(folder) / "baseline.json").read_text())
+            self.assertIn("estimaterawfee", loaded["rpc"]["response"])
+
+            # Non-empty estimaterawfee reply with pass bucket is also accepted and serialized.
+            populated_raw = copy.deepcopy(actual["estimaterawfee_6"])
+            populated_raw["short"]["pass"] = {
+                "startrange": Decimal("0.00001000"),
+                "endrange": Decimal("0.00002000"),
+                "withintarget": Decimal("12.5"),
+                "totalconfirmed": Decimal("12.5"),
+                "inmempool": 0,
+                "leftmempool": 0,
+            }
+            populated = run_baseline(populated_raw)
+            self.assertIn("pass", populated["rpc"]["response"]["estimaterawfee"]["short"])
+            write_artifact(Path(folder) / "baseline-populated.json", populated)
+
+        # Nested denylisted keys inside RPC replies must still be refused.
+        for bad_key in ("raw", "seed"):
+            bad_reply = copy.deepcopy(actual["estimaterawfee_6"])
+            bad_reply["short"][bad_key] = "nested-secret"
+            with self.subTest(bad_key=bad_key), self.assertRaisesRegex(ValueError, "F3_PUBLIC_RPC_KEYS_DENIED"):
+                run_baseline(bad_reply)
+
+    def test_every_evidence_action_serializes_realistic_replies(self):
+        from hashlib import sha256
+        from wam_regtest.wallet_session import WalletCoreCli
+        from wam_sp.psbt import PSBT, Tx
+        from wam_sp.transaction import p2wpkh
+        from wam_sp.wallet import Signer, Wallet
+
+        actual = self._load_actual_v013()
+        FeeBackend = backend_type()
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+
+            # 1. fee_fixture
+            owner_dir = root / "owner"
+            owner_dir.mkdir()
+            coinbase_txid = "11" * 32
+            funding_txid = "22" * 32
+            genesis_hash = "00" * 32
+            block1_hash = "33" * 32
+            heights = iter([0, 101, 102])
+
+            def fake_call(_self, method, params=None):
+                if method == "getblockcount":
+                    return next(heights)
+                if method == "getblockhash":
+                    return genesis_hash if params == [0] else block1_hash
+                if method == "getnetworkinfo":
+                    return copy.deepcopy(actual["getnetworkinfo"])
+                raise AssertionError(f"unexpected call {method}")
+
+            def fake_raw_call(_self, method, params=None):
+                if method == "generatetoaddress":
+                    return [block1_hash] * int(params[0])
+                if method == "getblock":
+                    return {
+                        "hash": block1_hash,
+                        "tx": [{
+                            "txid": coinbase_txid,
+                            "vout": [{"n": 0, "value": Decimal("50.00000000"),
+                                      "scriptPubKey": {"hex": p2wpkh(31).hex()}}],
+                        }],
+                    }
+                if method == "sendrawtransaction":
+                    return funding_txid
+                raise AssertionError(f"unexpected _call {method}")
+
+            fixture_backend = FeeBackend.__new__(FeeBackend)
+            fixture_backend.observations = {}
+            fixture_backend.source = root / "wsp-source"
+            fixture_backend._secret = b"secret"
+            fixture_backend._seed_folder = owner_dir / "bip39-12-id1"
+            fixture_backend._spend_session = None
+            fixture_backend._public = {"receive_code": "wam1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"}
+            fixture_backend._core = lambda: SimpleNamespace(cli=root / "wam-cli", directory=owner_dir)
+            with (
+                patch("wam_regtest.managed_wallet_checkpoint._owned", return_value=None),
+                patch("wam_regtest.wsp_live.public_regtest_mining_address", return_value="wamrt1qaddr"),
+                patch.object(WalletCoreCli, "attest", return_value=None),
+                patch.object(WalletCoreCli, "call", fake_call),
+                patch.object(WalletCoreCli, "_call", fake_raw_call),
+                patch("wam_sp.core.send", return_value=(bytes(32),)),
+                patch("wam_sp.transaction.signed_single_input", return_value="00" * 80),
+            ):
+                fixture_ev = fixture_backend.execute("fee_fixture", ((1_000_000,),), {})
+            write_artifact(root / "fee_fixture.json", fixture_ev)
+
+            # 2. fee_inspect
+            db = sqlite3.connect(":memory:")
+            db.execute("CREATE TABLE reservations (txid TEXT, vout INT, token TEXT, state TEXT, created INT)")
+            db.execute("INSERT INTO reservations VALUES (?, ?, ?, ?, ?)", (funding_txid, 0, "tok1", "reserved", 1))
+            coins = [{"txid": funding_txid, "vout": 0, "atoms": 1_000_000, "account": 0, "label": "main"}]
+            inspect_rpc = SimpleNamespace(
+                attest=lambda: None,
+                _call=lambda method, params=None: [funding_txid] if method == "getrawmempool" else None,
+                call=lambda method, params=None: (
+                    copy.deepcopy(actual["getmempoolinfo"]) if method == "getmempoolinfo" else None
+                ),
+            )
+            inspect_backend = FeeBackend.__new__(FeeBackend)
+            inspect_backend.observations = {}
+            inspect_backend._spend_session = SimpleNamespace(
+                _rpc=lambda: inspect_rpc,
+                scanner=SimpleNamespace(coins=lambda: coins, store=SimpleNamespace(db=db)),
+                vault=SimpleNamespace(anchor=SimpleNamespace(read=lambda: {"seq": 1})),
+                faulted=False,
+                _prepared=None,
+                _signed=None,
+            )
+            with patch.object(Wallet, "balance", return_value={
+                "confirmed_atoms": 1_000_000, "available_atoms": 1_000_000,
+                "reserved_atoms": 0, "unconfirmed_atoms": 0, "pending_spent_atoms": 0,
+            }):
+                inspect_ev = inspect_backend.execute("fee_inspect", (), {})
+            write_artifact(root / "fee_inspect.json", inspect_ev)
+
+            # 3. fee_preflight
+            script = b"\x51\x20" + bytes(32)
+            tx = Tx((("11" * 32, 0),), ((100_000, script), (899_845, script)))
+            raw_tx = tx.serialize([(bytes(65),)])
+            txid = sha256(sha256(tx.serialize()).digest()).digest()[::-1].hex()
+            wtxid = sha256(sha256(raw_tx).digest()).digest()[::-1].hex()
+            tma_reply = [{
+                "allowed": True,
+                "txid": txid,
+                "wtxid": wtxid,
+                "vsize": 155,
+                "fees": {
+                    "base": Decimal("0.00000155"),
+                    "effective-feerate": Decimal("0.00001000"),
+                    "effective-includes": [wtxid],
+                },
+            }]
+            mempool_calls = iter([[], []])
+            preflight_rpc = SimpleNamespace(
+                _call=lambda method, params=None: next(mempool_calls) if method == "getrawmempool" else None,
+                call=lambda method, params=None: (
+                    copy.deepcopy(tma_reply) if method == "testmempoolaccept" else None
+                ),
+            )
+            fake_psbt = SimpleNamespace(
+                finalize=lambda: raw_tx,
+                txid=lambda: txid,
+                tx=tx,
+                signatures=[bytes(65)],
+            )
+            preflight_backend = FeeBackend.__new__(FeeBackend)
+            preflight_backend.observations = {}
+            preflight_backend._spend_session = SimpleNamespace(
+                _signed=b"psbt-bytes",
+                _rpc=lambda: preflight_rpc,
+                _prepared=SimpleNamespace(proposal=SimpleNamespace(coins=coins)),
+                _review=SimpleNamespace(vsize=155, fee=155),
+            )
+            with patch.object(PSBT, "decode", return_value=fake_psbt):
+                preflight_ev = preflight_backend.execute("fee_preflight", (), {})
+            self.assertTrue(all(preflight_ev["checks"].values()))
+            write_artifact(root / "tma.json", preflight_ev)
+
+            # 4. fee_observe + observed FEE_POLICY_READS
+            obs = {}
+            obs_backend = FeeBackend.__new__(FeeBackend)
+            obs_backend.observations = obs
+            obs_backend._spend_session = None
+            obs_backend.execute("fee_observe", (), {})
+
+            def observed_execute(_self, _action, _args, _kwargs):
+                WalletCoreCli.call(None, "getnetworkinfo", [])
+                WalletCoreCli.call(None, "getmempoolinfo", [])
+                WalletCoreCli.call(None, "estimatesmartfee", [6, "conservative"])
+                WalletCoreCli.call(None, "estimaterawfee", [6])
+                return "ok"
+
+            policy_replies = {
+                "getnetworkinfo": copy.deepcopy(actual["getnetworkinfo"]),
+                "getmempoolinfo": copy.deepcopy(actual["getmempoolinfo"]),
+                "estimatesmartfee": copy.deepcopy(actual["estimatesmartfee_6_conservative"]),
+                "estimaterawfee": copy.deepcopy(actual["estimaterawfee_6"]),
+            }
+            with (
+                patch.object(Wallet, "propose", return_value=None),
+                patch.object(Wallet, "release_draft", return_value=None),
+                patch.object(Wallet, "mark_signed", return_value=None),
+                patch.object(Signer, "sign", return_value=None),
+                patch.object(WalletCoreCli, "call", side_effect=lambda _self, m, _a=None: policy_replies[m]),
+                patch("wam_regtest.bip39_owner_backend.Bip39ReadOnlyBackend.execute", observed_execute),
+            ):
+                self.assertEqual(obs_backend.execute("prepare_auto", (), {}), "ok")
+            self.assertFalse(obs.get("observer_errors"))
+            self.assertEqual(len(obs["policy"]), 4)
+            write_artifact(root / "policy.json", obs["policy"])
+            write_artifact(root / "events.json", {k: v for k, v in obs.items() if k != "policy"})
+
+            for name in ("fee_fixture.json", "fee_inspect.json", "tma.json", "policy.json", "events.json"):
+                parsed = json.loads((root / name).read_text())
+                self.assertIsNotNone(parsed, name)
 
     def test_offscreen_f301_dialog_cancel_and_no_fast_normal_slow(self):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

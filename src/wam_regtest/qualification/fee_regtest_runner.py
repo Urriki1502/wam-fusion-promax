@@ -173,13 +173,14 @@ def backend_type():
                 mempool = rpc.call("getmempoolinfo", [])
                 smart = {t: rpc.call("estimatesmartfee", [t, "conservative"]) for t in (2, 6, 25)}
                 try:
-                    raw = rpc.call("estimaterawfee", [6])
+                    estimaterawfee = rpc.call("estimaterawfee", [6])
                 except Exception:
-                    raw = None
+                    estimaterawfee = None
                 return {"quote": asdict(quote(parse_policy_inputs(
-                            rpc.verified_network, network, mempool, smart, {6: raw}))),
+                            rpc.verified_network, network, mempool, smart, {6: estimaterawfee}))),
                         "rpc": json_capture({"network": network, "mempool": mempool,
-                                             "smart": [smart[t] for t in (2, 6, 25)], "raw": raw})}
+                                             "smart": [smart[t] for t in (2, 6, 25)],
+                                             "estimaterawfee": estimaterawfee})}
             if action == "fee_observe":
                 self.observations.update(events=[], proposals=[], releases=[], policy=[])
                 return None
