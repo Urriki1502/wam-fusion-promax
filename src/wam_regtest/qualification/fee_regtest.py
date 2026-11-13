@@ -28,7 +28,9 @@ OUTSIDE_STEP = {
     "F3-12": "BLOCKED_OUTSIDE_STEP_BROADCAST_UNCONFIRMED_RESTART_AND_CONFIRMATION",
     "F3-13": "BLOCKED_OUTSIDE_STEP_CANCEL_BEFORE_SIGN_AND_RECOVERED_UNSIGNED_CANCEL",
     "F3-14": "BLOCKED_OUTSIDE_STEP_UNCHANGED_SIGN_BROADCAST_SAFETY_INVARIANTS",
-    "frozen": "BLOCKED_NO_FROZEN_MODE",
+    # The source run never qualifies frozen bytes; --ci-fee-regtest does, in
+    # the separate full macOS build (FROZEN_FEE3_REGTEST stage).
+    "frozen": "BLOCKED_SEPARATE_FROZEN_BUILD_STAGE",
     "Windows/Linux": "BLOCKED_NATIVE_ADAPTER_NOT_IMPLEMENTED",
 }
 
@@ -280,10 +282,13 @@ def confirmed_debit_holds(
     selected_inputs,
     reservation_rows,
 ):
-    """Verify post-confirm balance delta and that payment reservation rows are only 'broadcast'.
+    """Verify post-confirm balance delta and one 'broadcast' row per selected input.
 
     WSP keeps confirmed payment rows in state 'broadcast' by design
     (wsp-upstream/src/wam_sp/wallet.py:280; src/wam_regtest/domain/payment_state.py:4-6).
+    The table is keyed by outpoint (wsp-upstream/src/wam_sp/store.py:21), so
+    every signed/broadcast selected input must have exactly that one row. A
+    payment with NO matching row fails: the vacuous all([]) never passes.
     """
     if any(type(v) is not int for v in (
         pre_confirmed_atoms, post_confirmed_atoms, post_available_atoms, amount, fee
@@ -307,15 +312,19 @@ def confirmed_debit_holds(
         if type(txid) is not str or type(vout) is not int:
             return False
         selected_outpoints.add((txid, vout))
-    payment_rows = []
+    if len(selected_outpoints) != len(selected_inputs):
+        return False
+    payment_rows = {}
     for row in reservation_rows:
         if not isinstance(row, dict):
             return False
-        if (row.get("txid"), row.get("vout")) in selected_outpoints:
-            payment_rows.append(row)
-    if any(row.get("state") in ("draft", "signed") for row in payment_rows):
+        outpoint = (row.get("txid"), row.get("vout"))
+        if outpoint in selected_outpoints:
+            payment_rows.setdefault(outpoint, []).append(row)
+    if set(payment_rows) != selected_outpoints:
         return False
-    return all(row.get("state") == "broadcast" for row in payment_rows)
+    return all(len(rows) == 1 and rows[0].get("state") == "broadcast"
+               for rows in payment_rows.values())
 
 
 def reopen_clean_holds(reopened, *, expected_confirmed_atoms, expected_reservation_count):
@@ -402,26 +411,57 @@ def required_assertions(fixture):
     return common | QUOTE_ASSERTIONS | POSITIVE_ASSERTIONS
 
 
-def _valid_result_with_status(result, expected_status, expect_characterization):
+FROZEN_RESULT_SCHEMA = "wam-fee3-frozen-case/v1"
+FROZEN_TEST_LAYER = "FROZEN_QUALIFICATION"
+FROZEN_SOURCE_KEYS = ("candidate_source_sha", "checkout_sha", "build_source_inventory_sha256",
+                      "bundled_source_stamp_sha256", "frozen_executable_sha256")
+
+
+def _digest(value, length=64):
+    return type(value) is str and re.fullmatch("[0-9a-f]{%d}" % length, value) is not None
+
+
+def _source_identity_holds(result):
+    source, core = result["source"], result["core"]
+    return (result["schema"] == "wam-fee3-source/v1" and result["test_layer"] == "REAL_CORE"
+            and _digest(source["sha"], 40) and _digest(source["tree"], 40)
+            and _digest(source["inventory_sha256"]) and type(source["dirty_inventory"]) is list
+            and core["signature_verified_now"] is True and _digest(core["archive_sha256"]))
+
+
+def _frozen_identity_holds(result):
+    """Frozen bytes carry the embedded build stamp, never a git checkout.
+
+    The signed archive is authenticated at build intake and not bundled, so a
+    frozen case can only re-verify the bundled receipt and member pins now.
+    """
+    source, core = result["source"], result["core"]
+    return (result["schema"] == FROZEN_RESULT_SCHEMA and result["test_layer"] == FROZEN_TEST_LAYER
+            and type(source) is dict and set(source) == set(FROZEN_SOURCE_KEYS)
+            and _digest(source["candidate_source_sha"], 40) and _digest(source["checkout_sha"], 40)
+            and all(_digest(source[k]) for k in FROZEN_SOURCE_KEYS[2:])
+            and core["bundle_receipt_verified_now"] is True
+            and core["signature_verified_now"] is False
+            and core["trust"] == "official-signed-v0.1.13" and _digest(core["archive_sha256"]))
+
+
+def _valid_result_with_status(result, expected_status, expect_characterization, layer="source"):
     """Fail-closed report contract, independent of runner control flow."""
-    def digest(value, length=64):
-        return type(value) is str and re.fullmatch("[0-9a-f]{%d}" % length, value) is not None
+    digest = _digest
 
     try:
         fixture = next(f for f in FIXTURES if f.name == result["fixture"] and f.case == result["case_id"])
-        source, core = result["source"], result["core"]
+        core = result["core"]
         required = required_assertions(fixture)
+        identity = {"source": _source_identity_holds, "frozen": _frozen_identity_holds}[layer]
         from datetime import datetime
         start, end = (datetime.fromisoformat(result[k]) for k in ("started_utc", "ended_utc"))
         return (fixture.characterization is expect_characterization
-            and result["schema"] == "wam-fee3-source/v1" and result["status"] == expected_status
-            and result["test_layer"] == "REAL_CORE" and result["network"] == "regtest"
+            and identity(result) and result["status"] == expected_status
+            and result["network"] == "regtest"
             and result["mainnet_allowed"] is False and result["exit_code"] == 0
             and start.tzinfo is not None and end.tzinfo is not None and end >= start
             and type(result["command"]) is list and bool(result["command"])
-            and digest(source["sha"], 40) and digest(source["tree"], 40)
-            and digest(source["inventory_sha256"]) and type(source["dirty_inventory"]) is list
-            and core["signature_verified_now"] is True and digest(core["archive_sha256"])
             and set(core["members"]) == {"wamd", "wam-cli"}
             and all(digest(v) for v in core["members"].values())
             and result["core_runtime"]["version"] == 113
@@ -454,3 +494,8 @@ def valid_pass_result(result):
 def valid_characterization_result(result):
     """Fail-closed characterization contract, never allowing PASS."""
     return _valid_result_with_status(result, CHARACTERIZATION_PENDING_STATUS, True)
+
+
+def valid_frozen_pass_result(result):
+    """Same PASS contract as source, bound to the frozen build stamp instead of git."""
+    return _valid_result_with_status(result, "PASS", False, layer="frozen")

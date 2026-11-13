@@ -64,6 +64,9 @@ python -I -m PyInstaller --noconfirm --clean --onedir --windowed \
   --collect-submodules wam_regtest \
   --hidden-import wam_regtest.qualification.real_core_smoke \
   --hidden-import wam_regtest.qualification.q06_fix_scenarios \
+  --hidden-import wam_regtest.qualification.fee_regtest \
+  --hidden-import wam_regtest.qualification.fee_regtest_runner \
+  --hidden-import wam_regtest.qualification.fee_regtest_frozen \
   --collect-submodules wam_sp \
   --copy-metadata coincurve \
   --hidden-import coincurve._cffi_backend \
@@ -260,6 +263,40 @@ else:
                 and data.get('diagnostics') is None)
         shutil.copyfile(report, out/'q06-fix-scenarios-evidence.json')
     print("MACOS_APP_STAGE=FROZEN_Q06_FIX_SCENARIOS_PASS", flush=True)
+    # FEE-3 frozen: closed F3-01..F3-06 + F3-09 positive set on native Cocoa,
+    # fresh disposable profiles. Evidence is copied before the gate so a
+    # failing report is retained; the gate then fails closed.
+    print("MACOS_APP_STAGE=FROZEN_FEE3_REGTEST_START", flush=True)
+    from hashlib import sha256
+    from wam_regtest.q05_package_provenance import validate as validate_stamp
+    from wam_regtest.qualification.fee_regtest_frozen import (
+        CASES_DIR as FEE3_CASES, EVIDENCE_NAME as FEE3_EVIDENCE,
+        WSP_SOURCE_COMMIT as FEE3_WSP, gate as fee3_gate)
+    with nullcontext(tempfile.mkdtemp(prefix='fee3-frozen-', dir=runs)) as clean:
+        fee3 = subprocess.run([str(Path(binary).resolve()), '--ci-fee-regtest'],
+                              cwd=clean, env=spend_env, timeout=1800, check=False)
+        report = Path(clean)/FEE3_EVIDENCE
+        if report.is_file():
+            shutil.copyfile(report, out/FEE3_EVIDENCE)
+        if (Path(clean)/FEE3_CASES).is_dir():
+            shutil.copytree(Path(clean)/FEE3_CASES, out/FEE3_CASES)
+        stamp = validate_stamp(loads((runs.parent/'Q05_BUILD_SOURCE.json').read_text()))
+        bundle_core = {}
+        for name in ('wamd', 'wam-cli'):
+            members = [p for p in Path(os.environ['WAM_BUNDLE_APP']).rglob(name)
+                       if p.is_file() and not p.is_symlink()]
+            assert len(members) == 1, 'MACOS_FEE3_BUNDLE_CORE_SHAPE_DENIED'
+            bundle_core[name] = sha256(members[0].read_bytes()).hexdigest()
+        problems = fee3_gate(
+            loads(report.read_text()) if report.is_file() else None,
+            cases_dir=Path(clean)/FEE3_CASES,
+            source_sha=stamp['source_head_sha'], checkout_sha=stamp['checkout_sha'],
+            inventory_sha256=stamp['native_source_inventory_sha256'],
+            executable_sha256=sha256(Path(binary).resolve().read_bytes()).hexdigest(),
+            core_sha256=bundle_core, wsp_source_commit=FEE3_WSP)
+        assert fee3.returncode == 0, 'MACOS_FEE3_FROZEN_EXIT_%d' % fee3.returncode
+        assert problems == [], problems
+    print("MACOS_APP_STAGE=FROZEN_FEE3_REGTEST_PASS", flush=True)
     print("MACOS_APP_STAGE=FROZEN_V1_NET_START", flush=True)
     with nullcontext(tempfile.mkdtemp(prefix='shared-frozen-',dir=runs)) as clean:
         subprocess.run([str(Path(binary).resolve()),'--ci-v1-net-shared-regtest'],

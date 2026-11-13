@@ -85,10 +85,14 @@ def main() -> int:
         q06_mode = sys.argv[1:] == ["--ci-q06-bip39-readonly"]
         q06_spend_mode = sys.argv[1:] == ["--ci-q06-bip39-spend"]
         q06_fix_mode = sys.argv[1:] == ["--ci-q06-fix-scenarios"]
+        # Qualification-only FEE-3 frozen mode: exact argv, closed case set,
+        # no flags/rates/case lists. Production refuses it (production_entry).
+        fee_mode = sys.argv[1:] == ["--ci-fee-regtest"]
         shared_mode = sys.argv[1:] == ["--ci-v1-net-shared-regtest"]
         ci_mode = (sys.argv[1:] == ["--ci-real-core-gui"] or cocoa_mode or q04_mode
-                   or q05_mode or q06_mode or q06_spend_mode or q06_fix_mode or shared_mode)
-        if (cocoa_mode or q06_fix_mode) and os.environ.get("QT_QPA_PLATFORM") != "cocoa":
+                   or q05_mode or q06_mode or q06_spend_mode or q06_fix_mode
+                   or fee_mode or shared_mode)
+        if (cocoa_mode or q06_fix_mode or fee_mode) and os.environ.get("QT_QPA_PLATFORM") != "cocoa":
             raise BundleLaunchError("WAM_BUNDLE_COCOA_PLATFORM_REQUIRED")
         self_test = sys.argv[1:] == ["--check-bundle"]
         if sys.argv[1:] and not (ci_mode or self_test):
@@ -108,6 +112,9 @@ def main() -> int:
         if q06_fix_mode:
             from wam_regtest.qualification.q06_fix_scenarios import run
             return run(core_dir, source)
+        if fee_mode:
+            from wam_regtest.qualification.fee_regtest_frozen import run as fee_run
+            return fee_run(core_dir, source)
         if shared_mode:
             from wam_regtest.shared_network_probe import run
             return run(core_dir,source)

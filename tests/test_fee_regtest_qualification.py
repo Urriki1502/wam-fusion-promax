@@ -532,16 +532,19 @@ class Oracles(unittest.TestCase):
             selected_inputs=selected,
             reservation_rows=[{"txid": "11" * 32, "vout": 0, "state": "broadcast"}],
         ))
-        # Also passes if the payment's rows are absent, or for multi-input broadcast rows.
-        self.assertTrue(confirmed_debit_holds(
-            pre_confirmed_atoms=1_000_000,
-            post_confirmed_atoms=899_845,
-            post_available_atoms=899_845,
-            amount=100_000,
-            fee=155,
-            selected_inputs=selected,
-            reservation_rows=[],
-        ))
+        # PM-036 debt (Cursor PEER-120 nit): a signed/broadcast payment with NO
+        # matching reservation row must FAIL. all([]) used to pass vacuously.
+        for rows in ([], [{"txid": "99" * 32, "vout": 0, "state": "broadcast"}],
+                     [{"txid": "11" * 32, "vout": 1, "state": "broadcast"}]):
+            self.assertFalse(confirmed_debit_holds(
+                pre_confirmed_atoms=1_000_000,
+                post_confirmed_atoms=899_845,
+                post_available_atoms=899_845,
+                amount=100_000,
+                fee=155,
+                selected_inputs=selected,
+                reservation_rows=rows,
+            ), rows)
         multi_inputs = [
             {"txid": "11" * 32, "vout": 0, "atoms": 100_000},
             {"txid": "22" * 32, "vout": 1, "atoms": 100_000},
@@ -559,6 +562,25 @@ class Oracles(unittest.TestCase):
                 for c in multi_inputs
             ],
         ))
+        # Every selected input needs its own row: one missing row of three fails,
+        # as does a duplicated row or a duplicated selected input.
+        for rows, inputs in (
+            ([{"txid": c["txid"], "vout": c["vout"], "state": "broadcast"} for c in multi_inputs[:2]],
+             multi_inputs),
+            ([{"txid": c["txid"], "vout": c["vout"], "state": "broadcast"}
+              for c in multi_inputs + multi_inputs[:1]], multi_inputs),
+            ([{"txid": c["txid"], "vout": c["vout"], "state": "broadcast"} for c in multi_inputs],
+             multi_inputs + multi_inputs[:1]),
+        ):
+            self.assertFalse(confirmed_debit_holds(
+                pre_confirmed_atoms=300_000,
+                post_confirmed_atoms=49_730,
+                post_available_atoms=49_730,
+                amount=250_000,
+                fee=270,
+                selected_inputs=inputs,
+                reservation_rows=rows,
+            ))
         # Fails with draft, signed, or uncertain row for this payment, or wrong balance delta.
         for bad_state in ("draft", "signed", "uncertain"):
             self.assertFalse(confirmed_debit_holds(
