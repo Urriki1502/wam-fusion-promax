@@ -875,7 +875,10 @@ class Bip39TrialWindow(QWidget):
         self._completed_result = (None, code)
 
     def _finished(self):
-        verification_generation = self._worker.verification_generation
+        # Backup Continue also drains pending work after Open's worker has
+        # finished. Only worker-delivered results carry a generation to check.
+        verification_generation = (self._worker.verification_generation
+                                   if self._worker is not None else None)
         self._worker=None
         finished_action, self._worker_action = self._worker_action, None
         # Deliver only AFTER thread completion. A signature approval runs a
@@ -896,7 +899,7 @@ class Bip39TrialWindow(QWidget):
                 action, result = completed
                 if action is None:
                     self._on_denied(result)
-                elif (action in ('snapshot', 'activate', 'unlock')
+                elif (action in ('snapshot', 'activate', 'unlock', 'open')
                       and verification_generation != self.executor.state.generation):
                     # Reject before either compatibility labels or Fusion
                     # pages can render an invalidated verification result.

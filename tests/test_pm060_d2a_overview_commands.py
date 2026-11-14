@@ -203,6 +203,18 @@ class OverviewCommands(unittest.TestCase):
         self.assert_financial_clear()
         self.assertEqual(self.w._last_error_code, 'WALLET_CORE_UNVERIFIED')
 
+    def test_late_open_after_control_lock_cannot_expose_account(self):
+        """Open must share the existing worker-generation denial boundary."""
+        self.assertTrue(self.w._command('open', b'synthetic-password', 'reopen', None))
+        self.assertTrue(self.w._worker.wait(2000))
+        self.owner.request('control', 'stop')
+        self.assertTrue(self.owner.state.locked)
+        self.wait(lambda: self.w._worker is None)
+        self.assert_financial_clear()
+        self.assertNotIn('new-public-account', self.w.account.text())
+        self.assertEqual(self.w._last_error_code, 'WALLET_CORE_UNVERIFIED')
+        self.assertEqual(self.calls, ['open', 'control'])
+
     def test_late_old_profile_snapshot_not_repainted(self):
         """D2A-6: delivery must reject an older executor generation.
 

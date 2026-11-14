@@ -305,12 +305,39 @@ class BackupPageContract(unittest.TestCase):
         self.assertFalse(self.window.executor.locked)
         # Success page is shown; pressing Continue completes the flow.
         _find_button(self.window.backup_page, "Continue").click()
-        self.app.processEvents()
+        # Observe acknowledgement before processing the follow-up snapshot:
+        # this stub deliberately refuses snapshot, whose denial now correctly
+        # clears wallet-linked display buffers rather than retaining Receive.
         self.assertTrue(self.window._ready)
         self.assertEqual(self.window.receive.text(), "wamrtsp1public-test")
+        self.app.processEvents()
         self._assert_snapshot_dispatched()
         self.assertEqual(self.window.stack.currentIndex(), 0)
         self.assertTrue(self.window.navigation.isEnabled())
+
+    def test_backup_continue_without_worker_dispatches_snapshot_exactly_once(self):
+        """Continue drains the pending snapshot after the Open worker is gone."""
+        self._show_required()
+        page = self.window.backup_page
+        page._written_check.setChecked(True)
+        page._back_up_now.click()
+        words = _DISPLAY_PHRASE_WORDS.split()
+        for edit, position in zip(page._verify_inputs, page._challenge_positions):
+            edit.setText(words[position - 1])
+        page._verify_button.click()
+        self.assertTrue(self.window.executor.verified)
+        self.assertIsNone(self.window._worker)
+        self.assertIsNone(self.window._completed_result)
+        self.assertNotIn("snapshot", self.window.executor.requests)
+        # Directly invoke the Continue slot so a Qt callback cannot swallow
+        # the exception that used to prevent the pending snapshot dispatch.
+        self.window._on_backup_continue()
+        self._finish_snapshot_worker()
+        self.app.processEvents()
+        self.assertEqual(self.window.executor.requests.count("snapshot"), 1)
+        self.assertFalse(self.window._backup_flow_active)
+        self.assertTrue(self.window._ready)
+        self.assertIsNone(self.window._pending_action)
 
     def test_backup_success_continue_unlocks_fund_lock_and_keeps_send_locked(self):
         self._show_required()
