@@ -1083,13 +1083,13 @@ class Bip39FusionWindow(Bip39TrialWindow):
 
     def _clear_visuals(self):
         # A missing/denied presentation snapshot clears display data, not the
-        # live payment review. Session/scope changes revoke decisions separately.
+        # live payment review or backend pending TXID (last_txid).
+        # Session/scope changes revoke decisions and last_txid separately.
         self._last_verified = None
         self._last_network = None
         self._shared_connected = False
         # Advanced/compatibility fields share the same lifetime as the pages.
         # Do not use lock delivery here: it also changes payment authority.
-        self.last_txid.clear()
         self.receive.clear()
         self.history.clear()
         self.account.setText(t('owner.account_locked'))
@@ -1097,7 +1097,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.tip.setText(t('owner.chain_unverified'))
         # Value-bearing labels have selectable and accessibility buffers even
         # when hidden. Invalidate their metadata with the displayed values.
-        for field in (self.last_txid, self.receive, self.history, self.account, self.balance, self.tip,
+        for field in (self.receive, self.history, self.account, self.balance, self.tip,
                       self.overview.balance_value, self.overview.balance_unit,
                       self.overview.fund_details, self.overview.utxo_details,
                       self.overview.evidence_text, self.overview.environment_core,

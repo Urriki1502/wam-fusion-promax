@@ -568,6 +568,13 @@ class Bip39TrialWindow(QWidget):
         if ok:
             self._command("inspect_confirmed",txid)
 
+    def _clear_last_txid(self):
+        """Clear last_txid text, selection, and tooltip/accessibility buffers."""
+        self.last_txid.clear()
+        self.last_txid.setToolTip('')
+        self.last_txid.setAccessibleName('')
+        self.last_txid.setAccessibleDescription('')
+
     def _on_ready(self, action, result):
         if action in ('open', 'lock', 'quit', 'unlock'):
             self._resumable_intent = None
@@ -580,7 +587,7 @@ class Bip39TrialWindow(QWidget):
             # Start from a locked UI state; the backup flow (if required) will
             # promote to ready via _backup_flow_completed.
             self._ready=False
-            self.last_txid.clear()
+            self._clear_last_txid()
             self.receive.clear()
             self.account.setText(t('owner.account_locked'))
             self.balance.setText(t('owner.balance_unverified'))
@@ -744,7 +751,7 @@ class Bip39TrialWindow(QWidget):
             self._signed_ready=False
             self._approved_commitment=None
             self._pending_confirm_txid=None
-            self.last_txid.clear()
+            self._clear_last_txid()
             self.receive.clear()
             self.account.setText(t('owner.account_locked'))
             self.balance.setText(t('owner.balance_unverified'))
@@ -791,7 +798,7 @@ class Bip39TrialWindow(QWidget):
         elif action=="quit":
             self._ready=False
             self._closed=True
-            self.last_txid.clear()
+            self._clear_last_txid()
         self._set_actions()
 
     def _present_backup_ack(self, result):
@@ -859,7 +866,7 @@ class Bip39TrialWindow(QWidget):
             self._ready = False
         if self.executor.state.faulted:
             self._signed_ready=False
-            self.last_txid.clear()
+            self._clear_last_txid()
         if code == 'WALLET_BROADCAST_REJECTED_LOCK_RETAINED':
             # The backend forgot the in-memory payment; the signed reservation
             # stays locked and is listed by "Review signed payments".

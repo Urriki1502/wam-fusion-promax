@@ -603,7 +603,7 @@ class SettingsLifetimeTests(unittest.TestCase):
                 _close_window_bounded(window, executor)
 
     def test_same_profile_snapshot_refresh_preserves_last_txid(self):
-        with _isolated_ini({"QT_REDUCE_MOTION": "0"}):
+        with _isolated_ini():
             window, executor, _ = _make_window()
             try:
                 _open_verified_session(window, executor, account_id="acct-refresh-01")
@@ -637,7 +637,7 @@ class SettingsLifetimeTests(unittest.TestCase):
                 _close_window_bounded(window, executor)
 
     def test_fault_clears_last_txid_individually(self):
-        with _isolated_ini({"QT_REDUCE_MOTION": "0"}):
+        with _isolated_ini():
             window, executor, _ = _make_window()
             try:
                 _open_verified_session(window, executor, account_id="acct-fault-txid")
@@ -676,7 +676,7 @@ class SettingsLifetimeTests(unittest.TestCase):
                 _close_window_bounded(base_win, base_exec)
 
     def test_open_profile_switch_clears_last_txid_and_required_mnemonic_resets_status(self):
-        with _isolated_ini({"QT_REDUCE_MOTION": "0"}):
+        with _isolated_ini():
             window, executor, _ = _make_window()
             try:
                 _open_verified_session(window, executor, account_id="acct-open-01")
@@ -731,7 +731,7 @@ class SettingsLifetimeTests(unittest.TestCase):
                 _close_window_bounded(window, executor)
 
     def test_quit_clears_last_txid_individually(self):
-        with _isolated_ini({"QT_REDUCE_MOTION": "0"}):
+        with _isolated_ini():
             window, executor, _ = _make_window()
             try:
                 _open_verified_session(window, executor, account_id="acct-quit-txid")
@@ -761,6 +761,54 @@ class SettingsLifetimeTests(unittest.TestCase):
                 self.assertEqual(base_win.last_txid.text(), "")
             finally:
                 _close_window_bounded(base_win, base_exec)
+
+    def test_rejected_presentation_snapshot_preserves_backend_pending_txid(self):
+        with _isolated_ini():
+            window, executor, _ = _make_window()
+            try:
+                _open_verified_session(window, executor, account_id="acct-pending-reject")
+
+                # Reopen snapshot carrying pending_confirm_txid without a fusion_snapshot
+                # triggers _render_verified -> _clear_visuals(), which must preserve last_txid.
+                missing_presentation = _make_result(
+                    snap=_make_snapshot(),
+                    payment_review=None,
+                    payment_signed=False,
+                    pending_confirm_txid=_BROADCAST_TXID,
+                )
+                missing_presentation["fusion_snapshot"] = None
+                window._on_ready("snapshot", missing_presentation)
+                QApplication.processEvents()
+                self.assertEqual(
+                    window.status.text().replace("\u200b", ""),
+                    "Q06_FUSION_VERIFIED_SNAPSHOT_DENIED",
+                )
+                self.assertIsNone(window._last_verified)
+                self.assertEqual(window.account.text(), t("owner.account_locked"))
+                self.assertEqual(window._pending_confirm_txid, _BROADCAST_TXID)
+                self.assertEqual(window.last_txid.text(), _BROADCAST_TXID)
+
+                # An unverified / mismatched presentation snapshot also rejects via _clear_visuals()
+                # without clearing the backend pending_confirm_txid shown in last_txid.
+                mismatched = _make_result(
+                    snap=_make_snapshot(confirmed_atoms=99999),
+                    payment_review=None,
+                    payment_signed=False,
+                    pending_confirm_txid=_BROADCAST_TXID,
+                )
+                mismatched["confirmed_atoms"] = 100000
+                window._on_ready("snapshot", mismatched)
+                QApplication.processEvents()
+                self.assertEqual(
+                    window.status.text().replace("\u200b", ""),
+                    "Q06_FUSION_VERIFIED_SNAPSHOT_DENIED",
+                )
+                self.assertIsNone(window._last_verified)
+                self.assertEqual(window.account.text(), t("owner.account_locked"))
+                self.assertEqual(window._pending_confirm_txid, _BROADCAST_TXID)
+                self.assertEqual(window.last_txid.text(), _BROADCAST_TXID)
+            finally:
+                _close_window_bounded(window, executor)
 
     # D6A-6 fixed by PM-061 (9256015): _clear_visuals clears overview.environment_core tooltip/a11y buffers.
     def test_environment_core_tooltip_cleared_on_lock_fault_and_profile_switch(self):
