@@ -498,6 +498,9 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.overview.transaction_selected.connect(self._select_transaction)
         self.history_page.page_requested.connect(self._request_history_page)
         self.overview.custody_switch.clicked.connect(self._switch_custody)
+        self._payment_decision = None
+        self.recipient_input.textChanged.connect(self._set_actions)
+        self.amount_input.textChanged.connect(self._set_actions)
         self._last_verified = None
         self._last_review = None
         self._last_network = None
@@ -713,7 +716,18 @@ class Bip39FusionWindow(Bip39TrialWindow):
                   SharedInputs(coordinator=bool(profile.coordinator),
                                connected=bool(self._shared_connected)))
         actions = apply_shared_profile(available_actions(inputs), shared)
+        if hasattr(self, 'recipient_input'):
+            try:
+                self._payment_form_values()
+            except (ValueError, ArithmeticError):
+                actions['send'] = False
         self._apply_actions(actions)
+        if (not self._payment_scope_valid()
+                or (getattr(self, '_payment_decision', None) is not None
+                    and self._payment_decision_commitment != self._approved_commitment)
+                or (self._worker is not None
+                    and self._worker_action in ('lock', 'quit', 'open', 'unlock', 'reconcile_reorg'))):
+            self._invalidate_payment_decision()
         if hasattr(self, "overview"):
             extra = fusion_actions(inputs, actions, shared)
             idle = not inputs.busy
@@ -926,6 +940,28 @@ class Bip39FusionWindow(Bip39TrialWindow):
                 core_alive=self.executor.state.core_alive)[1])
         super()._backup_flow_completed(success)
 
+    def _payment_scope_valid(self):
+        state = self.executor.state
+        return (self._ready and self._spend_enabled and not self._quit_requested
+                and not self.executor.closed and not state.locked and not state.faulted
+                and not state.reauthentication_required and state.core_alive is True
+                and (self.shared_profile is None or self._shared_connected))
+
+    def _invalidate_payment_decision(self):
+        dialog = getattr(self, '_payment_decision', None)
+        if dialog is not None:
+            # Revoke the callback BEFORE reject() synchronously emits finished.
+            self._payment_decision = None
+            dialog.setEnabled(False)
+            dialog.reject()
+
+    def _payment_form_values(self):
+        atoms = parse_amount(self.amount_input.text())
+        code = self.recipient_input.text().strip()
+        if not code.startswith("wamrtsp1") or len(code) > 256:
+            raise ValueError("Q06_FUSION_RECIPIENT_DENIED")
+        return code, atoms
+
     def _open_payment_decision(self, dialog, decide):
         """Present PaymentApproval without a nested QDialog.exec() loop.
 
@@ -933,11 +969,26 @@ class Bip39FusionWindow(Bip39TrialWindow):
         exec() is still inside show(). The Accept button is unchanged and
         nothing is signed or broadcast until that button finishes the dialog.
         """
+        self._invalidate_payment_decision()
+        self._payment_decision = dialog
+        commitment = self._approved_commitment
+        self._payment_decision_commitment = commitment
         def finished(code):
+            current = self._payment_decision is dialog
+            if current:
+                self._payment_decision = None
             dialog.deleteLater()
-            decide(code)
+            if (current and self._payment_scope_valid()
+                    and commitment == self._approved_commitment):
+                decide(code)
         dialog.finished.connect(finished)
+        if not self._payment_scope_valid():
+            self._invalidate_payment_decision()
+            return
         dialog.open()
+        # Invalidation can arrive inside showEvent; open() must not revive it.
+        if not dialog.isEnabled():
+            dialog.reject()
 
     def _prepare_send(self):
         if (not self._spend_enabled or self._approved_commitment is not None
@@ -945,10 +996,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
                 or self.executor.state.faulted or self.executor.busy):
             return
         try:
-            atoms = parse_amount(self.amount_input.text())
-            code = self.recipient_input.text().strip()
-            if not code.startswith("wamrtsp1") or len(code) > 256:
-                raise ValueError("Q06_FUSION_RECIPIENT_DENIED")
+            code, atoms = self._payment_form_values()
         except (ValueError, ArithmeticError):
             self.status.setText(t('wallet.invalid_payment'))
             return
@@ -1008,6 +1056,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         # method reaches _set_actions before _on_ready returns).
 
     def _clear_visuals(self):
+        self._invalidate_payment_decision()
         self._last_verified = None
         self.connection_pill.setText(classify(
             'snapshot', snap=None, locked=True,

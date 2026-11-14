@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QDialog
 from wam_regtest.bip39_fusion_gui import Bip39FusionWindow
 from wam_regtest.fusion_pages import PaymentApproval, describe_broadcast_result
 from wam_regtest.wallet_executor import WalletExecutor, immutable
@@ -138,7 +138,9 @@ class SendCommands(unittest.TestCase):
             with self.subTest(code=code, amount=amount):
                 self.window.recipient_input.setText(code)
                 self.window.amount_input.setText(amount)
+                self.assertFalse(self.window.send.isEnabled())
                 self.window.send.click()
+                self.window._prepare_send()
                 self.assertEqual(self.actions(), [])
                 self.command.assert_not_called()
 
@@ -238,18 +240,18 @@ class SendCommands(unittest.TestCase):
                 self.command.assert_not_called()
                 self.calls.clear()
 
-    @unittest.expectedFailure
     def test_lock_invalidates_open_decision_sheet(self):
-        """D3A-1: lock clears commitment but leaves an interactive Sign sheet (§7)."""
+        """D3A-1: lock rejects the interactive Sign sheet (§7)."""
         dialog = self.prepare()
         self.window._on_ready('lock', None)
         self.app.processEvents()
         self.assertFalse(dialog.isVisible() and dialog.approve.isEnabled(),
                          'D3A-1: stale approval remains visibly enabled after lock')
+        self.assertFalse(dialog.isVisible())
+        self.assertEqual(dialog.result(), QDialog.DialogCode.Rejected)
 
-    @unittest.expectedFailure
     def test_late_decline_after_lock_enqueues_no_write_command(self):
-        """D3A-2: stale Sign rejection queues cancel after lock (§7/§8).
+        """D3A-2: stale Sign rejection cannot queue cancel after lock (§7/§8).
 
         This proves command enqueue, not a durable release; real backend custody
         must still refuse the locked session.
@@ -261,17 +263,15 @@ class SendCommands(unittest.TestCase):
         self.wait_for(lambda: self.window._worker is None)
         self.command.assert_not_called()
 
-    @unittest.expectedFailure
     def test_invalid_form_disables_review(self):
-        """D3A-3: empty/invalid input leaves Review enabled (§3/§7)."""
+        """D3A-3: empty/invalid input disables Review (§3/§7)."""
         self.window.recipient_input.clear()
         self.window.amount_input.clear()
         self.window._set_actions()
         self.assertFalse(self.window.send.isEnabled(), 'D3A-3: invalid form still actionable')
 
-    @unittest.expectedFailure
     def test_disconnect_disables_open_broadcast_approval(self):
-        """D3A-4: Shared disconnect leaves modal Approve Broadcast enabled (§2/§7)."""
+        """D3A-4: Shared disconnect disables modal Approve Broadcast (§2/§7)."""
         from types import SimpleNamespace
         self.signed()
         self.window.shared_profile = SimpleNamespace(coordinator=True)
@@ -283,6 +283,115 @@ class SendCommands(unittest.TestCase):
         self.assertFalse(self.window.broadcast.isEnabled())
         self.assertFalse(dialog.approve.isEnabled(),
                          'D3A-4: disconnected modal approval still enabled')
+
+    def test_review_reenabled_on_valid_edits_and_disabled_again_on_invalid_edit(self):
+        self.assertFalse(self.window.send.isEnabled())
+        self.window.recipient_input.setText(REVIEW.code)
+        self.assertFalse(self.window.send.isEnabled())
+        self.window.amount_input.setText('0.00050000')
+        self.assertTrue(self.window.send.isEnabled())
+        self.window.amount_input.setText('0')
+        self.assertFalse(self.window.send.isEnabled())
+        self.window.amount_input.setText('0.00050000')
+        self.assertTrue(self.window.send.isEnabled())
+        self.window.recipient_input.setText('mainnet')
+        self.assertFalse(self.window.send.isEnabled())
+        self.window.recipient_input.setText(REVIEW.code)
+        self.assertTrue(self.window.send.isEnabled())
+        self.command.assert_not_called()
+
+    def test_lock_request_rejects_sheet_before_worker_result(self):
+        dialog = self.prepare()
+        self.wait_for(lambda: self.window._worker is None)
+        self.assertTrue(self.window._command('lock'))
+        self.assertFalse(dialog.isVisible())
+        self.assertEqual(dialog.result(), QDialog.DialogCode.Rejected)
+        self.wait_for(lambda: self.window._worker is None)
+        self.assertEqual(self.actions(), ['prepare_auto', 'lock'])
+
+    def test_late_accept_signal_after_lock_enqueues_zero_commands(self):
+        dialog = self.prepare()
+        self.window._on_ready('lock', None)
+        self.command.reset_mock()
+        before = list(self.calls)
+        dialog.finished.emit(QDialog.DialogCode.Accepted)
+        self.app.processEvents()
+        self.command.assert_not_called()
+        self.assertEqual(self.calls, before)
+
+    def test_rapid_lock_during_sheet_show_rejects_without_command(self):
+        original = PaymentApproval.showEvent
+        observed = []
+        def show_and_lock(dialog, event):
+            original(dialog, event)
+            self.window._on_ready('lock', None)
+            observed.append(dialog)
+        with patch.object(PaymentApproval, 'showEvent', show_and_lock):
+            self.window._on_ready('prepare_auto', REVIEW)
+        self.assertEqual(len(observed), 1)
+        dialog = observed[0]
+        self.assertFalse(dialog.isVisible())
+        self.assertEqual(dialog.result(), QDialog.DialogCode.Rejected)
+        dialog.finished.emit(QDialog.DialogCode.Accepted)
+        dialog.finished.emit(QDialog.DialogCode.Rejected)
+        self.app.processEvents()
+        self.command.assert_not_called()
+        self.assertEqual(self.calls, [])
+
+    def test_disconnect_then_reconnect_never_approves_stale_sign_or_broadcast(self):
+        from types import SimpleNamespace
+        for kind in ('sign', 'broadcast'):
+            with self.subTest(kind=kind):
+                self.window.shared_profile = SimpleNamespace(coordinator=True)
+                self.window._shared_connected = True
+                self.window._approved_commitment = None
+                self.window._signed_ready = False
+                self.window._last_review = None
+                self.window._set_actions()
+                dialog = self.prepare()
+                if kind == 'broadcast':
+                    dialog.approve.click()
+                    self.wait_for(lambda: self.window._signed_ready and self.window._worker is None)
+                    self.window._confirm_broadcast()
+                    dialog = self.dialog()
+                before = list(self.calls)
+                self.command.reset_mock()
+                for connected in (False, True):
+                    self.window._on_ready('network_status', immutable(dict(
+                        connected=connected, peer_count=int(connected), height=1, tip='c'*64)))
+                self.assertFalse(dialog.isVisible())
+                self.assertEqual(dialog.result(), QDialog.DialogCode.Rejected)
+                dialog.finished.emit(QDialog.DialogCode.Accepted)
+                dialog.finished.emit(QDialog.DialogCode.Rejected)
+                self.app.processEvents()
+                self.command.assert_not_called()
+                self.assertEqual(self.calls, before)
+                self.calls.clear()
+
+    def test_replaced_session_commitment_rejects_sheet_without_cancel(self):
+        dialog = self.prepare()
+        self.window._approved_commitment = 'd' * 64
+        self.window._set_actions()
+        self.assertFalse(dialog.isVisible())
+        self.assertEqual(dialog.result(), QDialog.DialogCode.Rejected)
+        self.command.reset_mock()
+        dialog.finished.emit(QDialog.DialogCode.Rejected)
+        self.app.processEvents()
+        self.command.assert_not_called()
+        self.assertEqual(self.actions(), ['prepare_auto'])
+
+    def test_session_invalidation_rejects_sheet_and_late_decline_has_no_command(self):
+        dialog = self.prepare()
+        self.window._spend_enabled = False
+        self.window._set_actions()
+        self.assertFalse(dialog.isVisible())
+        self.assertEqual(dialog.result(), QDialog.DialogCode.Rejected)
+        self.command.reset_mock()
+        dialog.finished.emit(QDialog.DialogCode.Rejected)
+        dialog.finished.emit(QDialog.DialogCode.Accepted)
+        self.app.processEvents()
+        self.command.assert_not_called()
+        self.assertEqual(self.actions(), ['prepare_auto'])
 
     def test_disconnected_backend_refuses_payment_before_session_write(self):
         from types import SimpleNamespace
