@@ -461,44 +461,12 @@ def backend_type():
     return FeeBackend
 
 
-class CanonicalReasons(tuple):
-    """FeeQuote reasons equal in their tuple and JSON-list shapes.
-
-    Persisted and signed evidence keep reasons as a tuple, while a quote
-    recovered through plain() or JSON has reasons as a list. Both encode
-    identically in JSON. Equality with either sequence shape therefore
-    compares only the ordered reason strings and stays strict otherwise.
-    """
-
-    __slots__ = ()
-
-    def __eq__(self, other):
-        if isinstance(other, (list, tuple)):
-            return list(self) == list(other)
-        return NotImplemented
-
-    def __ne__(self, other):
-        result = self.__eq__(other)
-        if result is NotImplemented:
-            return result
-        return not result
-
-    __hash__ = tuple.__hash__
-
-
 def review_evidence(review):
     from dataclasses import asdict
     # The receive code is omitted. Only a commitment digest is public.
     values = asdict(review)
     values.pop("code")
-    fee_quote = values.get("fee_quote")
-    if isinstance(fee_quote, dict):
-        reasons = fee_quote.get("reasons")
-        if isinstance(reasons, (list, tuple)):
-            fee_quote = dict(fee_quote)
-            fee_quote["reasons"] = CanonicalReasons(reasons)
-            values["fee_quote"] = fee_quote
-    return values
+    return plain(values)
 
 
 _SPEED_CHOICE_WORD_RE = re.compile(

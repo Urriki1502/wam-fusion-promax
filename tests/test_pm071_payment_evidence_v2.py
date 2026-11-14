@@ -30,7 +30,7 @@ from wam_regtest.domain.payment_evidence import (
     MAX_RATE_ATOMS_PER_KVB as EVIDENCE_MAX_RATE, _fee_for_vsize, _psbt_vsize)
 from wam_regtest.infrastructure.tx_size import serialized_vsize
 from wam_regtest.qualification.fee_regtest_recovery import fee_metadata_holds
-from wam_regtest.qualification.fee_regtest_runner import backend_type, review_evidence
+from wam_regtest.qualification.fee_regtest_runner import backend_type, plain, review_evidence
 from wam_regtest.wallet_session import PaymentReview, WalletSession
 from wam_sp.core import Input, pub, send
 from wam_sp.keystore import seal, unseal
@@ -635,9 +635,9 @@ class PaymentEvidenceV2Tests(unittest.TestCase):
         signed_ev = backend.signed_evidence()
         in_memory_ev = review_evidence(self.review)
 
-        self.assertIsInstance(in_memory_ev['fee_quote']['reasons'], tuple)
+        self.assertIsInstance(in_memory_ev['fee_quote']['reasons'], list)
         self.assertIsInstance(signed_ev['fee_quote']['reasons'], tuple)
-        self.assertTrue(fee_metadata_holds(signed_ev['fee_quote'], in_memory_ev['fee_quote']))
+        self.assertTrue(fee_metadata_holds(plain(signed_ev['fee_quote']), plain(in_memory_ev['fee_quote'])))
 
         # Also verify non-empty reasons tuple round-trips canonically through JSON.
         inputs = parse_policy_inputs(
@@ -671,7 +671,7 @@ class PaymentEvidenceV2Tests(unittest.TestCase):
         persisted = self.store.read(token, 'signed', owner_binding=lambda: BINDING,
                                     account_id=lambda: self.account_id, password=PASSWORD)
         self.assertTrue(fee_metadata_holds(
-            persisted['fee_basis']['quote'], review_evidence(review)['fee_quote']))
+            plain(persisted['fee_basis']['quote']), plain(review_evidence(review)['fee_quote'])))
 
         # Explicit and legacy-unrecorded return fee_quote=None in signed_evidence and never pass fee_metadata_holds.
         v1_body = self._read_raw_body(self.token, 'signed')
@@ -689,7 +689,7 @@ class PaymentEvidenceV2Tests(unittest.TestCase):
         for stage in ('signed', 'uncertain', 'broadcast'):
             body = self._read(stage=stage)
             self.assertEqual(body['version'], 2)
-            self.assertEqual(body['fee_basis'], {'kind': 'quote', 'quote': expected_quote})
+            self.assertEqual(plain(body['fee_basis']), plain({'kind': 'quote', 'quote': expected_quote}))
 
     def test_invalid_v2_quote_fails_closed_without_changing_reservations(self):
         base = self._read_raw_body(self.token, 'signed')

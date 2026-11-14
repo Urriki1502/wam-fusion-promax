@@ -1,9 +1,9 @@
 """PM-073: persisted fee quote compared in canonical JSON shape (D-FEE2-3).
 
 The recovered quote reaches the runner through plain(), so its FeeQuote
-reasons are a list. Persisted and signed evidence reasons are a tuple.
-review_evidence() must compare equal to both canonical representations,
-while the strict oracle in fee_regtest_recovery stays unchanged.
+reasons are a list. review_evidence() must return the same canonical
+plain() shape (lists, plain dicts), while the strict oracle in
+fee_regtest_recovery stays unchanged.
 """
 import copy
 from dataclasses import asdict
@@ -51,18 +51,12 @@ class FeeQuoteCanonical(unittest.TestCase):
         recovered = plain(asdict(quote))
         self.assertIsInstance(recovered["reasons"], list)
         review_quote = review_evidence(review)["fee_quote"]
-        # PM-071 in-memory/persisted quotes keep reasons as a tuple.
-        self.assertIsInstance(review_quote["reasons"], tuple)
-        # The same reasons compare equal in the plain()/JSON list shape
-        # and in the persisted tuple shape, in both directions.
+        self.assertIsInstance(review_quote["reasons"], list)
         self.assertEqual(review_quote, recovered)
         self.assertEqual(recovered, review_quote)
-        self.assertEqual(review_quote, asdict(quote))
-        self.assertEqual(asdict(quote), review_quote)
         self.assertTrue(review_quote["reasons"] == ["NO_FEERATE_WITHOUT_ERRORS"])
-        self.assertTrue(review_quote["reasons"] == ("NO_FEERATE_WITHOUT_ERRORS",))
         self.assertTrue(fee_metadata_holds(recovered, review_quote))
-        self.assertTrue(fee_metadata_holds(asdict(quote), review_quote))
+        self.assertTrue(fee_metadata_holds(plain(asdict(quote)), review_quote))
 
     def test_any_single_field_difference_fails(self):
         review = _review(_quote())
@@ -83,10 +77,22 @@ class FeeQuoteCanonical(unittest.TestCase):
                 changed = copy.deepcopy(recovered)
                 changed[field] = value
                 self.assertFalse(fee_metadata_holds(changed, original))
-        with self.subTest(field="reasons_tuple_form"):
-            changed = copy.deepcopy(recovered)
-            changed["reasons"] = ("SOME_TARGETS_UNAVAILABLE",)
-            self.assertFalse(fee_metadata_holds(changed, original))
+        with self.subTest(field="reasons_order"):
+            multi = FeeQuote(
+                network="regtest",
+                rate_atoms_per_kvb=2000,
+                floor_atoms_per_kvb=1000,
+                source="NETWORK_FLOOR_2X",
+                estimator="UNAVAILABLE",
+                reasons=("REASON_A", "REASON_B"),
+                inputs_digest="ab" * 32,
+            )
+            multi_original = review_evidence(_review(multi))["fee_quote"]
+            multi_recovered = plain(asdict(multi))
+            self.assertTrue(fee_metadata_holds(multi_recovered, multi_original))
+            changed = copy.deepcopy(multi_recovered)
+            changed["reasons"] = ["REASON_B", "REASON_A"]
+            self.assertFalse(fee_metadata_holds(changed, multi_original))
 
     def test_none_or_empty_persisted_quote_fails(self):
         original = review_evidence(_review(_quote()))["fee_quote"]
