@@ -219,7 +219,7 @@ def qualify(core, source, root, receipt, *, confirmed=False,
             window._on_ready("snapshot", active)
             app.processEvents()
             from .fusion_ui import FUSION_NAV_PAGES
-            if (not window.isVisible() or not window.send.isEnabled()
+            if (not window.isVisible() or window.send.isEnabled()
                     or window.receive.text()!=opened["receive_code"]
                     or window.navigation.count()!=len(FUSION_NAV_PAGES)
                     or window.overview.balance_value.text()=="—"
@@ -240,6 +240,13 @@ def qualify(core, source, root, receipt, *, confirmed=False,
         atoms = min(50_000, funded["atoms"]//4)
         if atoms < 330 or funded["atoms"] < atoms + 1_000:
             raise Q06PlatformQualificationError("Q06_PLATFORM_INSUFFICIENT_TEST_FUNDS")
+        if window is not None:
+            from .q06_spend_probe import _assert_send_form_contract
+            try:
+                _assert_send_form_contract(window, destination, atoms)
+            except ValueError as error:
+                # Preserve the platform probe's fixed-code diagnostic path.
+                raise Q06PlatformQualificationError(error.args[0]) from None
         step("PREPARE")
         if window is None:
             draft = executor.request("prepare", destination, atoms, 1_000, timeout=240)

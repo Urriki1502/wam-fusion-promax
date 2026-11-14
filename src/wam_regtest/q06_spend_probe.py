@@ -22,6 +22,18 @@ from .wallet_executor import WalletExecutor
 from .wsp_live import _pinned_source
 
 
+def _assert_send_form_contract(window, destination, atoms):
+    """Observe D3A-3 controls without dispatching a payment or changing authority."""
+    if window.recipient_input.text() or window.amount_input.text():
+        raise ValueError('Q06_SEND_FORM_NOT_EMPTY')
+    if window.send.isEnabled():
+        raise ValueError('Q06_SEND_EMPTY_FORM_ENABLED')
+    window.recipient_input.setText(destination)
+    window.amount_input.setText(f"{atoms // 100_000_000}.{atoms % 100_000_000:08d}")
+    if not window.send.isEnabled():
+        raise ValueError('Q06_SEND_VALID_FORM_DISABLED')
+
+
 def qualify(core, source):
     if sys.platform != "darwin" or platform.machine().lower() != "arm64":
         raise ValueError("Q06_SPEND_MACOS_NATIVE_REQUIRED")
@@ -169,10 +181,9 @@ def qualify(core, source):
                     or active["receive_code"] != created["receive_code"]):
                 raise ValueError("Q06_SPEND_NATIVE_ACTIVATION_DENIED")
             stage("ACTIVATE_CHECKPOINT_PASS")
-            if (not window.isVisible() or not window.send.isEnabled()
+            if (not window.isVisible() or window.send.isEnabled()
                     or not window.receive.text() == created["receive_code"]):
                 raise ValueError("Q06_SPEND_QT_BINDING_DENIED")
-            stage("COCOA_SEND_BUTTON_BOUND_PASS")
 
             with Bip39Regtest12Keys(
                     Mnemonic("english").to_mnemonic(bytes([1] * 16)),
@@ -181,6 +192,9 @@ def qualify(core, source):
             atoms = 123_456_789
             if atoms < 330 or funded["atoms"] < atoms + 1000:
                 raise ValueError("Q06_SPEND_FUNDS_NOT_SPENDABLE")
+            # The next existing flow reviews and cancels exactly 3 WAM.
+            _assert_send_form_contract(window, destination, 300_000_000)
+            stage("COCOA_SEND_BUTTON_BOUND_PASS")
             stage("PREPARE_START")
             window.recipient_input.setText(destination)
             window.amount_input.setText('3')
@@ -855,9 +869,10 @@ def _qualify_recovered_unsigned_cancel(core, source, adapter, source_sha):
                 or final['receive_code'] != base['receive_code']
                 or (final['height'], final['tip']) != (after['height'], after['tip'])
                 or final['recovered_unsigned_cancel_available'] is not False
-                or window.cancel.isEnabled() or not window.send.isEnabled()
+                or window.cancel.isEnabled() or window.send.isEnabled()
                 or pool != [] or signs or writes):
             raise ValueError('Q06_RECOVERED_CANCEL_RESULT_DENIED')
+        _assert_send_form_contract(window, destination, 123_456_789)
         window._poll.stop()
         window.hide()
         restart()
@@ -902,6 +917,113 @@ def _qualify_recovered_unsigned_cancel(core, source, adapter, source_sha):
             raise ValueError('Q06_RECOVERED_CANCEL_OWNER_RETAINED') from None
 
 
+# Exact public codes raised here, including the finite wait labels. Never echo
+# arbitrary exception strings, even when they resemble a Q06 code.
+_PUBLIC_FAILURE_CODES = frozenset((
+    'Q06_CORE_LOSS_BACKUP_DENIED',
+    'Q06_CORE_LOSS_CACHED_GUI_AUTHORITY_DENIED',
+    'Q06_CORE_LOSS_CRASH_NOT_OBSERVED',
+    'Q06_CORE_LOSS_CUSTODY_CONTINUITY_DENIED',
+    'Q06_CORE_LOSS_GUI_WAIT_DENIED',
+    'Q06_CORE_LOSS_NATIVE_COCOA_REQUIRED',
+    'Q06_CORE_LOSS_NONEMPTY_FIXTURE_DENIED',
+    'Q06_CORE_LOSS_ORIGINAL_POPEN_REQUIRED',
+    'Q06_CORE_LOSS_OWNER_RETAINED',
+    'Q06_CORE_LOSS_REOPEN_SCOPE_DENIED',
+    'Q06_CORE_LOSS_TIME_BUDGET',
+    'Q06_CORE_RECOVERY_GRANTED_WALLET_AUTHORITY',
+    'Q06_FUSION_AFTER_SEND_BALANCE_DENIED',
+    'Q06_FUSION_AFTER_SEND_HISTORY_DENIED',
+    'Q06_FUSION_AFTER_SEND_RECEIVE_DENIED',
+    'Q06_FUSION_NAVIGATION_DENIED',
+    'Q06_FUSION_VERIFIED_SNAPSHOT_NOT_RENDERED',
+    'Q06_GUI_BACKUP_VERIFICATION_DENIED',
+    'Q06_GUI_DENIED_BACKUP_SYNC',
+    'Q06_GUI_DENIED_CREATE_BACKUP',
+    'Q06_GUI_DENIED_INITIAL_PASSWORD_REFUSAL',
+    'Q06_GUI_DENIED_LOCK',
+    'Q06_GUI_DENIED_OPERATOR_APPROVAL',
+    'Q06_GUI_DENIED_RESTART_REOPEN',
+    'Q06_GUI_DENIED_SEED_ONLY_LOCK',
+    'Q06_GUI_DENIED_SEED_ONLY_UNLOCK',
+    'Q06_GUI_DENIED_UNLOCK',
+    'Q06_GUI_TXID_PERSISTENT_COPY_DENIED',
+    'Q06_GUI_WAIT_BACKUP_SYNC',
+    'Q06_GUI_WAIT_CREATE_BACKUP',
+    'Q06_GUI_WAIT_INITIAL_PASSWORD_REFUSAL',
+    'Q06_GUI_WAIT_LOCK',
+    'Q06_GUI_WAIT_OPERATOR_APPROVAL',
+    'Q06_GUI_WAIT_RESTART_REOPEN',
+    'Q06_GUI_WAIT_SEED_ONLY_LOCK',
+    'Q06_GUI_WAIT_SEED_ONLY_UNLOCK',
+    'Q06_GUI_WAIT_UNLOCK',
+    'Q06_INITIAL_PASSWORD_RETRY_SCOPE_DENIED',
+    'Q06_LOCK_FAULT_CATEGORY_DENIED',
+    'Q06_LOCK_FAULT_NOT_REFUSED',
+    'Q06_LOCK_FAULT_SECRET_OR_AUTHORITY_DENIED',
+    'Q06_MAC_FRESH_SAME_CHAIN_RESTORE_DENIED',
+    'Q06_MAC_RECOVERED_UNSIGNED_CANCEL_DENIED',
+    'Q06_NORMAL_GUI_SCREENSHOT_DENIED',
+    'Q06_POST_REOPEN_TXID_INSPECTION_DENIED',
+    'Q06_RECOVERED_CANCEL_BACKUP_DENIED',
+    'Q06_RECOVERED_CANCEL_DRAFT_DENIED',
+    'Q06_RECOVERED_CANCEL_FUNDING_DENIED',
+    'Q06_RECOVERED_CANCEL_GUI_DENIED_ACTIVATE',
+    'Q06_RECOVERED_CANCEL_GUI_DENIED_QT_CANCEL',
+    'Q06_RECOVERED_CANCEL_GUI_DENIED_RECOVERED_FLAG',
+    'Q06_RECOVERED_CANCEL_GUI_DENIED_REOPEN',
+    'Q06_RECOVERED_CANCEL_NATIVE_COCOA_REQUIRED',
+    'Q06_RECOVERED_CANCEL_OWNER_RETAINED',
+    'Q06_RECOVERED_CANCEL_REOPEN_STATE_DENIED',
+    'Q06_RECOVERED_CANCEL_REPEAT_NOT_REFUSED',
+    'Q06_RECOVERED_CANCEL_RESTART_DENIED',
+    'Q06_RECOVERED_CANCEL_RESULT_DENIED',
+    'Q06_RECOVERED_CANCEL_SHUTDOWN_DENIED',
+    'Q06_RECOVERED_CANCEL_TIME_BUDGET',
+    'Q06_RECOVERED_CANCEL_UNAPPROVED_SCOPE',
+    'Q06_RECOVERED_CANCEL_WAIT_ACTIVATE',
+    'Q06_RECOVERED_CANCEL_WAIT_QT_CANCEL',
+    'Q06_RECOVERED_CANCEL_WAIT_RECOVERED_FLAG',
+    'Q06_RECOVERED_CANCEL_WAIT_REOPEN',
+    'Q06_RECOVERY_CLOSE_FAULT_CATEGORY_DENIED',
+    'Q06_RECOVERY_CLOSE_FAULT_NOT_REFUSED',
+    'Q06_RECOVERY_CLOSE_NATIVE_STATE_CHANGED',
+    'Q06_RECOVERY_CLOSE_SECRET_INVALIDATION_DENIED',
+    'Q06_RESTART_CONFIRMED_TX_MISSING',
+    'Q06_RESTART_HISTORY_OR_RESERVATION_CHANGED',
+    'Q06_RESTART_SHUTDOWN_DENIED',
+    'Q06_RESTART_UNAPPROVED_SIGNER',
+    'Q06_SEED_ONLY_UNLOCK_AUTHORITY_DENIED',
+    'Q06_SEND_EMPTY_FORM_ENABLED',
+    'Q06_SEND_FORM_NOT_EMPTY',
+    'Q06_SEND_VALID_FORM_DISABLED',
+    'Q06_SIGNED_EVIDENCE_MISMATCH',
+    'Q06_SIGNED_EVIDENCE_MISSING',
+    'Q06_SPEND_CREATE_IDENTITY_DENIED',
+    'Q06_SPEND_FUNDS_NOT_SPENDABLE',
+    'Q06_SPEND_GUI_CANCEL_SIGNED_OR_CHANGED_CUSTODY',
+    'Q06_SPEND_HISTORY_DENIED',
+    'Q06_SPEND_INTENT_DENIED',
+    'Q06_SPEND_MACOS_NATIVE_REQUIRED',
+    'Q06_SPEND_NATIVE_ACTIVATION_DENIED',
+    'Q06_SPEND_NATIVE_COCOA_REQUIRED',
+    'Q06_SPEND_NOT_QUALIFIED',
+    'Q06_SPEND_OWNED_SHUTDOWN_DENIED',
+    'Q06_SPEND_QT_BINDING_DENIED',
+    'Q06_SPEND_RECEIVE_DENIED',
+    'Q06_SPEND_REOPEN_IDENTITY_DENIED',
+    'Q06_SPEND_REOPEN_STATE_DENIED',
+    'Q06_SPEND_SAME_CHAIN_RECOVERY_DENIED',
+    'Q06_SPEND_SIGNED_INTENT_DENIED',
+    'Q06_SPEND_TXID_DENIED',
+    'Q06_TEST_RECOVERY_CLOSE_FAULT',
+    'Q06_UNLOCK_CANCEL_GRANTED_AUTHORITY',
+    'Q06_UNLOCK_IDENTITY_OR_RESERVATION_CHANGED',
+    'Q06_WRONG_PASSWORD_ACCEPTED',
+    'Q06_WRONG_PASSWORD_OPENED',
+))
+
+
 def run(core, source):
     try:
         receipt = qualify(core, source)
@@ -927,6 +1049,10 @@ def run(core, source):
             raise ValueError("Q06_SPEND_NOT_QUALIFIED")
         print("MACOS_Q06_NATIVE_BIP39_SEND_CONFIRM_REOPEN_PASS", flush=True)
         return 0
-    except Exception:
-        print("MACOS_Q06_NATIVE_BIP39_SEND_CONFIRM_REOPEN_DENIED", flush=True)
+    except Exception as error:
+        code = error.args[0] if type(error) is ValueError and len(error.args) == 1 else None
+        public_code = (code if type(code) is str and code in _PUBLIC_FAILURE_CODES
+                       else 'Q06_SPEND_UNEXPECTED_FAILURE')
+        print("MACOS_Q06_NATIVE_BIP39_SEND_CONFIRM_REOPEN_DENIED code=" + public_code,
+              flush=True)
         return 2
