@@ -84,7 +84,7 @@ def _snapshot_ini(ini_path: Path) -> dict[str, object]:
     return {key: store.value(key) for key in store.allKeys()}
 
 
-def _make_window(backend: Backend | None = None) -> tuple[Bip39FusionWindow, WalletExecutor, Backend]:
+def _make_window(backend: object | None = None) -> tuple[Bip39FusionWindow, WalletExecutor, object]:
     _qt_app()
     be = backend or _PassiveBackend()
     executor = WalletExecutor(lambda: be)
@@ -157,6 +157,7 @@ class SettingsIsolationAndKeysTests(unittest.TestCase):
 
     def test_preference_defaults_and_invalid_values(self):
         with _isolated_ini({"QT_REDUCE_MOTION": "0"}) as ini_path:
+            self.assertFalse(ui_settings.native_store_enabled())
             self.assertEqual(bip39_locale.stored_language(), "system")
             self.assertEqual(bip39_locale.effective_choice(), "en")
             # Corrupted appearance & unsupported language do not crash or overwrite store.
@@ -180,6 +181,7 @@ class SettingsIsolationAndKeysTests(unittest.TestCase):
 
     def test_theme_choice_writes_only_fusion_appearance_and_syncs_sliders(self):
         with _isolated_ini({"QT_REDUCE_MOTION": "0"}) as ini_path:
+            self.assertFalse(ui_settings.native_store_enabled())
             window, executor, _ = _make_window()
             try:
                 baseline = _snapshot_ini(ini_path)
@@ -211,6 +213,7 @@ class SettingsIsolationAndKeysTests(unittest.TestCase):
 
     def test_language_choice_writes_only_ui_language_with_next_window_semantics(self):
         with _isolated_ini({"QT_REDUCE_MOTION": "0"}) as ini_path:
+            self.assertFalse(ui_settings.native_store_enabled())
             window, executor, _ = _make_window()
             try:
                 initial_toggle_text = window.advanced_toggle.text()
@@ -239,6 +242,7 @@ class SettingsIsolationAndKeysTests(unittest.TestCase):
 
     def test_reduce_motion_toggle_writes_only_fusion_reduce_motion(self):
         with _isolated_ini({"QT_REDUCE_MOTION": "0"}) as ini_path:
+            self.assertFalse(ui_settings.native_store_enabled())
             window, executor, _ = _make_window()
             try:
                 self.assertFalse(window.reduce_motion.isChecked())
@@ -297,6 +301,7 @@ class SettingsReduceMotionEnvDefectTests(unittest.TestCase):
     @unittest.expectedFailure  # D6A-1: Bip39FusionWindow.__init__ calls _set_reduce_motion(isChecked())
     def test_qt_reduce_motion_env_does_not_write_preference_on_open(self):
         with _isolated_ini({"QT_REDUCE_MOTION": "1"}) as ini_path:
+            self.assertFalse(ui_settings.native_store_enabled())
             store = ui_settings.ui_settings()
             store.setValue("fusion_reduce_motion", False)
             store.sync()
@@ -352,13 +357,12 @@ class HostileErrorPrivacyTests(unittest.TestCase):
                 self.assertEqual(window.status.toolTip(), window.status.text())
 
                 # Direct hostile string / ValueError / WalletExecutorError never leak sentinels.
+                from wam_regtest.gui_errors import operation_error
                 for err in (
                     ValueError(hostile_msg),
                     WalletExecutorError(hostile_msg),
                 ):
-                    code = ui_settings_err = err  # sanity check via ControlWorker/operation_error
-                    from wam_regtest.gui_errors import operation_error
-                    window._on_denied(operation_error("snapshot", ui_settings_err))
+                    window._on_denied(operation_error("snapshot", err))
                     QApplication.processEvents()
                     _assert_no_sentinels(self, window)
                     self.assertEqual(window._last_error_code, "WALLET_OPERATION_DENIED_STATE_RETAINED")

@@ -16,6 +16,7 @@ from test_pm063_d6a_settings_state import (
     _set_executor_state,
     _snapshot_ini,
 )
+from wam_regtest import ui_settings
 from wam_regtest.bip39_fusion_gui import Bip39FusionWindow
 from wam_regtest.fusion_pages import WalletConsent
 from wam_regtest.presentation.action_state import BASE_CONTROLS
@@ -160,6 +161,7 @@ class SettingsCommandBoundaryTests(unittest.TestCase):
 
     def test_opening_settings_toggling_disclosure_and_scanning_text_emit_zero_commands_or_pref_writes(self):
         with _isolated_ini({"QT_REDUCE_MOTION": "0"}) as ini_path:
+            self.assertFalse(ui_settings.native_store_enabled())
             be = _RecordingBackend()
             window, executor, _ = _make_window(be)
             window.show()
@@ -212,6 +214,7 @@ class SettingsCommandBoundaryTests(unittest.TestCase):
 
     def test_choosing_theme_language_and_motion_emit_zero_commands_or_rpcs(self):
         with _isolated_ini({"QT_REDUCE_MOTION": "0"}):
+            self.assertFalse(ui_settings.native_store_enabled())
             be = _RecordingBackend()
             window, executor, _ = _make_window(be)
             try:
@@ -415,7 +418,7 @@ class SettingsLifetimeTests(unittest.TestCase):
             finally:
                 _close_window(window, executor)
 
-    @unittest.expectedFailure  # D6A-2: _last_network and _shared_connected are NOT reset on lock, fault, or open
+    # D6A-2 fixed by PM-061 (9256015): _clear_visuals resets _last_network and _shared_connected.
     def test_last_network_cleared_after_lock_fault_and_profile_switch(self):
         with _isolated_ini({"QT_REDUCE_MOTION": "0"}):
             executor = WalletExecutor(lambda: _RecordingBackend())
@@ -456,7 +459,7 @@ class SettingsLifetimeTests(unittest.TestCase):
             finally:
                 _close_window(window, executor)
 
-    @unittest.expectedFailure  # D6A-3: _on_ready('open', ...) does not clear _last_error_code; ack failure doesn't set it
+    # D6A-3 fixed by PM-061 (9256015): _on_ready('open', ...) clears _last_error_code before base handling.
     def test_last_error_code_cleared_on_open_and_ack_error_recorded(self):
         with _isolated_ini({"QT_REDUCE_MOTION": "0"}):
             window, executor, _ = _make_window()
@@ -470,7 +473,7 @@ class SettingsLifetimeTests(unittest.TestCase):
             finally:
                 _close_window(window, executor)
 
-    @unittest.expectedFailure  # D6A-4: fault and late/denied snapshot do not clear account, balance, tip
+    # D6A-4 fixed by PM-061 (9256015): _clear_visuals resets account, balance, tip and their a11y/tooltip buffers.
     def test_fault_and_late_snapshot_clear_advanced_session_labels(self):
         with _isolated_ini({"QT_REDUCE_MOTION": "0"}):
             window, executor, _ = _make_window()
@@ -506,7 +509,7 @@ class SettingsLifetimeTests(unittest.TestCase):
             finally:
                 _close_window(window, executor)
 
-    @unittest.expectedFailure  # D6A-5: last_txid not reset on fault/open/quit; backup-required open keeps old status
+    @unittest.expectedFailure  # D6A-5 remains: last_txid not reset on fault/open/quit (still fails at fault check; required-with-mnemonic_once open also keeps old status)
     def test_last_txid_and_status_cleared_on_fault_profile_switch_and_quit(self):
         with _isolated_ini({"QT_REDUCE_MOTION": "0"}):
             window, executor, _ = _make_window()
@@ -550,7 +553,7 @@ class SettingsLifetimeTests(unittest.TestCase):
             finally:
                 _close_window(window, executor)
 
-    @unittest.expectedFailure  # D6A-6: overview.environment_core.toolTip() keeps Core SHA-256 after lock/fault/open
+    # D6A-6 fixed by PM-061 (9256015): _clear_visuals clears overview.environment_core tooltip/a11y buffers.
     def test_environment_core_tooltip_cleared_on_lock_fault_and_profile_switch(self):
         with _isolated_ini({"QT_REDUCE_MOTION": "0"}):
             window, executor, _ = _make_window()
