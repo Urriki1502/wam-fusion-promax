@@ -1419,6 +1419,10 @@ class FusionOverview(QScrollArea):
         hero.addWidget(self.balance_unit)
         self.utxo_details = label(ui_text('fusion.awaiting_verified_core_wsp_state'))
         hero.addWidget(self.utxo_details)
+        self.currentness = label('', 'FusionMuted')
+        self.currentness.setWordWrap(True)
+        self.currentness.hide()
+        hero.addWidget(self.currentness)
         self.fund_details = label('')
         self.fund_details.hide()
         hero.addWidget(self.fund_details)
@@ -1557,6 +1561,14 @@ class FusionOverview(QScrollArea):
                 item.setIcon(vector_icon('receive' if positive else 'send',
                                          direction_tone(fusion_palette(mode), item.data(Qt.ItemDataRole.UserRole))))
 
+    def set_currentness(self, text):
+        if text:
+            self.currentness.setText(text)
+            self.currentness.show()
+        else:
+            self.currentness.clear()
+            self.currentness.hide()
+
     def render_snapshot(self, snap, *, locked=False, operational=False, network=None,
                         faulted=False, available_atoms=None, reservation_count=None,
                         core_alive=None, busy=False):
@@ -1574,6 +1586,7 @@ class FusionOverview(QScrollArea):
         self.custody_switch.setText(ui_text('fusion.unlocked') if unlocked else ui_text('fusion.locked'))
         self.custody_switch.blockSignals(False)
         if snap is None or locked:
+            self.set_currentness(None)
             self._confirmed_atoms = None
             self._apply_balance_text()
             self.utxo_details.setText(ui_text('fusion.unlock_to_show_values'))
@@ -1610,6 +1623,11 @@ class FusionOverview(QScrollArea):
             funds.append(str(reservation_count) + ui_text('fusion.reserved_input_s_stay_unavailable'))
         self.fund_details.setText('  ·  '.join(funds))
         self.fund_details.setVisible(bool(funds))
+        if busy:
+            self.set_currentness(
+                ui_text('operational.last_verified').format(height=snap.height))
+        else:
+            self.set_currentness(None)
         self.live_badge.setText(ui_text('fusion.regtest_verified'))
         self.go_receive.setEnabled(True)
         self.evidence_text.setText(ui_text('fusion.verified_tip') + snap.tip[:14] + ui_text('fusion.no_real_funds'))

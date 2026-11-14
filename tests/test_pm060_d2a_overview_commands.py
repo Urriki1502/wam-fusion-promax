@@ -157,7 +157,6 @@ class OverviewCommands(unittest.TestCase):
                 # Public clipboard is deliberately not auto-cleared by lock.
                 self.assertEqual(self.app.clipboard().text(), snapshot().receive_code)
 
-    @unittest.expectedFailure
     def test_refresh_failure_has_visible_stale_signal(self):
         """D2A-2: stale signal exists as text but is on hidden live_badge."""
         self.w._on_denied('WALLET_READ_DENIED')
@@ -397,7 +396,6 @@ class OverviewCommands(unittest.TestCase):
         self.w._on_ready('snapshot', wrong)
         self.assert_financial_clear()
 
-    @unittest.expectedFailure
     def test_busy_retained_snapshot_has_visible_last_verified_signal(self):
         """D2A-2: busy retains verified facts without visible currentness signal."""
         self.gate.clear()
@@ -407,3 +405,28 @@ class OverviewCommands(unittest.TestCase):
         self.assertTrue(any(x.isVisible() and 'Last verified' in x.text()
                             for x in self.w.overview.findChildren(QLabel)),
                         'D2A-2 busy snapshot lacks last-verified signal')
+
+    def test_verified_snapshot_hides_refresh_required_signal(self):
+        self.w._on_denied('WALLET_READ_DENIED')
+        self.assertEqual(self.w.overview.currentness.text(), t('wallet.refresh_required'))
+        self.assertTrue(self.w.overview.currentness.isVisible())
+        self.w._on_ready('snapshot', result())
+        self.assertTrue(self.w.overview.currentness.isHidden())
+        self.assertFalse(any(x.isVisible() and x.text() == t('wallet.refresh_required')
+                             for x in self.w.overview.findChildren(QLabel)))
+
+    def test_lock_hides_refresh_required_signal_and_balance(self):
+        self.w._on_denied('WALLET_READ_DENIED')
+        self.assertTrue(self.w.overview.currentness.isVisible())
+        self.w._on_ready('lock', None)
+        self.assertTrue(self.w.overview.currentness.isHidden())
+        self.assert_financial_clear()
+        self.assertFalse(any(x.isVisible() and 'Last verified' in x.text()
+                             for x in self.w.overview.findChildren(QLabel)))
+
+    def test_fresh_verified_snapshot_never_shows_currentness(self):
+        self.w._on_ready('snapshot', result())
+        self.assertTrue(self.w.overview.currentness.isHidden())
+        self.assertNotIn('—', self.w.overview.balance_value.text())
+        self.assertFalse(any(x.isVisible() and 'Last verified' in x.text()
+                             for x in self.w.overview.findChildren(QLabel)))

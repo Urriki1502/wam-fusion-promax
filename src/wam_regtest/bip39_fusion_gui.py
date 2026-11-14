@@ -749,6 +749,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
         if hasattr(self, "overview"):
             extra = fusion_actions(inputs, actions, shared)
             idle = not inputs.busy
+            if inputs.busy and not getattr(self, '_delivering_result', False):
+                retained = getattr(self, '_last_verified', None)
+                if retained is not None:
+                    self.overview.set_currentness(
+                        t('operational.last_verified').format(height=retained.height))
             if hasattr(self,'reconcile_button'):
                 self.reconcile_button.setEnabled(extra['reconcile'])
             if hasattr(self, 'custody_switch'):
@@ -1268,4 +1273,5 @@ class Bip39FusionWindow(Bip39TrialWindow):
                 core_alive=self.executor.state.core_alive)[1])
         elif self._last_verified is not None:
             self.overview.live_badge.setText(t('wallet.refresh_required'))
+            self.overview.set_currentness(t('wallet.refresh_required'))
         self._set_actions()
