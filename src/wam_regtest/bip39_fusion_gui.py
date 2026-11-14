@@ -496,7 +496,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         if saved in (0, 1, 2):
             self.header_theme.setCurrentIndex(saved, animate=False)
             self.settings_theme.setCurrentIndex(saved, animate=False)
-        self._set_reduce_motion(self.reduce_motion.isChecked())
+        self._apply_reduce_motion(self.reduce_motion.isChecked())
         self._overview_intro = False
         self.navigation.currentRowChanged.connect(self._navigate)
         self.navigation.setCurrentRow(0)
@@ -540,11 +540,14 @@ class Bip39FusionWindow(Bip39TrialWindow):
         settings.setValue("ui_language", value)
         settings.sync()
 
-    def _set_reduce_motion(self, checked):
+    def _apply_reduce_motion(self, checked):
         self.setProperty("fusion_reduce_motion", bool(checked))
-        ui_settings().setValue("fusion_reduce_motion", bool(checked))
         self.style().unpolish(self)
         self.style().polish(self)
+
+    def _set_reduce_motion(self, checked):
+        self._apply_reduce_motion(checked)
+        ui_settings().setValue("fusion_reduce_motion", bool(checked))
 
     def _theme_chosen(self, index):
         if index not in (0, 1, 2) or self._theme_sync:

@@ -301,7 +301,6 @@ class SettingsIsolationAndKeysTests(unittest.TestCase):
 class SettingsReduceMotionEnvDefectTests(unittest.TestCase):
     """Pin D6A-1: QT_REDUCE_MOTION=1 writes fusion_reduce_motion during __init__."""
 
-    @unittest.expectedFailure  # D6A-1: Bip39FusionWindow.__init__ calls _set_reduce_motion(isChecked())
     def test_qt_reduce_motion_env_does_not_write_preference_on_open(self):
         with _isolated_ini({"QT_REDUCE_MOTION": "1"}) as ini_path:
             self.assertFalse(ui_settings.native_store_enabled())
@@ -318,6 +317,26 @@ class SettingsReduceMotionEnvDefectTests(unittest.TestCase):
                     after.get("fusion_reduce_motion"),
                     (False, "false", "False"),
                     f"QT_REDUCE_MOTION=1 overwrote fusion_reduce_motion: {after!r}",
+                )
+            finally:
+                _close_window(window, executor)
+
+    def test_user_toggle_still_persists_reduce_motion_preference(self):
+        with _isolated_ini({"QT_REDUCE_MOTION": "0"}) as ini_path:
+            self.assertFalse(ui_settings.native_store_enabled())
+            window, executor, _ = _make_window()
+            try:
+                window.reduce_motion.setChecked(True)
+                QApplication.processEvents()
+                self.assertIn(
+                    _snapshot_ini(ini_path).get("fusion_reduce_motion"),
+                    (True, "true", "True"),
+                )
+                window.reduce_motion.setChecked(False)
+                QApplication.processEvents()
+                self.assertIn(
+                    _snapshot_ini(ini_path).get("fusion_reduce_motion"),
+                    (False, "false", "False"),
                 )
             finally:
                 _close_window(window, executor)
