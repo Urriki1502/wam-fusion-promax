@@ -385,7 +385,7 @@ class BackupLeaveConfirm(QDialog):
         self.setObjectName("FusionApproval")
         self.setWindowTitle(t("leave_backup_title"))
         self.setModal(True)
-        self.resize(540, 260)
+        self.resize(540, 1)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         for text, role in ((t("leave_backup_title"), "PageTitle"),
@@ -400,14 +400,44 @@ class BackupLeaveConfirm(QDialog):
         self.stay_button = buttons.addButton(
             t("leave_backup_stay"), QDialogButtonBox.ButtonRole.RejectRole)
         self.leave_button = buttons.addButton(
-            t("leave_backup_confirm"), QDialogButtonBox.ButtonRole.AcceptRole)
+            t("leave_backup_confirm"), QDialogButtonBox.ButtonRole.DestructiveRole)
         self.stay_button.setObjectName("FusionPrimary")
         self.stay_button.setDefault(True)
         self.leave_button.setObjectName("FusionDestructive")
         self.leave_button.setAutoDefault(False)
         buttons.rejected.connect(self.reject)
-        buttons.accepted.connect(self.accept)
+        self.leave_button.clicked.connect(self.accept)
+        for button in (self.leave_button, self.stay_button):
+            button.setMinimumHeight(36)
+            button.setAccessibleName(button.text())
+        self.setTabOrder(self.leave_button, self.stay_button)
         layout.addWidget(buttons)
+        self.stay_button.setFocus()
+        self.leave_button.installEventFilter(self)
+
+    def eventFilter(self, watched, event):
+        # Return always takes the safe default, even after tabbing to Leave.
+        # Space or a pointer click remains the explicit destructive action.
+        if event.type() == QEvent.Type.KeyPress and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.reject()
+            return True
+        return super().eventFilter(watched, event)
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.reject()
+            return
+        super().keyPressEvent(event)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.ensurePolished()
+        available = self.screen().availableGeometry()
+        width = min(540, available.width() - 32)
+        self.resize(width, self.height())
+        self.layout().activate()
+        height = self.layout().totalHeightForWidth(width)
+        self.resize(width, min(available.height() - 32, max(height, self.minimumSizeHint().height())))
         self.stay_button.setFocus()
 
 
@@ -520,37 +550,33 @@ class Bip39BackupPage(QWidget):
         for control in [self._written_check, self._back_up_later, self._back_up_now, *chain]:
             control.installEventFilter(self)
 
-        # --- Success page ---
-        # Preserve scene 14's original scrolling/centered success surface;
-        # scenes 12/13 have their own scroll areas and persistent bands.
+        # Compact acknowledgment surface; the backend alone calls show_success.
         self._success_page = QScrollArea()
         self._success_page.setObjectName('FusionScroll')
         self._success_page.setFrameShape(QFrame.Shape.NoFrame)
         self._success_page.setWidgetResizable(True)
+        self._success_page.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         success_content = QWidget()
-        success_content.setObjectName('FusionInner')
         self._success_page.setWidget(success_content)
         success_content.setAutoFillBackground(False)
         self._success_page.viewport().setAutoFillBackground(False)
         sl = QVBoxLayout(success_content)
-        sl.setContentsMargins(4, 4, 12, 16)
-        sl.setSpacing(18)
-        sl.addStretch()
-        self._success_title = label(t("success_title"), "PageTitle")
-        self._success_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        sl.addWidget(self._success_title)
-        self._success_description = label(t("success_subtitle"))
-        self._success_description.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._success_description.setMinimumWidth(0)
-        policy = self._success_description.sizePolicy()
-        policy.setHorizontalPolicy(QSizePolicy.Policy.Expanding)
-        policy.setVerticalPolicy(QSizePolicy.Policy.Minimum)
-        policy.setHeightForWidth(True)
-        self._success_description.setSizePolicy(policy)
-        sl.addWidget(self._success_description)
-        self._continue_button = action(t("continue"), "check", primary=True)
+        sl.setContentsMargins(24, 24, 24, 24)
+        block = QWidget()
+        block.setMaximumWidth(560)
+        bl = QVBoxLayout(block)
+        bl.setContentsMargins(0, 0, 0, 0)
+        bl.setSpacing(24)
+        self._success_title = grow_with_wrapped_text(label(t('success_title'), 'PageTitle'))
+        bl.addWidget(self._success_title)
+        self._success_description = grow_with_wrapped_text(label(t('success_subtitle')))
+        bl.addWidget(self._success_description)
+        self._continue_button = action(t('backup.done'), 'check', primary=True)
+        self._continue_button.setAccessibleName(t('backup.done'))
+        self._continue_button.setMinimumHeight(36)
         self._continue_button.clicked.connect(self.continue_requested.emit)
-        sl.addWidget(self._continue_button, alignment=Qt.AlignmentFlag.AlignCenter)
+        bl.addWidget(self._continue_button, alignment=Qt.AlignmentFlag.AlignRight)
+        sl.addWidget(block)
         sl.addStretch()
         self._stack.addWidget(self._success_page)
         self._stack.currentChanged.connect(self._fit_success_page)

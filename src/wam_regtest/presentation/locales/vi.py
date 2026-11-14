@@ -495,8 +495,8 @@ VI = {
     "wallet.confirm_consent": "Đào đúng một khối thử trên Core thuộc quyền quản lý ban đầu này để xác nhận giao dịch đã gửi. Không được thử lại khi kết quả chưa rõ.",
     "wallet.fund_title": "Cấp vốn ví REGTEST dùng thử",
     "wallet.fund_consent": "Chỉ trên chuỗi thử biệt lập mới: đào tiền mẫu công khai đã trưởng thành, nhận một thanh toán BIP352 và xác nhận. Thao tác thay đổi chuỗi thử. Không bao giờ thử lại kết quả chưa rõ.",
-    "wallet.backup_verify_unavailable": "Không thể xác minh sao lưu: ",
-    "wallet.backup_defer_unavailable": "Không thể hoãn sao lưu: ",
+    "wallet.backup_verify_unavailable": "Không thể kiểm tra bản sao lưu. Các từ của bạn chưa được đánh giá.",
+    "wallet.backup_defer_unavailable": "Không thể xác nhận việc hoãn sao lưu. Hãy mở lại ví để kiểm tra trạng thái sao lưu.",
     "wallet.invalid_payment": "Nhập đầy đủ người nhận thanh toán ẩn REGTEST và số tiền/phí hợp lệ.",
     "wallet.reconciled": "Đã đối soát hồ sơ Shared ban đầu. Giữ nguyên bằng chứng và khoản giữ chỗ. Chấp thuận Bật gửi để xác minh lại lưu ký.",
     "wallet.connected": "Đã kết nối",
@@ -768,4 +768,6 @@ VI = {
     "pending.details_value": "Phí: {fee} · Tiền thừa đang chờ: {change}",
     "payment.replaceable_yes": "Có thể thay thế: có (có thể tăng phí sau)",
     "errors.RBF_SIGNALLING_MISSING": "Giao dịch này thiếu tín hiệu cho phép thay thế BIP125 rõ ràng. Chưa ký gì.",
+    "backup.reopen": "Mở lại ví",
+    "backup.done": "Tiếp tục",
 }

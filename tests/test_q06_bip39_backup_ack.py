@@ -246,7 +246,7 @@ class BackupPageContract(unittest.TestCase):
         self.assertIn(("defer",), self.window.executor.log)
         self.assertTrue(self.window._backup_unacked)
         self.assertFalse(self.window._ready)
-        self.assertEqual(self.window.stack.currentIndex(), 0)
+        self.assertIs(self.window.stack.currentWidget(), self.window.backup_deferred_page)
         self.assertTrue(self.window.navigation.isEnabled())
 
     def test_backup_verify_back_returns_to_phrase_page(self):
@@ -431,7 +431,7 @@ class BackupPageContract(unittest.TestCase):
         self.window.show()
         self.app.processEvents(); self.app.processEvents()
         self.assertGreaterEqual(err.height(), err.heightForWidth(err.width()))
-        self.assertIn("Backup verification unavailable", self.window.status.text())
+        self.assertEqual("Backup could not be checked. Your words were not judged.", self.window.status.text())
         self.assertFalse(self.window._ready)
         self.assertFalse(executor.verified)
         # A fresh single-use challenge replaces the consumed one; retry works.

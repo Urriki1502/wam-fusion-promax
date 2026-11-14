@@ -1,0 +1,28 @@
+{
+  "english": {
+    "wallet.backup_verify_unavailable": "Backup could not be checked. Your words were not judged.",
+    "wallet.backup_defer_unavailable": "Backup deferral could not be confirmed. Reopen the wallet to check its backup status.",
+    "backup.reopen": "Reopen wallet",
+    "backup.done": "Continue"
+  },
+  "review": {
+    "wallet.backup_verify_unavailable": "S",
+    "wallet.backup_defer_unavailable": "S",
+    "backup.reopen": "S",
+    "backup.done": "U"
+  },
+  "native_review": {
+    "en": "PENDING",
+    "vi": "PENDING",
+    "zh-Hans": "PENDING",
+    "ko": "PENDING",
+    "id": "PENDING",
+    "ja": "PENDING"
+  },
+  "previous": {
+    "en": {
+      "wallet.backup_verify_unavailable": "Backup verification unavailable: ",
+      "wallet.backup_defer_unavailable": "Backup deferral unavailable: "
+    }
+  }
+}

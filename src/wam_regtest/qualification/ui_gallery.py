@@ -295,7 +295,8 @@ def _render_window(language, width, height, theme_index, theme, shoot, settle, f
         window._render_verified(result)
         window._set_actions()
         window.status.setText('')
-        # Backup flow: public test vector only.
+        # Backup flow: public test vector only; no verified-snapshot badge.
+        window.connection_pill.setText(t('regtest_preview'))
         window.navigation.clearSelection()
         window.stack.setCurrentWidget(window.backup_page)
         window.backup_page.set_phrase(TEST_VECTOR)
@@ -303,8 +304,14 @@ def _render_window(language, width, height, theme_index, theme, shoot, settle, f
         window.backup_page.set_challenge(dict(challenge_id='ab' * 32, positions=(2, 7, 11)))
         window.backup_page._stack.setCurrentWidget(window.backup_page._verify_page)
         scene('13-backup-verify')
-        window.backup_page._stack.setCurrentWidget(window.backup_page._success_page)
+        window.backup_page.show_success()
         scene('14-backup-success')
+        # Presentation-only locked fixture: no deferral or unlock is executed.
+        executor.state = ExecutorState(locked=True, faulted=False, core_alive=True)
+        window.connection_pill.setText(t('fusion.locked'))
+        window.stack.setCurrentWidget(window.backup_deferred_page)
+        scene('14b-backup-deferred-locked')
+        window.stack.setCurrentWidget(window.backup_page)
         # Dialogs, shown non-modally so they can be captured; never accepted.
         dialogs = (
             ('15-dialog-consent', lambda: WalletConsent(t('wallet.backup_title'),

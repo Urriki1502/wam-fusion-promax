@@ -471,6 +471,21 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.backup_page.continue_requested.connect(self._on_backup_continue)
         self.stack.addWidget(self.backup_page)
 
+        self.backup_deferred_page, deferred_layout = page(t('backup_title'), '', '')
+        deferred_card, deferred_body = panel()
+        deferred_card.setMaximumWidth(560)
+        self.backup_locked_description = grow_with_wrapped_text(label(t('locked_subtitle')))
+        deferred_body.addWidget(self.backup_locked_description)
+        self.backup_reopen = action(t('backup.reopen'), 'security', primary=True)
+        self.backup_reopen.setAccessibleName(t('backup.reopen'))
+        self.backup_reopen.setMinimumHeight(36)
+        # Existing password/profile/native-custody flow; no optimistic unlock.
+        self.backup_reopen.clicked.connect(self._unlock_prompt)
+        deferred_body.addWidget(self.backup_reopen)
+        deferred_layout.addWidget(deferred_card)
+        deferred_layout.addStretch()
+        self.stack.addWidget(self.backup_deferred_page)
+
         self._transition = None
         self._advanced_transition = None
         self._press_feedback = PressFeedback(self)
@@ -860,22 +875,22 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self.backup_page.set_challenge(challenge)
         except Exception as error:
             self.backup_page.show_verification_error('verify_unavailable')
-            self.status.setText(t('wallet.backup_verify_unavailable') +
-                                str(operation_error('backup_challenge', error)))
+            self._last_error_code = operation_error('backup_challenge', error)
+            self.status.setText(t('wallet.backup_verify_unavailable'))
 
     def _on_backup_challenge_cancel(self):
         try:
             self.executor.request('backup_challenge_cancel', timeout=30)
         except Exception as error:
-            self.status.setText(t('wallet.backup_verify_unavailable') +
-                                str(operation_error('backup_challenge_cancel', error)))
+            self._last_error_code = operation_error('backup_challenge_cancel', error)
+            self.status.setText(t('wallet.backup_verify_unavailable'))
 
     def _on_backup_verify(self, identifier, answers):
         try:
             ok = self.executor.request("backup_verify", identifier, answers, timeout=30)
         except Exception as error:
-            self.status.setText(
-                t('wallet.backup_verify_unavailable') + str(operation_error("backup_verify", error)))
+            self._last_error_code = operation_error('backup_verify', error)
+            self.status.setText(t('wallet.backup_verify_unavailable'))
             # The backend refused before judging the words: never report this
             # as a wrong-word result (V19: correct words shown as "do not match").
             self.backup_page.show_verification_error('verify_unavailable')
@@ -902,10 +917,12 @@ class Bip39FusionWindow(Bip39TrialWindow):
         try:
             self.executor.request("backup_defer", timeout=30)
         except Exception as error:
-            defer_error = (
-                t('wallet.backup_defer_unavailable')
-                + str(operation_error("backup_defer", error)))
+            self._last_error_code = operation_error('backup_defer', error)
+            defer_error = t('wallet.backup_defer_unavailable')
         self._backup_flow_completed(False)
+        # Never present an uncertain deferral as successfully locked.
+        if defer_error is None and self.executor.state.locked and not self._quit_requested:
+            self.stack.setCurrentWidget(self.backup_deferred_page)
         if defer_error is not None and not self._quit_requested:
             self.status.setText(defer_error)
 

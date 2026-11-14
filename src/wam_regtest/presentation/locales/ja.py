@@ -495,8 +495,8 @@ JA = {
     "wallet.confirm_consent": "この元の所有 Core で正確に一テストブロックを採掘し、提出済み取引を確認します。結果不明の場合は再試行してはいけません。",
     "wallet.fund_title": "使い捨て REGTEST ウォレットに資金供給",
     "wallet.fund_consent": "新しい隔離テストチェーンのみ: 成熟した公開テスト資金を採掘し、BIP352 支払いを一件受け取り確認します。テストチェーンが変わります。結果不明の場合は決して再試行しないでください。",
-    "wallet.backup_verify_unavailable": "バックアップ検証を利用できません: ",
-    "wallet.backup_defer_unavailable": "バックアップ延期を利用できません: ",
+    "wallet.backup_verify_unavailable": "バックアップを確認できませんでした。入力した単語が正しいかどうかは判定されていません。",
+    "wallet.backup_defer_unavailable": "バックアップの延期を確認できませんでした。ウォレットを再度開き、バックアップの状態を確認してください。",
     "wallet.invalid_payment": "完全な REGTEST サイレントペイメント受取人と、有効な金額/手数料を入力してください。",
     "wallet.reconciled": "元の共有プロファイルを照合しました。証拠と予約を保持しています。「送金を有効化」を承認して保管を再検証してください。",
     "wallet.connected": "接続済み",
@@ -768,4 +768,6 @@ JA = {
     "pending.details_value": "手数料: {fee} · 承認待ちのお釣り: {change}",
     "payment.replaceable_yes": "置換可能: はい（後で手数料を引き上げられます）",
     "errors.RBF_SIGNALLING_MISSING": "この支払いには明示的なBIP125置換シグナルがありません。署名は行われていません。",
+    "backup.reopen": "ウォレットを再度開く",
+    "backup.done": "続ける",
 }

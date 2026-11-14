@@ -495,8 +495,8 @@ ZH_HANS = {
     "wallet.confirm_consent": "在此原始自有 Core 上仅挖一个测试区块以确认已提交的交易。结果不确定时不得重试。",
     "wallet.fund_title": "为一次性 REGTEST 钱包提供资金",
     "wallet.fund_consent": "仅限全新隔离测试链：挖取成熟的公开测试资金，接收一笔 BIP352 付款并确认。此操作会更改测试链。绝不重试结果不确定的操作。",
-    "wallet.backup_verify_unavailable": "备份验证不可用：",
-    "wallet.backup_defer_unavailable": "备份延期不可用：",
+    "wallet.backup_verify_unavailable": "无法检查备份。尚未判定您输入的单词是否正确。",
+    "wallet.backup_defer_unavailable": "无法确认备份是否已推迟。请重新打开钱包以检查备份状态。",
     "wallet.invalid_payment": "请输入完整的 REGTEST 静默支付收款码及有效金额/费用。",
     "wallet.reconciled": "已核对原始共享配置。证据和预留已保留。请批准“启用发送”以再次验证托管。",
     "wallet.connected": "已连接",
@@ -768,4 +768,6 @@ ZH_HANS = {
     "pending.details_value": "手续费: {fee} · 待确认找零: {change}",
     "payment.replaceable_yes": "可替换：是（稍后可提高手续费）",
     "errors.RBF_SIGNALLING_MISSING": "此付款缺少明确的BIP125可替换信号。未进行任何签名。",
+    "backup.reopen": "重新打开钱包",
+    "backup.done": "继续",
 }

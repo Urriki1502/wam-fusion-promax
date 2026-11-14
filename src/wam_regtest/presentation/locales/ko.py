@@ -495,8 +495,8 @@ KO = {
     "wallet.confirm_consent": "제출된 거래를 확인하기 위해 이 원본 소유 Core 에서 테스트 블록을 정확히 하나만 채굴하십시오. 불확실한 결과는 다시 시도하면 안 됩니다.",
     "wallet.fund_title": "일회용 REGTEST 지갑에 자금 지원",
     "wallet.fund_consent": "새 격리 테스트 체인에서만: 성숙한 공개 픽스처 자금을 채굴하고, BIP352 결제 하나를 받아 확인하십시오. 테스트 체인이 바뀝니다. 불확실한 결과를 절대 다시 시도하지 않습니다.",
-    "wallet.backup_verify_unavailable": "백업 검증을 사용할 수 없음: ",
-    "wallet.backup_defer_unavailable": "백업 연기를 사용할 수 없음: ",
+    "wallet.backup_verify_unavailable": "백업을 확인할 수 없습니다. 입력한 단어의 일치 여부는 판단되지 않았습니다.",
+    "wallet.backup_defer_unavailable": "백업 연기를 확인할 수 없습니다. 지갑을 다시 열어 백업 상태를 확인하세요.",
     "wallet.invalid_payment": "완전한 REGTEST 사일런트 페이먼트 수신자와 유효한 금액/수수료를 입력하십시오.",
     "wallet.reconciled": "원본 공유 프로필이 대조되었습니다. 증거와 예약은 유지됩니다. 보관을 다시 검증하려면 보내기 사용을 승인하십시오.",
     "wallet.connected": "연결됨",
@@ -768,4 +768,6 @@ KO = {
     "pending.details_value": "수수료: {fee} · 대기 중인 거스름돈: {change}",
     "payment.replaceable_yes": "대체 가능: 예 (나중에 수수료를 올릴 수 있음)",
     "errors.RBF_SIGNALLING_MISSING": "이 결제에 명시적인 BIP125 대체 신호가 없습니다. 서명하지 않았습니다.",
+    "backup.reopen": "지갑 다시 열기",
+    "backup.done": "계속",
 }

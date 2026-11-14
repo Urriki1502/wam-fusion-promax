@@ -22,6 +22,7 @@ from wam_regtest.presentation.strings import CATALOG, text
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = json.loads((ROOT / 'tests/pm017_english_literals.json').read_text())
 PM043 = json.loads((ROOT / 'tests/pm043_copy_ledger.json').read_text())
+PM045 = json.loads((ROOT / 'tests/pm045_copy_ledger.json').read_text())
 
 
 def shape(node):
@@ -62,7 +63,7 @@ class MainPathCatalogTests(unittest.TestCase):
                 key = record['key']
                 with self.subTest(module=module, key=key):
                     # D5-B changes only these catalog values; retain the original AST proof.
-                    expected = PM043['english'].get(key, record['english'])
+                    expected = PM045['english'].get(key, PM043['english'].get(key, record['english']))
                     self.assertEqual(text(key, 'en').encode(), expected.encode())
                     original = ast.parse('(' + record['original'] + ')', mode='eval')
                     replacement = ast.parse(record['replacement'], mode='eval')
@@ -90,7 +91,7 @@ class MainPathCatalogTests(unittest.TestCase):
                     def render(tree):
                         tree = ast.fix_missing_locations(Substitute().visit(tree))
                         return eval(compile(tree, '<source-copy-fixture>', 'eval'),
-                                    {'__builtins__': {}, 't': lambda k: PM043['previous']['en'].get(k, text(k, 'en'))})
+                                    {'__builtins__': {}, 't': lambda k: PM045['previous']['en'].get(k, PM043['previous']['en'].get(k, text(k, 'en')))})
                     self.assertEqual(render(original).encode(), render(replacement).encode())
 
     def test_source_structure_matches_before_move(self):
@@ -256,7 +257,8 @@ class MainPathWindowTests(unittest.TestCase):
                             self.assertEqual(title.text(), text('recovery_word_position', language).format(position=position))
                         window._on_backup_challenge()
                         self.assertIn(text('wallet.backup_verify_unavailable', language), window.status.toolTip())
-                        self.assertIn('WALLET_OPERATION_DENIED_STATE_RETAINED', window.status.toolTip())
+                        self.assertNotIn('WALLET_OPERATION_DENIED_STATE_RETAINED', window.status.toolTip())
+                        self.assertEqual(window._last_error_code, 'WALLET_OPERATION_DENIED_STATE_RETAINED')
                         recovery = Bip39RecoveryVerifyDialog(window)
                         self.assertEqual(recovery._fields[0].accessibleName(),
                                          text('owner.recovery_word', language).format(position=1))

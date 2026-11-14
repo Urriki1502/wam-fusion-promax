@@ -493,8 +493,8 @@ EN = {
     "wallet.confirm_consent": "Mine exactly one test block on this original owned Core to confirm the submitted transaction. An uncertain outcome must not be retried.",
     "wallet.fund_title": "Fund disposable REGTEST wallet",
     "wallet.fund_consent": "On a fresh isolated test chain only: mine mature public fixture funds, receive one BIP352 payment and confirm it. This changes the test chain. Never retry an uncertain result.",
-    "wallet.backup_verify_unavailable": "Backup verification unavailable: ",
-    "wallet.backup_defer_unavailable": "Backup deferral unavailable: ",
+    "wallet.backup_verify_unavailable": "Backup could not be checked. Your words were not judged.",
+    "wallet.backup_defer_unavailable": "Backup deferral could not be confirmed. Reopen the wallet to check its backup status.",
     "wallet.invalid_payment": "Enter a complete REGTEST silent-payment recipient and valid amount/fee.",
     "wallet.reconciled": "Original Shared profile reconciled. Evidence and reservations retained. Approve Enable sending to verify custody again.",
     "wallet.connected": "Connected",
@@ -766,4 +766,6 @@ EN = {
     "pending.details_value": "Fee: {fee} · Pending change: {change}",
     "payment.replaceable_yes": "Replaceable: yes (fee can be increased later)",
     "errors.RBF_SIGNALLING_MISSING": "This payment is missing explicit BIP125 replaceability. Nothing was signed.",
+    "backup.reopen": "Reopen wallet",
+    "backup.done": "Continue",
 }

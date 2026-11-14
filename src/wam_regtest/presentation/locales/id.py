@@ -495,8 +495,8 @@ ID = {
     "wallet.confirm_consent": "Tambang tepat satu blok uji pada Core asli yang dimiliki ini untuk mengonfirmasi transaksi yang dikirim. Hasil yang tidak pasti tidak boleh dicoba ulang.",
     "wallet.fund_title": "Danai dompet REGTEST sekali pakai",
     "wallet.fund_consent": "Hanya pada rantai uji terisolasi yang baru: tambang dana fixture publik yang matang, terima satu pembayaran BIP352, dan konfirmasi. Ini mengubah rantai uji. Jangan pernah mencoba ulang hasil yang tidak pasti.",
-    "wallet.backup_verify_unavailable": "Verifikasi cadangan tidak tersedia: ",
-    "wallet.backup_defer_unavailable": "Penundaan cadangan tidak tersedia: ",
+    "wallet.backup_verify_unavailable": "Cadangan tidak dapat diperiksa. Kata-kata Anda belum dinilai.",
+    "wallet.backup_defer_unavailable": "Penundaan pencadangan tidak dapat dikonfirmasi. Buka kembali dompet untuk memeriksa status cadangannya.",
     "wallet.invalid_payment": "Masukkan penerima pembayaran senyap REGTEST yang lengkap dan jumlah/biaya yang valid.",
     "wallet.reconciled": "Profil Shared asli direkonsiliasi. Bukti dan reservasi dipertahankan. Setujui Aktifkan pengiriman untuk memverifikasi kustodi lagi.",
     "wallet.connected": "Tersambung",
@@ -768,4 +768,6 @@ ID = {
     "pending.details_value": "Biaya: {fee} · Kembalian tertunda: {change}",
     "payment.replaceable_yes": "Dapat diganti: ya (biaya dapat dinaikkan nanti)",
     "errors.RBF_SIGNALLING_MISSING": "Pembayaran ini tidak memiliki sinyal penggantian BIP125 yang eksplisit. Tidak ada yang ditandatangani.",
+    "backup.reopen": "Buka kembali dompet",
+    "backup.done": "Lanjutkan",
 }
