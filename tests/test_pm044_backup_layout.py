@@ -1,14 +1,18 @@
 """D5-C geometry and interaction checks; disposable presentation fixtures only."""
 import os
+import subprocess
+import sys
 import tempfile
+import textwrap
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtWidgets import QApplication, QLabel, QDialogButtonBox
+from PySide6.QtWidgets import QApplication, QLabel, QDialogButtonBox, QWidgetItem
 from PySide6.QtTest import QTest
+from shiboken6 import isValid
 from wam_regtest.bip39_backup_page import Bip39BackupPage
 from wam_regtest.bip39_fusion_gui import Bip39FusionWindow
 from wam_regtest.bip39_locale import t
@@ -25,6 +29,83 @@ class BackupLayout(unittest.TestCase):
     def settle(self):
         for _ in range(6):
             self.app.processEvents()
+
+    def test_reflow_preserves_live_layout_items(self):
+        # A Python-derived item makes Qt's otherwise silent C++ deletion
+        # observable even when malloc immediately reuses the item's address.
+        class TrackedItem(QWidgetItem):
+            pass
+
+        page = Bip39BackupPage()
+        self.addCleanup(page.deleteLater)
+        page.set_phrase(['testword'] * 12)
+        items = []
+        while page._grid.count():
+            old = page._grid.takeAt(0)
+            items.append(TrackedItem(old.widget()))
+        for index, item in enumerate(items):
+            page._grid.addItem(item, index // 3, index % 3)
+        page._columns = None
+        page._reflow_words()
+        self.assertTrue(all(isValid(item) for item in items),
+                        'reflow must not delete live widget-item wrappers')
+        self.assertEqual([page._grid.itemAt(i) for i in range(12)], items)
+
+    def test_motion_enabled_intro_backup_and_teardown_in_subprocess(self):
+        # A native SIGSEGV must fail this test without killing the test runner.
+        # The child explicitly removes both environment motion overrides and
+        # uses fresh UI preferences, including in the reduced-motion suite run.
+        code = textwrap.dedent('''
+            import os
+            import tempfile
+            from PySide6.QtCore import QCoreApplication, QEvent
+            from PySide6.QtTest import QTest
+            from shiboken6 import isValid
+            from test_q06_bip39_backup_ack import (
+                _make_window, _open_result, _DISPLAY_PHRASE_WORDS)
+            from wam_regtest.fusion_motion import motion_reduced, STAGGER_MS, STANDARD_MS
+
+            with tempfile.TemporaryDirectory(prefix='pm044-motion-') as folder:
+                os.environ['WAM_UI_SETTINGS_PATH'] = os.path.join(folder, 'ui.ini')
+                for early_teardown in (False, True, False, True):
+                    app, window = _make_window()
+                    window._poll.stop()
+                    assert not motion_reduced(window)
+                    assert not window.reduce_motion.isChecked()
+                    assert window._overview_intro
+                    groups = (window.overview.hero, window.overview.status_board,
+                              window.overview.activity_panel)
+                    window.show()
+                    app.processEvents()  # run the first staggered fade
+                    assert groups[0].graphicsEffect() is not None
+                    window._on_ready('open', _open_result(
+                        'required', _DISPLAY_PHRASE_WORDS, window.executor.seed_folder))
+                    page = window.backup_page
+                    page._written_check.setChecked(True)
+                    page._back_up_now.click()
+                    app.processEvents()
+                    assert page._stack.currentWidget() is page._verify_page
+                    page._verify_back.click()
+                    for width in (900, 1440, 900):
+                        window.resize(width, 720)
+                        app.processEvents()
+                    if not early_teardown:
+                        QTest.qWait(2 * STAGGER_MS + STANDARD_MS + 80)
+                        assert all(w.graphicsEffect() is None for w in groups)
+                    page.clear_phrase()
+                    window.hide()
+                    window.deleteLater()
+                    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
+                    assert not isValid(window)
+                    assert all(not isValid(w) for w in groups)
+                    QTest.qWait(2 * STAGGER_MS + STANDARD_MS + 80)
+        ''')
+        env = dict(os.environ)
+        env.pop('QT_REDUCE_MOTION', None)
+        env.pop('GITHUB_ACTIONS', None)
+        result = subprocess.run([sys.executable, '-X', 'faulthandler', '-c', code],
+                                env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_preparing_and_checking_block_reentrant_submissions(self):
         page = Bip39BackupPage()

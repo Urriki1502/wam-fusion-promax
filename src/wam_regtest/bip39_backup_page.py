@@ -652,8 +652,14 @@ class Bip39BackupPage(QWidget):
         if columns == self._columns:
             return
         self._columns = columns
-        for i, card in enumerate(cards):
-            self._grid.addWidget(card, i // columns, i % columns)
+        # Reinsert the existing items, not their widgets. addWidget() removes
+        # and deletes the old C++ QWidgetItem behind itemAt()'s borrowed Python
+        # wrapper. PySide can retain that stale wrapper and later resolve a
+        # new QObject (for example the staggered overview opacity effect) at
+        # the reused address to a non-QObject, crashing its metaobject lookup.
+        items = [self._grid.takeAt(0) for _ in cards]
+        for i, item in enumerate(items):
+            self._grid.addItem(item, i // columns, i % columns)
         for column in range(3):
             self._grid.setColumnStretch(column, 1 if column < columns else 0)
 
