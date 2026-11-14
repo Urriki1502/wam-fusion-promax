@@ -3,7 +3,8 @@
 Runs the integrated runner's fixture logic (``fee_regtest_runner.run_fixture``)
 inside the frozen qualification app on native Cocoa, against the bundled signed
 Core and pinned WSP, for the CLOSED frozen-required set of FEE-3 plan §6:
-F3-01..F3-06, F3-09 positive, F3-11..F3-13 recovery and F3-14 natural safety cases. It accepts no argument, rate, flag,
+F3-01..F3-06, F3-09 positive, F3-11..F3-13 recovery, F3-14 natural safety cases
+and D-FEE2-2. It accepts no argument, rate, flag,
 case list or developer test import. Each case uses a NEW retained disposable
 REGTEST profile and requires verified original-owner shutdown. Every other
 FEE-3 row is written BLOCKED or NOT_IN_SCOPE, never PASS.
@@ -123,7 +124,7 @@ def _case_result(fixture, identity, core_identity, app, started):
 
 
 def run(core, source):
-    """Entry from the frozen app. 0 only when all 19 required rows PASS."""
+    """Entry from the frozen app. 0 only when all 27 required rows PASS."""
     from .fee_regtest_runner import resolve_actor, run_fixture, utc
     from .q06_fix_scenarios import failure_code
     started = utc()

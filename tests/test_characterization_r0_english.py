@@ -45,6 +45,7 @@ ENGLISH_GUI_ERRORS = {'FEE_ABSOLUTE_LIMIT': 'The fee exceeds 0.01 WAM. Nothing w
  'WALLET_BROADCAST_UNCERTAIN_LOCK_RETAINED': 'Broadcast result is uncertain. The node may have '
                                              'accepted the transaction. Do not retry '
                                              'automatically; reservations remain locked.',
+ 'WALLET_CHANGE_BELOW_DUST': "This payment would leave change below the network's minimum output (330 atoms). Adjust the amount.",
  'WALLET_CORE_AUTHENTICATION_DENIED': 'Local Core authentication failed. Balances are hidden and '
                                       'sensitive operations are stopped. Verify the authorized '
                                       'local credentials, then explicitly reauthenticate. Wallet '
