@@ -1,9 +1,6 @@
 """Read-only admission verification. Acceptance never authorizes submission."""
 from decimal import Decimal
-from hashlib import sha256
 import re
-
-from ..infrastructure.tx_size import serialized_vsize
 
 
 # Confirmed by FE-007 on v0.1.13 (claude-run-20261114T014527Z).
@@ -49,7 +46,8 @@ def _coin_atoms(value, expected):
     return atoms
 
 
-def verify_preflight(reply, signed, review):
+def verify_preflight(reply, *, txid, wtxid, vsize, fee_atoms,
+                     quoted_rate_atoms_per_kvb=None):
     """Return None for verified acceptance, a fixed token for rejection.
 
     Raises on verification failure (caller latches). Rejections need no economic
@@ -57,7 +55,6 @@ def verify_preflight(reply, signed, review):
     existing public rejection code. No raw Core reason leaves this boundary.
     This function writes no state and grants no broadcast authority.
     """
-    from wam_sp.psbt import PSBT
     if (type(reply) is not list or len(reply) != 1 or type(reply[0]) is not dict
             or type(reply[0].get('allowed')) is not bool):
         raise ValueError('WALLET_MEMPOOL_REPLY_DENIED')
@@ -74,30 +71,25 @@ def verify_preflight(reply, signed, review):
                 raise ValueError('WALLET_MEMPOOL_REPLY_DENIED')
             value = value[key]
         fields[path] = value
-    psbt = PSBT.decode(signed)
-    raw = psbt.finalize()
-    txid = fields['txid']
-    if (type(txid) is not str or re.fullmatch('[0-9a-fA-F]{64}', txid) is None
-            or txid != psbt.txid()):
+    if (type(fields['txid']) is not str
+            or re.fullmatch('[0-9a-fA-F]{64}', fields['txid']) is None
+            or fields['txid'] != txid):
         raise ValueError('WALLET_MEMPOOL_REPLY_DENIED')
-    wtxid = sha256(sha256(raw).digest()).digest()[::-1].hex()
     if (type(fields['wtxid']) is not str or fields['wtxid'] != wtxid
             or fields['fees.effective-includes'] != [wtxid]):
         raise ValueError('WALLET_MEMPOOL_REPLY_DENIED')
-    vsize = fields['vsize']
-    if (type(vsize) is not int or vsize != serialized_vsize(raw)
-            or (getattr(review, 'vsize', None) is not None and vsize != review.vsize)):
+    if type(fields['vsize']) is not int or fields['vsize'] != vsize:
         raise ValueError('WALLET_MEMPOOL_REPLY_DENIED')
     # Context-independent exact integer Decimal math; floats/strings refused.
     base = fields['fees.base']
     rate = fields['fees.effective-feerate']
     if type(base) not in (Decimal, int) or type(rate) not in (Decimal, int):
         raise ValueError('WALLET_MEMPOOL_REPLY_DENIED')
-    if _coin_atoms(base, review.fee) != review.fee:
+    if _coin_atoms(base, fee_atoms) != fee_atoms:
         raise ValueError('WALLET_MEMPOOL_REPLY_DENIED')
-    expected_rate = (review.fee * 1000) // vsize
+    expected_rate = (fee_atoms * 1000) // vsize
     atoms_rate = _coin_atoms(rate, expected_rate)
-    quote = getattr(review, 'rate_atoms_per_kvb', None)
+    quote = quoted_rate_atoms_per_kvb
     if (atoms_rate != expected_rate
             or (quote is not None and atoms_rate < quote)):
         raise ValueError('WALLET_MEMPOOL_REPLY_DENIED')

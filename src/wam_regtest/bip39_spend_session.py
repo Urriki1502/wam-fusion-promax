@@ -18,7 +18,9 @@ from .domain.payment_evidence import PaymentEvidenceStore
 from .foundation import diagnostics
 from .managed_wallet_checkpoint import _owned, _runtime
 from .managed_wallet_session import RuntimeGuard
-from .wallet_session import WalletSession, WalletSessionError, WalletCoreCli
+from .wallet_session import (
+    WalletSession, WalletSessionError, WalletCoreCli, _verify_session_preflight,
+)
 from .bip39_seed_vault import (
     _owned_password, _owner_binding, open_owned_seed_container,
 )
@@ -263,7 +265,6 @@ class Q06OwnedSpendSession(WalletSession):
         """
         import re
         from types import SimpleNamespace
-        from wam_sp.psbt import PSBT
         from wam_sp.wallet import Wallet
         if (approved is not True or type(token) is not str or type(txid) is not str
                 or re.fullmatch('[0-9a-f]{32}', token) is None
@@ -286,10 +287,7 @@ class Q06OwnedSpendSession(WalletSession):
             rpc = self._rpc()
             if item['state'] == 'signed':
                 try:
-                    from .domain.preflight import verify_preflight
-                    rejection = verify_preflight(
-                        rpc.call('testmempoolaccept', [[PSBT.decode(signed).finalize().hex()]]),
-                        signed, review)
+                    rejection = _verify_session_preflight(rpc, signed, review)
                 except Exception:
                     self.faulted = True
                     raise WalletSessionError(

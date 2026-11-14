@@ -26,6 +26,32 @@ class WalletSessionError(ValueError):
     pass
 
 
+def _finalize_preflight(signed):
+    """Compute admission facts from the exact final PSBT witness bytes."""
+    from wam_sp.psbt import PSBT
+    from .infrastructure.tx_size import serialized_vsize
+    psbt = PSBT.decode(signed)
+    raw = psbt.finalize()
+    return (raw, psbt.txid(), sha256(sha256(raw).digest()).digest()[::-1].hex(),
+            serialized_vsize(raw))
+
+
+def _verify_session_preflight(rpc, signed, review):
+    """Shared fresh/resume boundary; definitive rejection needs no economics."""
+    from .domain.preflight import verify_preflight
+    raw, txid, wtxid, vsize = _finalize_preflight(signed)
+    reply = rpc.call('testmempoolaccept', [[raw.hex()]])
+    # Preserve the review binding only on acceptance, as in the domain verifier
+    # before extraction. Malformed replies are rejected by verify_preflight.
+    if (type(reply) is list and len(reply) == 1 and type(reply[0]) is dict
+            and reply[0].get('allowed') is True
+            and getattr(review, 'vsize', None) is not None and vsize != review.vsize):
+        raise ValueError('WALLET_MEMPOOL_REPLY_DENIED')
+    return verify_preflight(reply, txid=txid, wtxid=wtxid, vsize=vsize,
+                            fee_atoms=review.fee,
+                            quoted_rate_atoms_per_kvb=getattr(review, 'rate_atoms_per_kvb', None))
+
+
 def _fee_code(error):
     """Public fee-policy token, or one generic refusal. Never a message string."""
     code = error.args[0] if error.args and type(error.args[0]) is str else ""
@@ -742,12 +768,8 @@ class WalletSession:
         Any later rejection observed inside WSP's own broadcast, after the
         uncertain checkpoint, is deliberately NOT relabelled (conservative).
         """
-        from wam_sp.psbt import PSBT
         try:
-            raw=PSBT.decode(self._signed).finalize().hex()
-            from .domain.preflight import verify_preflight
-            rejection=verify_preflight(rpc.call("testmempoolaccept",[[raw]]),
-                                       self._signed, self._review)
+            rejection = _verify_session_preflight(rpc, self._signed, self._review)
         except Exception:
             self.faulted=True
             self._signed=None

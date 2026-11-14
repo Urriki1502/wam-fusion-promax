@@ -6,6 +6,7 @@ from hashlib import sha256
 from pathlib import Path
 from threading import RLock
 from types import SimpleNamespace
+import ast
 import json
 import unittest
 from unittest.mock import patch
@@ -14,11 +15,26 @@ from wam_regtest.cli_rpc import decode
 from wam_sp.psbt import PSBT, Tx
 from wam_regtest.domain.preflight import verify_preflight, PREFLIGHT_REJECT_REASONS
 from wam_regtest.infrastructure.tx_size import serialized_vsize
-from wam_regtest.wallet_session import WalletSession, WalletSessionError
+from wam_regtest.wallet_session import (
+    WalletSession, WalletSessionError, _verify_session_preflight,
+)
 from wam_regtest.bip39_spend_session import Q06OwnedSpendSession
 
 
 class PreflightVerification(unittest.TestCase):
+    def test_domain_preflight_has_no_transport_or_runtime_imports(self):
+        source = Path(__file__).resolve().parents[1] / 'src/wam_regtest/domain/preflight.py'
+        forbidden = {'infrastructure', 'wam_sp', 'PySide6', 'PyQt6', 'PySide2', 'PyQt5'}
+        for node in ast.walk(ast.parse(source.read_text())):
+            if isinstance(node, ast.Import):
+                modules = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                modules = [node.module or '', *(alias.name for alias in node.names)]
+            else:
+                continue
+            for module in modules:
+                self.assertFalse(forbidden.intersection(module.split('.')), module)
+
     def setUp(self):
         # Fixed consensus bytes, with a final key-path witness. Synthetic PSBT
         # wrapper only; vsize and txid use real serialized transaction bytes.
@@ -39,8 +55,11 @@ class PreflightVerification(unittest.TestCase):
         self.addCleanup(self.decode_patch.stop)
 
     def check(self, reply=None, review=None):
-        return verify_preflight(self.reply if reply is None else reply, b'signed',
-                                self.review if review is None else review)
+        review = self.review if review is None else review
+        return verify_preflight(self.reply if reply is None else reply,
+                                txid=self.txid, wtxid=self.wtxid, vsize=self.vsize,
+                                fee_atoms=review.fee,
+                                quoted_rate_atoms_per_kvb=review.rate_atoms_per_kvb)
 
     def _session(self, resume, reply):
         session = (Q06OwnedSpendSession if resume else WalletSession).__new__(
@@ -123,11 +142,12 @@ class PreflightVerification(unittest.TestCase):
             self.assert_latched_both(reply)
 
     def test_review_vsize_and_quoted_rate(self):
+        rpc = SimpleNamespace(call=lambda *args: self.reply)
         self.review.vsize += 1
         with self.assertRaises(ValueError):
-            self.check()
+            _verify_session_preflight(rpc, b'signed', self.review)
         self.review.vsize = None
-        self.assertIsNone(self.check())
+        self.assertIsNone(_verify_session_preflight(rpc, b'signed', self.review))
         self.review.rate_atoms_per_kvb = 1000000 // self.vsize + 1
         with self.assertRaises(ValueError):
             self.check()
@@ -206,7 +226,7 @@ class PreflightVerification(unittest.TestCase):
 
 
 class FE007CapturedReplies(unittest.TestCase):
-    """Replay exact Core stdout; only the external PSBT wrapper is substituted.
+    """Replay exact Core stdout with independently captured transaction facts.
 
     Core's P2WPKH fixtures are outside Fusion's P2TR-only size parser. Supply
     their independently measured vsize here; PreflightVerification above keeps
@@ -226,16 +246,15 @@ class FE007CapturedReplies(unittest.TestCase):
                 reply = decode(self.fixture['replies']['tma:' + name].encode(),
                                'testmempoolaccept', [])
                 self.assertNotEqual(txid, capture['decoded']['hash'])
-                psbt = SimpleNamespace(finalize=lambda: raw, txid=lambda: txid)
-                review = SimpleNamespace(fee=fee, vsize=vsize, rate_atoms_per_kvb=2000)
-                with patch.object(PSBT, 'decode', return_value=psbt), patch(
-                        'wam_regtest.domain.preflight.serialized_vsize', return_value=vsize):
-                    with localcontext() as ctx:
-                        ctx.prec = 2
-                        self.assertIsNone(verify_preflight(reply, b'signed', review))
-                    reply[0]['fees']['effective-feerate'] += Decimal('0.00000001')
-                    with self.assertRaises(ValueError):
-                        verify_preflight(reply, b'signed', review)
+                facts = dict(txid=txid,
+                             wtxid=sha256(sha256(raw).digest()).digest()[::-1].hex(),
+                             vsize=vsize, fee_atoms=fee, quoted_rate_atoms_per_kvb=2000)
+                with localcontext() as ctx:
+                    ctx.prec = 2
+                    self.assertIsNone(verify_preflight(reply, **facts))
+                reply[0]['fees']['effective-feerate'] += Decimal('0.00000001')
+                with self.assertRaises(ValueError):
+                    verify_preflight(reply, **facts)
 
     def test_exact_core_rejections_need_no_economics_or_details(self):
         expected = {
@@ -252,7 +271,9 @@ class FE007CapturedReplies(unittest.TestCase):
                 reply = decode(self.fixture['replies']['tma:' + name].encode(),
                                'testmempoolaccept', [])
                 self.assertEqual(set(reply[0]), {'txid', 'wtxid', 'allowed', 'reject-reason'})
-                self.assertEqual(verify_preflight(reply, b'unneeded', None), token)
+                self.assertEqual(verify_preflight(reply, txid=None, wtxid=None,
+                                                 vsize=None, fee_atoms=None), token)
         for reason in ('bad-txns-inputs-missingorspent', 'UNKNOWN', None):
             reply = [{'allowed': False, 'reject-reason': reason}]
-            self.assertEqual(verify_preflight(reply, b'unneeded', None), 'POLICY_REJECTED')
+            self.assertEqual(verify_preflight(reply, txid=None, wtxid=None,
+                                             vsize=None, fee_atoms=None), 'POLICY_REJECTED')
