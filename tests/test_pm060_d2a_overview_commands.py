@@ -1,15 +1,15 @@
 """Real window/ControlWorker/WalletExecutor with recording, synthetic backend.
 
 No Core/process/miner command is implemented; no wallet/profile or secrets read.
-Cleanup quit is outside measured command intervals. Late-result probes inject
-public delivery deliberately; they do not prove executor concurrency reachable.
+Cleanup quit is outside measured command intervals. Late results use real Qt
+workers/executor generations; the control-bridge lock ordering is reachable.
 """
 import threading
 import time
 import unittest
 from unittest.mock import patch
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QLabel, QLineEdit, QWidget
 from wam_regtest.bip39_fusion_gui import Bip39FusionWindow
 from wam_regtest.wallet_executor import WalletExecutor, ExecutorState
 from wam_regtest.bip39_locale import t
@@ -39,8 +39,10 @@ class OverviewCommands(unittest.TestCase):
                 if action == 'snapshot':
                     case.gate.wait(3)
                     return result()
+                if action == 'open':
+                    return dict(receive_code='', account_id='new-public-account', checkpoint_present=True)
                 if action == 'quit': self.core_alive = False
-                if action == 'lock': self.locked = True
+                if action == 'lock' or action == 'control' and args == ('stop',): self.locked = True
                 return None
 
         self.owner = WalletExecutor(Backend)
@@ -164,73 +166,80 @@ class OverviewCommands(unittest.TestCase):
         self.assertTrue(any(x.isVisible() and x.text() == t('wallet.refresh_required')
                             for x in self.w.overview.findChildren(QLabel)), 'D2A-2 hidden stale signal')
 
-    @unittest.expectedFailure
     def test_lock_clears_network_cache(self):
-        """D2A-3: last network survives lock and still classifies connected."""
+        """D2A-3: lock must revoke the previous peer observation."""
         self.w._last_network = dict(connected=True, peer_count=2, height=112, tip='34'*32)
         self.clear_event('lock')
         self.assertNotIn('peer_count', self.w._network_view(None), 'D2A-3 stale network after lock')
 
-    @unittest.expectedFailure
     def test_profile_clears_network_cache(self):
-        """D2A-3: previous profile peer observation survives public open delivery."""
+        """D2A-3: profile delivery must revoke the previous peer observation."""
         self.w._last_network = dict(connected=True, peer_count=2, height=112, tip='34'*32)
         self.clear_event('profile')
         self.assertNotIn('peer_count', self.w._network_view(None), 'D2A-3 stale network after profile switch')
 
-    @unittest.expectedFailure
     def test_profile_clears_old_error(self):
-        """D2A-4: a delivered open does not clear previous diagnostic code."""
+        """D2A-4: delivered open must clear the previous diagnostic code."""
         self.w._on_denied('WALLET_CORE_UNAVAILABLE')
         self.clear_event('profile')
         self.assertIsNone(self.w._last_error_code, 'D2A-4 old profile error retained')
 
-    @unittest.expectedFailure
     def test_fault_clears_session_labels(self):
-        """D2A-5: inherited advanced account/balance/tip labels survive fault."""
+        """D2A-5: fault must clear inherited advanced account/balance/tip."""
         self.w.account.setText('public-account-before-fault')
         self.clear_event('fault')
         self.assert_financial_clear()
         self.assertNotIn('public-account-before-fault', self.w.account.text(), 'D2A-5 stale account label')
         self.assertNotIn('100000', self.w.balance.text(), 'D2A-5 stale balance label')
 
-    @unittest.expectedFailure
     def test_late_snapshot_after_lock_not_repainted(self):
-        """D2A-6: direct public delivery lacks locked/generation guard.
+        """D2A-6: authenticated control can lock after Future, before Qt delivery."""
+        self.assertTrue(self.w._command('snapshot'))
+        self.assertTrue(self.w._worker.wait(2000))
+        self.assertFalse(self.owner.busy)
+        self.owner.request('control', 'stop')
+        self.assertTrue(self.owner.state.locked)
+        self.wait(lambda: self.w._worker is None)
+        self.assert_financial_clear()
+        self.assertEqual(self.w._last_error_code, 'WALLET_CORE_UNVERIFIED')
 
-        Reachability through serialized owner worker is UNKNOWN, not a proven
-        custody bypass. Deliberate delivery probe only.
-        """
-        self.clear_event('lock')
-        self.owner._state = ExecutorState(locked=True, core_alive=True)
-        self.w._on_ready('snapshot', result())
-        self.assertIsNone(self.w._last_verified, 'D2A-6 late snapshot repaints locked window')
-
-    @unittest.expectedFailure
     def test_late_old_profile_snapshot_not_repainted(self):
-        """D2A-6: public result has no profile generation comparison."""
-        self.clear_event('profile')
-        self.w._on_ready('snapshot', result())
-        self.assertIsNone(self.w._last_verified, 'D2A-6 old profile snapshot accepted')
+        """D2A-6: delivery must reject an older executor generation.
 
-    def test_diagnostic_and_session_label_lifetimes_today(self):
+        GUI Open is serialized (tested below). A synthetic public Open through
+        the real executor tests the guard's profile boundary without claiming
+        a production external Open route or opening any profile.
+        """
+        self.assertTrue(self.w._command('snapshot'))
+        self.assertTrue(self.w._worker.wait(2000))
+        opened = self.owner.request('open', b'synthetic-password', 'reopen', None)
+        self.w._on_ready('open', opened)
+        self.wait(lambda: self.w._worker is None)
+        self.assert_financial_clear()
+        self.assertEqual(self.w._last_error_code, 'WALLET_CORE_UNVERIFIED')
+
+    def test_diagnostic_and_session_label_lifetimes(self):
         for event in ('lock', 'fault', 'profile'):
             with self.subTest(event=event):
                 self.owner._state = ExecutorState(locked=False, core_alive=True)
                 self.w._on_ready('snapshot', result())
                 self.w.account.setText('public-account-before-event')
-                before = (self.w.account.text(), self.w.balance.text(), self.w.tip.text())
                 net = dict(connected=True, peer_count=2, height=112, tip='34'*32)
                 self.w._last_network = net
                 self.w._last_error_code = 'WALLET_READ_DENIED'
                 self.clear_event(event)
                 self.assertIsNone(self.w._last_verified)
-                self.assertIs(self.w._last_network, net)
+                self.assertIsNone(self.w._last_network)
+                self.assertFalse(self.w._shared_connected)
                 if event == 'fault':
                     self.assertEqual(self.w._last_error_code, 'WALLET_CORE_UNAVAILABLE')
-                    self.assertEqual((self.w.account.text(), self.w.balance.text(), self.w.tip.text()), before)
+                    self.assertEqual(self.w.account.text(), t('owner.account_locked'))
+                    self.assertEqual(self.w.balance.text(), t('owner.balance_unverified'))
+                    self.assertEqual(self.w.tip.text(), t('owner.chain_unverified'))
+                    self.assertEqual(self.w.status.text(), t('owner.faulted'))
                 else:
-                    self.assertEqual(self.w._last_error_code, 'WALLET_READ_DENIED')
+                    self.assertEqual(self.w._last_error_code,
+                                     None if event == 'profile' else 'WALLET_READ_DENIED')
                     self.assertNotIn('public-account-before-event', self.w.account.text())
                     self.assertNotIn('100000', self.w.balance.text())
 
@@ -244,13 +253,124 @@ class OverviewCommands(unittest.TestCase):
         self.w._on_ready('snapshot', result())
         self.assert_financial_clear()
 
-    @unittest.expectedFailure
     def test_lock_clears_hidden_balance_text_buffers(self):
-        """D2A-7: fund_details is hidden but retains previous wallet amounts."""
+        """D2A-7: hidden fund_details must contain no previous wallet amount."""
         self.clear_event('lock')
         self.assert_financial_clear()
         self.assertNotIn('0.00007000 WAM', self.w.overview.fund_details.text(),
                          'D2A-7 wallet-linked hidden label retained')
+
+    def test_fault_clears_network_and_preserves_mapped_warning(self):
+        self.w._last_network = dict(connected=True, peer_count=2, height=112, tip='34'*32)
+        self.w._shared_connected = True
+        self.w._on_denied('WALLET_CORE_UNAVAILABLE')
+        self.assertIsNone(self.w._last_network)
+        self.assertFalse(self.w._shared_connected)
+        self.assertNotIn('connected', self.w._network_view(None))
+        self.assertNotIn('peer_count', self.w._network_view(None))
+        from wam_regtest.gui_errors import error_text
+        self.assertEqual(self.w.status.text(), t('owner.refused_prefix') + error_text('WALLET_CORE_UNAVAILABLE'))
+        self.assertTrue(self.w.status.isVisible())
+
+    def test_lock_scrubs_hidden_wallet_text_and_accessibility_buffers(self):
+        # Metadata on value-bearing widgets must have the same lifetime as text.
+        secret = 'public-wallet-link-before-lock'
+        fields = (self.w.overview.balance_value, self.w.overview.balance_unit,
+                  self.w.overview.fund_details, self.w.account, self.w.balance,
+                  self.w.tip, self.w.receive, self.w.history,
+                  self.w.receive_page.receive_code, self.w.history_page.detail_id)
+        for field in fields:
+            field.setToolTip(secret)
+            field.setAccessibleName(secret)
+            field.setAccessibleDescription(secret)
+        self.w.account.setText(secret)
+        self.w.receive.setText(snapshot().receive_code)
+        self.clear_event('lock')
+        forbidden = (secret, snapshot().receive_code, '0.00100000', '0.00007000',
+                     '100000', '34'*32, 'ab'*32)
+        for widget in self.w.findChildren(QWidget):
+            buffers = [widget.toolTip(), widget.accessibleName(), widget.accessibleDescription()]
+            if isinstance(widget, (QLabel, QLineEdit)):
+                buffers.append(widget.text())
+            if hasattr(widget, 'toPlainText'):
+                buffers.append(widget.toPlainText())
+            for value in forbidden:
+                self.assertTrue(all(value not in text for text in buffers),
+                                (widget.objectName(), type(widget).__name__, value, buffers))
+
+    def test_unlock_preserves_new_authenticated_account_after_clear(self):
+        self.clear_event('lock')
+        fresh = result(snapshot(signer_allowed=False, broadcast_allowed=False),
+                       account_id='new-authenticated-account', checkpoint_present=True)
+        self.w._on_ready('unlock', fresh)
+        self.assertEqual(self.w.account.text(), t('owner.account_prefix') + 'new-authenticated-account')
+        self.assertEqual(self.w.receive.text(), snapshot().receive_code)
+        self.assertIsNotNone(self.w._last_verified)
+
+    def test_profile_clears_before_new_account_is_exposed(self):
+        from wam_regtest.bip39_owner_gui import Bip39TrialWindow
+        original = Bip39TrialWindow._on_ready
+        self.w._last_network = dict(connected=True, peer_count=2)
+        self.w._last_error_code = 'WALLET_READ_DENIED'
+        self.w.account.setText('previous-account')
+        def inspect(window, action, data):
+            self.assertEqual(action, 'open')
+            self.assert_financial_clear()
+            self.assertIsNone(window._last_network)
+            self.assertIsNone(window._last_error_code)
+            self.assertNotIn('previous-account', window.account.text())
+            original(window, action, data)
+        with patch.object(Bip39TrialWindow, '_on_ready', inspect):
+            self.clear_event('profile')
+        self.assertIn('new-public-account', self.w.account.text())
+        self.assert_financial_clear()
+
+    def test_shared_network_returns_to_unknown_after_each_invalidation(self):
+        from types import SimpleNamespace
+        self.w.shared_profile = SimpleNamespace(coordinator=False)
+        for event in ('lock', 'profile', 'fault'):
+            with self.subTest(event=event):
+                self.owner._state = ExecutorState(locked=False, core_alive=True)
+                self.w._last_network = dict(connected=True, peer_count=2, height=112, tip='34'*32)
+                self.w._shared_connected = True
+                self.clear_event(event)
+                self.assertIsNone(self.w._last_network)
+                self.assertFalse(self.w._shared_connected)
+                self.assertEqual(self.w.overview.network_card.value.text(), t('status.awaiting_peer_check'))
+                self.assertNotIn('peer_count', self.w._network_view(None))
+                self.assertNotIn('connected', self.w._network_view(None))
+
+    def test_real_worker_serializes_snapshot_before_lock_or_profile(self):
+        # D2A-6: cover both backend-in-flight and backend-idle/Qt-undelivered.
+        for boundary, args in (('lock', ()), ('open', (b'synthetic-password', 'reopen', None))):
+            with self.subTest(boundary=boundary):
+                self.calls.clear()
+                self.gate.clear()
+                self.assertTrue(self.w._command('snapshot'))
+                self.wait(lambda: self.calls == ['snapshot'])
+                self.assertFalse(self.w._command(boundary, *args))
+                self.gate.set()
+                worker = self.w._worker
+                self.assertTrue(worker.wait(2000))  # Do not drain Qt delivery.
+                self.assertFalse(self.owner.busy)
+                self.assertFalse(self.w._command(boundary, *args))
+                delivered = []
+                original = self.w._on_ready
+                def record(action, data):
+                    delivered.append(action)
+                    # _finished sets _worker=None before delivery; this guard matters.
+                    self.assertFalse(self.w._command(boundary, *args))
+                    original(action, data)
+                with patch.object(self.w, '_on_ready', side_effect=record):
+                    self.wait(lambda: self.w._worker is None)
+                self.assertEqual(delivered, ['snapshot'])
+                self.assertIsNotNone(self.w._last_verified)
+                self.assertTrue(self.w._command(boundary, *args))
+                self.wait(lambda: self.w._worker is None)
+                self.assertEqual(self.calls, ['snapshot', boundary])
+                self.assert_financial_clear()
+                for _ in range(4): self.app.processEvents()
+                self.assert_financial_clear()
 
     def test_core_loss_and_identity_mismatch_clear_without_zero(self):
         for refusal in ('WALLET_CORE_AUTHENTICATION_DENIED', 'WALLET_CORE_IDENTITY_DENIED',

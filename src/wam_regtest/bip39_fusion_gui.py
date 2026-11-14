@@ -1076,6 +1076,27 @@ class Bip39FusionWindow(Bip39TrialWindow):
         # A missing/denied presentation snapshot clears display data, not the
         # live payment review. Session/scope changes revoke decisions separately.
         self._last_verified = None
+        self._last_network = None
+        self._shared_connected = False
+        # Advanced/compatibility fields share the same lifetime as the pages.
+        # Do not use lock delivery here: it also changes payment authority.
+        self.receive.clear()
+        self.history.clear()
+        self.account.setText(t('owner.account_locked'))
+        self.balance.setText(t('owner.balance_unverified'))
+        self.tip.setText(t('owner.chain_unverified'))
+        # Value-bearing labels have selectable and accessibility buffers even
+        # when hidden. Invalidate their metadata with the displayed values.
+        for field in (self.receive, self.history, self.account, self.balance, self.tip,
+                      self.overview.balance_value, self.overview.balance_unit,
+                      self.overview.fund_details, self.overview.utxo_details,
+                      self.overview.evidence_text, self.overview.environment_core,
+                      self.receive_page.receive_code, self.receive_page.received,
+                      self.history_page.detail_id, self.history_page.detail_values,
+                      self.history_page.scope):
+            field.setToolTip('')
+            field.setAccessibleName('')
+            field.setAccessibleDescription('')
         self.connection_pill.setText(classify(
             'snapshot', snap=None, locked=True,
             faulted=self.executor.state.faulted,
@@ -1093,6 +1114,12 @@ class Bip39FusionWindow(Bip39TrialWindow):
     def _on_ready(self, action, result):
         if action in ('lock', 'quit', 'open', 'unlock', 'reconcile_reorg'):
             self._invalidate_payment_decision()
+        if action in ('open', 'unlock'):
+            # Revoke old values before the base handler can expose the new
+            # authenticated account or enter backup acknowledgement.
+            if action == 'open':
+                self._last_error_code = None
+            self._clear_visuals()
         if action=='reconcile_reorg':
             self._last_reconciliation=result['reconciliation']
             self._spend_enabled=self._signed_ready=False
@@ -1199,7 +1226,6 @@ class Bip39FusionWindow(Bip39TrialWindow):
                 # broadcast. Show it on Send too; display only, no auto-inspect.
                 self.send_result.setText(describe_broadcast_result(txid))
         elif action == "open":
-            self._clear_visuals()
             # Same owner, bounded read-only chain sync only after the explicit
             # backup acknowledgement; a refused create above stops with lock.
             if (not self._backup_flow_active and not self._backup_unacked
@@ -1211,7 +1237,6 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self._broadcast_complete = False
             self._clear_visuals()
         elif action == 'unlock':
-            self._clear_visuals()
             if result.get('fusion_snapshot') is not None:
                 self._render_verified(result)
         self._set_actions()

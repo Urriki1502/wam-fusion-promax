@@ -409,6 +409,10 @@ class Bip39TrialWindow(QWidget):
         worker=ControlWorker(self.executor, action, args,
                              kwargs={"timeout":240} if action in ("mine","snapshot","activate","prepare","prepare_auto","sign","broadcast","confirm","recovery_verify","inspect_confirmed","intent_status","resume_intent") else None,
                              parent=self)
+        # The executor publishes one generation per completed operation.
+        # An authenticated control request may finish after this Future but
+        # before Qt delivery, even though GUI commands cannot overlap.
+        worker.verification_generation = self.executor.state.generation + 1
         self._worker=worker
         self._worker_action = action
         self._completed_result = None
@@ -871,6 +875,7 @@ class Bip39TrialWindow(QWidget):
         self._completed_result = (None, code)
 
     def _finished(self):
+        verification_generation = self._worker.verification_generation
         self._worker=None
         finished_action, self._worker_action = self._worker_action, None
         # Deliver only AFTER thread completion. A signature approval runs a
@@ -891,6 +896,11 @@ class Bip39TrialWindow(QWidget):
                 action, result = completed
                 if action is None:
                     self._on_denied(result)
+                elif (action in ('snapshot', 'activate', 'unlock')
+                      and verification_generation != self.executor.state.generation):
+                    # Reject before either compatibility labels or Fusion
+                    # pages can render an invalidated verification result.
+                    self._on_denied('WALLET_CORE_UNVERIFIED')
                 else:
                     self._on_ready(action, result)
             finally:

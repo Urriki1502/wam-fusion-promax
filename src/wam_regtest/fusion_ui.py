@@ -1576,6 +1576,7 @@ class FusionOverview(QScrollArea):
             self._confirmed_atoms = None
             self._apply_balance_text()
             self.utxo_details.setText(ui_text('fusion.unlock_to_show_values'))
+            self.fund_details.clear()
             self.fund_details.hide()
             self.balance_chart.render_points(())
             self.live_badge.setText(ui_text('fusion.locked') if locked else ui_text('fusion.not_verified'))
