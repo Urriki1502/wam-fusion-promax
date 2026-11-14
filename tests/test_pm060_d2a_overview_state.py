@@ -177,9 +177,14 @@ class ReceiveGeometry(unittest.TestCase):
                    'maximum': bar.maximum(), 'viewport': [view.width(), view.height()]}
             for key, label in dict(labels, address=page.receive_code, qr=page.qr,
                                    copy=page.copy_button).items():
-                rect = QRect(label.mapTo(view, QPoint(0, 0)), label.size())
-                row[key] = [rect.x(), rect.y(), rect.width(), rect.height()]
-                row[key + '_fully_visible'] = view.rect().contains(rect) and label.isVisible()
+                if key in ('pages.silent_payments_note', 'pages.disposable_funds'):
+                    rect = QRect(label.mapTo(page, QPoint(0, 0)), label.size())
+                    row[key] = [rect.x(), rect.y(), rect.width(), rect.height()]
+                    row[key + '_fully_visible'] = page.rect().contains(rect) and label.isVisible()
+                else:
+                    rect = QRect(label.mapTo(view, QPoint(0, 0)), label.size())
+                    row[key] = [rect.x(), rect.y(), rect.width(), rect.height()]
+                    row[key + '_fully_visible'] = view.rect().contains(rect) and label.isVisible()
             observations.append(row)
         print('PM060_R7 ' + json.dumps(observations, sort_keys=True), flush=True)
         w.hide()
@@ -191,12 +196,10 @@ class ReceiveGeometry(unittest.TestCase):
             for key in ('pages.silent_payments_note', 'pages.disposable_funds'):
                 self.assertTrue(row[key + '_fully_visible'], 'D2A-1 R-7: ' + json.dumps(row))
 
-    @unittest.expectedFailure
     def test_receive_warning_persistent_900(self):
         """D2A-1: R-7 warning is inside scrolling body, below initial fold."""
         self.assert_persistent_warning((900, 630))
 
-    @unittest.expectedFailure
     def test_receive_warning_persistent_1100(self):
         """D2A-1: R-7 at 1100×720, both initial and bottom recorded."""
         self.assert_persistent_warning((1100, 720))

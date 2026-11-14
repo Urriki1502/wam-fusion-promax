@@ -34,8 +34,11 @@ class PaymentQR(QWidget):
 
 class ReceivePage(QWidget):
     def __init__(self):
-        super().__init__();self.code=None;self.setObjectName('FusionInner');root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
-        self.scroll,layout=page(ui_text('pages.receive'),ui_text('pages.receive_subtitle'),ui_text('pages.silent_payments_receive'));root.addWidget(self.scroll)
+        super().__init__();self.code=None;self.setObjectName('FusionInner');self.setAccessibleDescription(ui_text('pages.a_quieter_receiving_experience'));root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
+        self.scroll,layout=page(ui_text('pages.receive'),ui_text('pages.receive_subtitle'),ui_text('pages.silent_payments_receive'))
+        root.addWidget(grow_with_wrapped_text(label(ui_text('pages.silent_payments_note'))))
+        root.addWidget(grow_with_wrapped_text(label(ui_text('pages.disposable_funds'),'FusionGold')))
+        root.addWidget(self.scroll)
         card,cl=panel(ui_text('pages.your_silent_payment_address'),ui_text('pages.receive_scope'))
         self.qr=PaymentQR();qrbox=QWidget();ql=QVBoxLayout(qrbox);ql.setContentsMargins(0,0,0,0);ql.addWidget(self.qr,alignment=Qt.AlignmentFlag.AlignCenter);ql.addWidget(label(ui_text('pages.exact_address_qr'),'FusionKicker'),alignment=Qt.AlignmentFlag.AlignCenter)
         address=QWidget();al=QVBoxLayout(address);al.setContentsMargins(0,0,0,0);al.addWidget(label(ui_text('pages.bip352_regtest'),'FusionBadge'));self.receive_code=label('—','ReceiveCode',True);self.receive_code.setMinimumWidth(0);al.addWidget(self.receive_code)
@@ -43,8 +46,6 @@ class ReceivePage(QWidget):
         self._copy_timer=QTimer(self);self._copy_timer.setSingleShot(True)
         self._copy_timer.timeout.connect(lambda:self.copy_status.setText(ui_text('pages.copy_complete') if self.code else ui_text('pages.address_locked')))
         cl.addWidget(ResponsiveRow(qrbox,address,weights=[2,3],breakpoint=610));layout.addWidget(card)
-        info,il=panel(ui_text('pages.a_quieter_receiving_experience'));il.addWidget(label(ui_text('pages.silent_payments_note')))
-        il.addWidget(label(ui_text('pages.disposable_funds'),'FusionGold'));layout.addWidget(info)
         self.received=label(ui_text('pages.no_verified_receiving_activity'));layout.addWidget(self.received);layout.addStretch()
     def render_snapshot(self,snap):
         self.code=None;self.copy_button.setEnabled(False);self.receive_code.setText('—');self.qr.set_code(None)
