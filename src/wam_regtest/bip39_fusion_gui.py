@@ -1056,7 +1056,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
         # method reaches _set_actions before _on_ready returns).
 
     def _clear_visuals(self):
-        self._invalidate_payment_decision()
+        # A missing/denied presentation snapshot clears display data, not the
+        # live payment review. Session/scope changes revoke decisions separately.
         self._last_verified = None
         self.connection_pill.setText(classify(
             'snapshot', snap=None, locked=True,
@@ -1073,6 +1074,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self.review_summary.setText(t('wallet.no_prepared_payment'))
 
     def _on_ready(self, action, result):
+        if action in ('lock', 'quit', 'open', 'unlock', 'reconcile_reorg'):
+            self._invalidate_payment_decision()
         if action=='reconcile_reorg':
             self._last_reconciliation=result['reconciliation']
             self._spend_enabled=self._signed_ready=False
