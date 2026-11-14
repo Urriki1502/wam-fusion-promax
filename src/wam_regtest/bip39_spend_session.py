@@ -286,15 +286,19 @@ class Q06OwnedSpendSession(WalletSession):
             rpc = self._rpc()
             if item['state'] == 'signed':
                 try:
-                    allowed = rpc.call('testmempoolaccept',
-                                       [[PSBT.decode(signed).finalize().hex()]])[0]['allowed']
+                    from .domain.preflight import verify_preflight
+                    rejection = verify_preflight(
+                        rpc.call('testmempoolaccept', [[PSBT.decode(signed).finalize().hex()]]),
+                        signed, review)
                 except Exception:
                     self.faulted = True
                     raise WalletSessionError(
                         'WALLET_BROADCAST_NOT_SUBMITTED_LOCK_RETAINED') from None
-                if allowed is not True:
+                if rejection is not None:
                     # Durable state remains 'signed'; nothing was submitted.
-                    raise WalletSessionError('WALLET_BROADCAST_REJECTED_LOCK_RETAINED')
+                    error = WalletSessionError("WALLET_BROADCAST_REJECTED_LOCK_RETAINED")
+                    error.preflight_rejection = rejection  # fixed diagnostic token only
+                    raise error
                 existing = self._read_payment_evidence(token, 'uncertain')
                 if existing is None:
                     self._retain_signed_payment('uncertain', signed=signed, review=review,

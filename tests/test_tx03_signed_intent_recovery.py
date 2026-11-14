@@ -5,6 +5,7 @@ create-only payment evidence (macOS native storage); synthetic Core RPC and
 anchored-vault doubles. Crash cuts use BaseException so no handler runs.
 No path re-signs, retries automatically, or releases a signed/uncertain row.
 """
+from preflight_fixtures import accepted_reply
 from contextlib import nullcontext
 from hashlib import sha256
 import importlib.util
@@ -82,7 +83,8 @@ class _Core:
         if method == "testmempoolaccept":
             if isinstance(self.accept, BaseException):
                 raise self.accept
-            return [{"allowed": self.accept}]
+            return (accepted_reply(self.test.signed) if self.accept is True else
+                    [{"allowed": self.accept}])
         if method == "sendrawtransaction":
             raw = PSBT.decode(self.test.signed)
             if isinstance(self.send, BaseException):
@@ -307,6 +309,27 @@ class SignedIntentRecovery(unittest.TestCase):
         self.assertEqual(self.vault.saved[-1], {"signed"})
         with self.assertRaisesRegex(ValueError, "RESERVATION_NOT_DRAFT"):
             Wallet(restarted.scanner).release_draft(self.token)
+
+    def test_mismatched_resume_preflight_latches_before_uncertain_checkpoint(self):
+        self._signed_session()
+        restarted = self._restart()
+        original_call = self.core.call
+        def call(method, params=None):
+            reply = original_call(method, params)
+            if method == 'testmempoolaccept':
+                reply[0]['txid'] = 'f' * 64
+            return reply
+        self.core.call = call
+        from wam_regtest.wallet_session import WalletSessionError
+        before = list(self.vault.saved)
+        with self.assertRaisesRegex(WalletSessionError, 'NOT_SUBMITTED_LOCK_RETAINED'):
+            restarted.resume_signed_intent(self.token, self.txid, approved=True)
+        self.assertTrue(restarted.faulted)
+        self.assertEqual(self.vault.saved, before)
+        self.assertEqual(_states(restarted.scanner), {'signed'})
+        self.assertNotIn('sendrawtransaction', self.core.calls)
+        self.assertFalse((self.path / 'q06-payment-evidence' /
+                          (self.token + '-uncertain.enc')).exists())
 
     def test_unauthorized_or_mismatched_resume_is_refused_without_rpc_writes(self):
         session, review = self._signed_session()

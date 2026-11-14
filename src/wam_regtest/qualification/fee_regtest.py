@@ -370,9 +370,8 @@ def assert_tma(response, vsize, fee, txid, wtxid):
         if type(rate_value) is float:
             rate_value = _tma_float_to_decimal(rate_value, require_whole_atoms=False)
         rate = exact_atoms(rate_value)
-        # Core reports coin/kvB at atom precision. Permit only the adjacent
-        # integer rounding of fee*1000/vsize, never a float tolerance.
-        rate_holds = vsize > 0 and abs(rate*vsize - fee*1000) < vsize
+        # FE-006 fail-closed arithmetic, pending FE-007 schema confirmation.
+        rate_holds = vsize > 0 and rate == (fee * 1000) // vsize
     except (ValueError, OverflowError):
         rate_holds = False
     checks.update(
@@ -382,7 +381,7 @@ def assert_tma(response, vsize, fee, txid, wtxid):
         wtxid=type(wtxid) is str and row.get("wtxid") == wtxid and bool(re.fullmatch(r"[0-9a-f]{64}", wtxid)),
         base_fee=base == fee,
         effective_rate=rate_holds,
-        effective_includes=fees.get("effective-includes") == [wtxid],
+        effective_includes=fees.get("effective-includes") == [txid],
     )
     return checks
 

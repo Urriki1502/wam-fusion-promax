@@ -21,7 +21,7 @@ READS=frozenset(('getblockchaininfo','getblockcount','getbestblockhash',
     # Automatic-fee policy reads (FEE-1). Read-only; strict parameters below.
     'getmempoolinfo','estimatesmartfee','estimaterawfee'))
 # Replies whose JSON numbers are fee rates: parsed as exact Decimal, never float.
-DECIMAL_REPLIES=frozenset(('getnetworkinfo','getmempoolinfo','estimatesmartfee','estimaterawfee'))
+DECIMAL_REPLIES=frozenset(('testmempoolaccept','getnetworkinfo','getmempoolinfo','estimatesmartfee','estimaterawfee'))
 WRITES=frozenset(('testmempoolaccept','sendrawtransaction','generatetoaddress',
     'invalidateblock','reconsiderblock','createwallet','getnewaddress','stop',
     'gettxoutsetinfo','setnetworkactive'))  # All writes require original owned consent.

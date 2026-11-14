@@ -4,6 +4,7 @@ No signed WAM Core, no packaged GUI, no Send authorization and no claim of
 release acceptance. An irreversible reservation must remain locked across
 a scanner checkpoint, including an ambiguous network broadcast.
 """
+from preflight_fixtures import accepted_reply
 import importlib.util
 from pathlib import Path
 from hashlib import sha256
@@ -181,7 +182,7 @@ class Q06Bip39SignerBridgeContracts(unittest.TestCase):
                     return {"value": 0.001, "scriptPubKey": {
                         "hex": "5120" + coin["public_key"]}}
                 if method == "testmempoolaccept":
-                    return [{"allowed": True}]
+                    return accepted_reply(session._signed)
                 if method == "sendrawtransaction":
                     raise RuntimeError("Q06_TEST_NETWORK_UNCERTAIN")
                 raise ValueError("Q06_TEST_RPC_METHOD_DENIED")

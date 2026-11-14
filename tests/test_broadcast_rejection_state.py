@@ -6,6 +6,7 @@ sendrawtransaction must not be recorded as network-uncertain, while every
 outcome after the send boundary stays 'uncertain'.  Nothing is released,
 retried or rebroadcast automatically.
 """
+from preflight_fixtures import accepted_reply
 from contextlib import nullcontext
 from hashlib import sha256
 import importlib.util
@@ -130,7 +131,8 @@ class BroadcastRejectionState(unittest.TestCase):
                     result = accepts.pop(0) if len(accepts) > 1 else accepts[0]
                     if isinstance(result, BaseException):
                         raise result
-                    return [{"allowed": result, "reject-reason": "min relay fee not met"}]
+                    return (accepted_reply(test.signed) if result is True else
+                            [{"allowed": result, "reject-reason": "min relay fee not met"}])
                 if method == "sendrawtransaction":
                     if send is None:
                         return PSBT.decode(test.signed).txid()
@@ -224,6 +226,26 @@ class BroadcastRejectionState(unittest.TestCase):
         self.assertEqual(_states(self.vault.saved[-1]), {"signed"})
         self.assertEqual(len(self.vault.saved), 2)
         self.assertTrue(session.faulted)
+
+    def test_preflight_one_atom_mismatch_latches_and_preserves_signed_reservations(self):
+        from decimal import Decimal
+        from wam_regtest.wallet_session import WalletSessionError
+        rpc = self._rpc()
+        session, review = self._q06(rpc)
+        original_call = rpc.call
+        def call(method, params=None):
+            reply = original_call(method, params)
+            if method == 'testmempoolaccept':
+                reply[0]['fees']['base'] += Decimal('0.00000001')
+            return reply
+        rpc.call = call
+        with self.assertRaisesRegex(WalletSessionError, 'NOT_SUBMITTED_LOCK_RETAINED'):
+            session.broadcast(review.commitment)
+        self.assertTrue(session.faulted)
+        self.assertEqual(_states(_reservations(self.scanner)), {'signed'})
+        self.assertEqual(len(self.vault.saved), 2)
+        self.assertNotIn('sendrawtransaction', [c[0] for c in self.calls])
+        self.assertEqual(self._stages(), ['signed'])
 
     def test_rejection_observed_only_after_uncertain_save_stays_uncertain(self):
         """A later race inside WSP is never relabelled after durable uncertainty."""

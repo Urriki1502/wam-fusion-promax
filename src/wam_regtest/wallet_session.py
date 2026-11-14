@@ -745,19 +745,23 @@ class WalletSession:
         from wam_sp.psbt import PSBT
         try:
             raw=PSBT.decode(self._signed).finalize().hex()
-            allowed=rpc.call("testmempoolaccept",[[raw]])[0]["allowed"]
+            from .domain.preflight import verify_preflight
+            rejection=verify_preflight(rpc.call("testmempoolaccept",[[raw]]),
+                                       self._signed, self._review)
         except Exception:
             self.faulted=True
             self._signed=None
             raise WalletSessionError("WALLET_BROADCAST_NOT_SUBMITTED_LOCK_RETAINED") from None
-        if allowed is not True:
+        if rejection is not None:
             # Definitive and fully consistent: nothing was submitted and the
             # durable state equals the runtime ('signed'). Do NOT latch a fault
             # (a faulted isolated profile cannot reopen to spend); forget only
             # the in-memory payment. The irreversible reservation remains and
             # is reported by TX-03 signed-intent status. Never released.
             self._prepared=self._signed=self._review=self._tip=None
-            raise WalletSessionError("WALLET_BROADCAST_REJECTED_LOCK_RETAINED")
+            error = WalletSessionError("WALLET_BROADCAST_REJECTED_LOCK_RETAINED")
+            error.preflight_rejection = rejection  # fixed diagnostic token only
+            raise error
 
     def _before_broadcast_submission(self):
         """Hook: subclasses persist submission-intent evidence here."""

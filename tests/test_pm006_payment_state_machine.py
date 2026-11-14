@@ -8,6 +8,7 @@ write-ahead uncertain before submission, broadcast failure with no retry,
 explicit resume of a signed or uncertain intent without re-signing, confirm
 success and ambiguity, and exactly-one pending-broadcast recovery.
 """
+from preflight_fixtures import accepted_reply
 from contextlib import contextmanager, nullcontext
 from hashlib import sha256
 import importlib.util
@@ -98,7 +99,7 @@ class _Core:
             return {'value': 0.001,
                     'scriptPubKey': {'hex': '5120' + self.test.coin['public_key']}}
         if method == 'testmempoolaccept':
-            return [{'allowed': True}]
+            return accepted_reply(self.test.signed)
         if method == 'sendrawtransaction':
             self.submit_attempts += 1
             if self.on_submit is not None:
