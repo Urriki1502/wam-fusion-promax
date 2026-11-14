@@ -174,13 +174,17 @@ class CatalogTests(unittest.TestCase):
         pm041 = json.loads((ROOT / 'tests/pm041_english_literals.json').read_text())
         for key, literal in pm041['english'].items():
             self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
+        pm062 = json.loads((ROOT / 'tests/pm062_english_literals.json').read_text())
+        for key, literal in pm062['english'].items():
+            self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
         fe003 = json.loads((ROOT / 'tests/fe003_english_literals.json').read_text())
         for key, literal in fe003['english'].items():
             self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
         self.assertEqual(set(CATALOG['en']) - SETTINGS_KEYS,
                          expected | pm017_keys | status_keys | pm018_keys
                          | set(pm021['english']) | set(fe002['english']) | set(pm041['english'])
-                         | set(fe003['english']) | {'backup.preparing', 'backup.checking', 'backup.scroll_accessible', 'backup.reopen', 'backup.done'})
+                         | set(fe003['english']) | {'backup.preparing', 'backup.checking', 'backup.scroll_accessible', 'backup.reopen', 'backup.done'}
+                         | set(pm062['english']))
 
     def test_public_error_mapping_and_codes_unchanged(self):
         from wam_regtest.gui_errors import _MESSAGES, error_text, public_code
@@ -246,8 +250,12 @@ class CatalogTests(unittest.TestCase):
                     used.add(key)
         inverse = {new: old for old, new in KEY_RENAMES.items()}
         used_pm014 = {inverse.get(key, key) for key in used}
+        # PM-062 replaces only the three overloaded History state callers.
+        # Original catalog bytes remain checked by test_english_bytes_and_existing_vietnamese.
+        retired = set(json.loads((ROOT / 'tests/pm062_english_literals.json').read_text())[
+            'retired_history_callers'])
         for entries in FIXTURE['moved'].values():
-            self.assertLessEqual(set(entries), used_pm014)
+            self.assertLessEqual({key for key in entries if pm014_key(key) not in retired}, used_pm014)
 
     def test_catalog_contains_copy_only(self):
         for language, entries in CATALOG.items():

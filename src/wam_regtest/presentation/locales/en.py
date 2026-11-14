@@ -768,4 +768,8 @@ EN = {
     "errors.RBF_SIGNALLING_MISSING": "This payment is missing explicit BIP125 replaceability. Nothing was signed.",
     "backup.reopen": "Reopen wallet",
     "backup.done": "Continue",
+    "history.no_matching_activity": "No matching activity in this display.",
+    "history.empty_verified": "No activity in this display.",
+    "history.unavailable": "History unavailable · unlock and sync the wallet",
+    "history.txid_not_displayed": "Transaction not in the current display. This does not establish its outcome.",
 }

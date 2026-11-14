@@ -770,4 +770,8 @@ JA = {
     "errors.RBF_SIGNALLING_MISSING": "この支払いには明示的なBIP125置換シグナルがありません。署名は行われていません。",
     "backup.reopen": "ウォレットを再度開く",
     "backup.done": "続ける",
+    "history.no_matching_activity": "この表示に一致するアクティビティはありません。",
+    "history.empty_verified": "この表示にアクティビティはありません。",
+    "history.unavailable": "履歴を利用できません · ウォレットをロック解除して同期してください",
+    "history.txid_not_displayed": "この取引は現在の表示にありません。これによって取引結果が確定するわけではありません。",
 }

@@ -1476,6 +1476,22 @@
     {
       "key": "errors.RBF_SIGNALLING_MISSING",
       "reason": "FE-003: refuse non-signalling outgoing PSBTs before save or irreversible signing."
+    },
+    {
+      "key": "history.no_matching_activity",
+      "reason": "PM-062 S/U: truthful no-match copy for pending-inclusive History display; native review PENDING."
+    },
+    {
+      "key": "history.empty_verified",
+      "reason": "PM-062 S: distinguish verified empty History display from unavailable/locked; native review PENDING."
+    },
+    {
+      "key": "history.unavailable",
+      "reason": "PM-062 S: History unavailable state for locked/unverified/faulted scope; native review PENDING."
+    },
+    {
+      "key": "history.txid_not_displayed",
+      "reason": "PM-062 S: absent requested TXID clears selection/Copy without outcome inference; native review PENDING."
     }
   ]
 }

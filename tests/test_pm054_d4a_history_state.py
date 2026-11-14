@@ -1,6 +1,7 @@
 """D4-A: synthetic display/accounting characterization, no Core or custody.
 
-Expected failures preserve D4 contract defects; they are not acceptance PASS.
+PM-062 fixes the three D4A presentation defects and preserves valid selection
+across ordinary refreshes; historical PM-054 failure evidence remains retained.
 """
 from dataclasses import replace
 import unittest
@@ -166,18 +167,137 @@ class HistoryState(unittest.TestCase):
         page.copy_txid()
         self.assertEqual(self.app.clipboard().text(), 'sentinel')
 
-    def test_unavailable_and_verified_empty_share_copy_today(self):
+    def test_verified_empty_and_unavailable_clear_selection(self):
         page = self.page(snapshot())
-        for snap in (None, snapshot(history=(), pending_history=())):
+        for snap, key in ((None, 'history.unavailable'),
+                          (snapshot(history=(), pending_history=()), 'history.empty_verified')):
             page.render_snapshot(snap)
             self.assertEqual(page.rows, ())
-            self.assertEqual(page.empty.text(), ui_text('pages.no_verified_transactions'))
+            self.assertEqual(page.empty.text(), ui_text(key))
             self.assertFalse(page.copy_button.isEnabled())
             self.assertEqual(page.detail_values.text(), '')
             self.assertFalse(page.older.isEnabled())
             self.assertFalse(page.newer.isEnabled())
+        self.assertIn(ui_text('pending.unverified'), page.scope.text())
+        page.render_snapshot(snapshot(history=(), pending_history=(), pending_atoms=0))
+        self.assertNotIn(ui_text('pending.unverified'), page.scope.text())
 
-    @unittest.expectedFailure
+    def test_same_snapshot_refresh_3x_preserves_selection_detail_and_copy(self):
+        page = self.page(snapshot())
+        page.select_txid(INCOMING.txid)
+        expected_detail = page.detail_values.text()
+        self.assertEqual(page.table.currentRow(), 1)
+        self.assertTrue(page.copy_button.isEnabled())
+        for _ in range(3):
+            page.render_snapshot(snapshot())
+            self.settle()
+            self.assertEqual(page.table.currentRow(), 1)
+            self.assertTrue(page.table.selectionModel().hasSelection())
+            self.assertEqual(page.detail_id.text(), INCOMING.txid)
+            self.assertEqual(page.detail_values.text(), expected_detail)
+            self.assertTrue(page.copy_button.isEnabled())
+        self.app.clipboard().setText('sentinel')
+        page.copy_button.click()
+        self.assertEqual(self.app.clipboard().text(), INCOMING.txid)
+
+    def test_reordered_or_confirmed_refresh_preserves_selection_by_exact_txid(self):
+        page = self.page(snapshot())
+        page.select_txid(INCOMING.txid)
+        self.assertEqual(page.table.currentRow(), 1)
+        # Pending row disappears -> INCOMING shifts from row 1 to row 0.
+        page.render_snapshot(snapshot(pending_history=()))
+        self.settle()
+        self.assertEqual(page.table.currentRow(), 0)
+        self.assertEqual(page.detail_id.text(), INCOMING.txid)
+        self.assertTrue(page.copy_button.isEnabled())
+        # Pending TXID confirms with same TXID -> stays selected and updates detail.
+        page.render_snapshot(snapshot())
+        page.select_txid(PENDING.txid)
+        self.assertEqual(page.table.currentRow(), 0)
+        confirmed = HistoryRow(PENDING.txid, 113, 1, 0, 3100)
+        page.render_snapshot(snapshot(history=(confirmed, INCOMING, OUTGOING, ZERO), pending_history=()))
+        self.settle()
+        self.assertEqual(page.table.currentRow(), 0)
+        self.assertEqual(page.detail_id.text(), PENDING.txid)
+        self.assertIn('113', page.detail_values.text())
+        self.assertTrue(page.copy_button.isEnabled())
+
+    def test_disappearing_selected_txid_clears_selection_detail_and_copy(self):
+        page = self.page(snapshot())
+        page.select_txid(INCOMING.txid)
+        self.assertTrue(page.copy_button.isEnabled())
+        page.render_snapshot(snapshot(history=(OUTGOING, ZERO), pending_history=()))
+        self.settle()
+        self.assertEqual(page.table.currentRow(), -1)
+        self.assertFalse(page.table.selectedItems())
+        self.assertEqual(page.detail_id.text(), ui_text('pages.no_transaction_selected'))
+        self.assertEqual(page.detail_values.text(), '')
+        self.assertFalse(page.copy_button.isEnabled())
+        self.app.clipboard().setText('sentinel')
+        page.copy_txid()
+        self.assertEqual(self.app.clipboard().text(), 'sentinel')
+
+    def test_lock_clear_clears_selection_detail_and_copy(self):
+        page = self.page(snapshot())
+        page.select_txid(INCOMING.txid)
+        self.assertTrue(page.copy_button.isEnabled())
+        page.render_snapshot(None)
+        self.settle()
+        self.assertEqual(page.rows, ())
+        self.assertEqual(page.table.currentRow(), -1)
+        self.assertFalse(page.table.selectedItems())
+        self.assertEqual(page.detail_id.text(), ui_text('pages.no_transaction_selected'))
+        self.assertEqual(page.detail_values.text(), '')
+        self.assertFalse(page.copy_button.isEnabled())
+        self.assertEqual(page.empty.text(), ui_text('history.unavailable'))
+        self.app.clipboard().setText('sentinel')
+        page.copy_txid()
+        self.assertEqual(self.app.clipboard().text(), 'sentinel')
+
+    def test_empty_refresh_3x_stays_empty_not_unavailable(self):
+        page = self.page(snapshot(history=(), pending_history=()))
+        for _ in range(3):
+            page.render_snapshot(snapshot(history=(), pending_history=()))
+            self.settle()
+            self.assertEqual(page.empty.text(), ui_text('history.empty_verified'))
+            self.assertNotEqual(page.empty.text(), ui_text('history.unavailable'))
+            self.assertTrue(page.empty.isVisible())
+            self.assertFalse(page.copy_button.isEnabled())
+
+    def test_filter_hiding_clears_detail_and_does_not_restore_stale_selection(self):
+        page = self.page(snapshot())
+        page.select_txid(INCOMING.txid)
+        page.filter.setCurrentIndex(2)  # Has debits: hides INCOMING
+        self.assertFalse(page.copy_button.isEnabled())
+        self.assertEqual(page.detail_values.text(), '')
+        self.assertEqual(page.detail_id.text(), ui_text('pages.no_transaction_selected'))
+        self.assertEqual(page.table.currentRow(), -1)
+        page.filter.setCurrentIndex(0)  # All activity: stays cleared
+        self.assertFalse(page.copy_button.isEnabled())
+        self.assertEqual(page.detail_values.text(), '')
+        self.assertEqual(page.table.currentRow(), -1)
+        self.app.clipboard().setText('sentinel')
+        page.copy_txid()
+        self.assertEqual(self.app.clipboard().text(), 'sentinel')
+
+    def test_scoped_state_copy_in_all_six_locales(self):
+        for language in SUPPORTED_LANGUAGES:
+            with self.subTest(language=language), patch.object(bip39_locale, '_lang', return_value=language):
+                page = self.page(snapshot())
+                page.select_txid(INCOMING.txid)
+                page.select_txid('99' * 32)
+                self.assertEqual(page.detail_id.text(), ui_text('history.txid_not_displayed'))
+                self.assertFalse(page.copy_button.isEnabled())
+                page.search.setText('no-match')
+                self.assertEqual(page.empty.text(), ui_text('history.no_matching_activity'))
+                page.render_snapshot(snapshot(history=(), pending_history=()))
+                self.assertEqual(page.empty.text(), ui_text('history.empty_verified'))
+                self.assertIn(ui_text('pending.unverified'), page.scope.text())
+                page.render_snapshot(None)
+                self.assertEqual(page.empty.text(), ui_text('history.unavailable'))
+                self.assertEqual(page.scope.text(), '')
+                page.hide()
+
     def test_D4A_1_absent_txid_clears_previous_detail_and_copy(self):
         """DEFECT D4A-1: select_txid misses leave stale verified selection."""
         page = self.page(snapshot())
@@ -185,23 +305,32 @@ class HistoryState(unittest.TestCase):
         page.select_txid('99' * 32)
         self.assertFalse(page.copy_button.isEnabled(), 'D4A-1')
         self.assertEqual(page.detail_values.text(), '')
-        self.assertNotEqual(page.detail_id.text(), INCOMING.txid)
+        self.assertEqual(page.detail_id.text(), ui_text('history.txid_not_displayed'))
+        self.assertEqual(page.table.currentRow(), -1)
+        self.assertFalse(page.table.selectedItems())
+        self.app.clipboard().setText('sentinel')
+        page.copy_txid()
+        page.apply_filter()
+        self.assertFalse(page.copy_button.isEnabled())
+        self.assertEqual(self.app.clipboard().text(), 'sentinel')
+        page.select_txid(PENDING.txid)
+        self.assertTrue(page.copy_button.isEnabled())
 
-    @unittest.expectedFailure
     def test_D4A_2_no_match_copy_does_not_claim_confirmed_only(self):
         """DEFECT D4A-2: pending-inclusive display has confirmed-only no-match copy."""
         with patch.object(bip39_locale, '_lang', return_value='en'):
             page = self.page(snapshot(history=()))
             page.search.setText('99' * 32)
-            self.assertNotIn('confirmed', page.empty.text().lower(), 'D4A-2')
+            self.assertEqual(page.empty.text(), 'No matching activity in this display.')
 
-    @unittest.expectedFailure
     def test_D4A_3_verified_empty_distinguished_from_unavailable(self):
         """DEFECT D4A-3: verified empty and unavailable use the same message."""
         page = self.page(None)
         unavailable = page.empty.text()
         page.render_snapshot(snapshot(history=(), pending_history=()))
         self.assertNotEqual(page.empty.text(), unavailable, 'D4A-3')
+        self.assertEqual(unavailable, ui_text('history.unavailable'))
+        self.assertEqual(page.empty.text(), ui_text('history.empty_verified'))
 
 
 if __name__ == '__main__':

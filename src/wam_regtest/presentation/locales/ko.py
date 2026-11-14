@@ -770,4 +770,8 @@ KO = {
     "errors.RBF_SIGNALLING_MISSING": "이 결제에 명시적인 BIP125 대체 신호가 없습니다. 서명하지 않았습니다.",
     "backup.reopen": "지갑 다시 열기",
     "backup.done": "계속",
+    "history.no_matching_activity": "이 보기에 일치하는 활동이 없습니다.",
+    "history.empty_verified": "이 보기에 활동이 없습니다.",
+    "history.unavailable": "기록을 사용할 수 없습니다 · 지갑 잠금을 해제하고 동기화하십시오",
+    "history.txid_not_displayed": "거래가 현재 보기에 없습니다. 이것이 거래 결과를 의미하지는 않습니다.",
 }

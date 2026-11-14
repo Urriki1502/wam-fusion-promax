@@ -770,4 +770,8 @@ ID = {
     "errors.RBF_SIGNALLING_MISSING": "Pembayaran ini tidak memiliki sinyal penggantian BIP125 yang eksplisit. Tidak ada yang ditandatangani.",
     "backup.reopen": "Buka kembali dompet",
     "backup.done": "Lanjutkan",
+    "history.no_matching_activity": "Tidak ada aktivitas yang cocok di tampilan ini.",
+    "history.empty_verified": "Tidak ada aktivitas di tampilan ini.",
+    "history.unavailable": "Riwayat tidak tersedia · buka kunci dan sinkronkan dompet",
+    "history.txid_not_displayed": "Transaksi tidak ada di tampilan saat ini. Hal ini tidak menentukan hasilnya.",
 }

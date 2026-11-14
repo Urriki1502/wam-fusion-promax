@@ -63,13 +63,13 @@ class ReceivePage(QWidget):
 class HistoryPage(QWidget):
     page_requested=Signal(int)
     def __init__(self):
-        super().__init__();self.setObjectName('FusionInner');self.rows=();self.mode='dark';self._offset=0;self._total=0;root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
+        super().__init__();self.setObjectName('FusionInner');self.rows=();self.mode='dark';self._offset=0;self._total=0;self._has_snapshot=False;root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
         scroll,layout=page(ui_text('pages.history'),ui_text('pages.history_subtitle') + ' ' + ui_text('pending.history_subtitle'),ui_text('pages.on_chain_history'));root.addWidget(scroll)
         card,cl=panel();toolbar=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText(ui_text('pages.search_placeholder'));self.search.setClearButtonEnabled(True);self.search.setAccessibleName(ui_text('pages.search_confirmed_transactions'));self.filter=QComboBox();self.filter.addItems((ui_text('pages.all_activity'),ui_text('pages.credits'),ui_text('pages.debits')));toolbar.addWidget(self.search,1);toolbar.addWidget(self.filter);cl.addLayout(toolbar)
         self.table=QTableWidget(0,6);self.table.setObjectName('FusionActivityTable');self.table.setHorizontalHeaderLabels((ui_text('pages.direction'),ui_text('pages.transaction'),ui_text('pages.block'),ui_text('pages.confirmed'),ui_text('pages.credit_wam'),ui_text('pages.debit_wam')));self.table.verticalHeader().hide();self.table.setShowGrid(False);self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows);keyboard_table(self.table,ui_text('pages.history'));self.table.setMinimumHeight(220);self._size_columns();cl.addWidget(self.table);self.table.viewport().installEventFilter(self)
         self.newer=action(ui_text('pages.newer_confirmed_history'),'history');self.older=action(ui_text('pages.older_confirmed_history'),'history');self.newer.setEnabled(False);self.older.setEnabled(False);self.newer.clicked.connect(self._newer);self.older.clicked.connect(self._older);cl.addWidget(AdaptiveButtonRow(self.newer,self.older))
         self.scope=label('');cl.addWidget(self.scope)
-        self.empty=label(ui_text('pages.history_empty'));cl.addWidget(self.empty);layout.addWidget(card)
+        self.empty=label(ui_text('history.unavailable'));cl.addWidget(self.empty);layout.addWidget(card)
         detail,dl=panel(ui_text('pages.transaction_details'),ui_text('pages.select_row'));self.detail_id=label(ui_text('pages.no_transaction_selected'),'ReceiveCode',True);dl.addWidget(self.detail_id);self.detail_values=label('');dl.addWidget(self.detail_values);self.copy_button=action(ui_text('pages.copy_full_transaction_id'),'copy');self.copy_button.setEnabled(False);self.copy_button.clicked.connect(self.copy_txid);dl.addWidget(self.copy_button);layout.addWidget(detail);layout.addStretch()
         self.table.itemSelectionChanged.connect(self.show_details);self.search.textChanged.connect(self.apply_filter);self.filter.currentIndexChanged.connect(self.apply_filter)
     # Narrow windows (R-5): columns size to their content, the transaction
@@ -97,8 +97,31 @@ class HistoryPage(QWidget):
         from PySide6.QtCore import QEvent
         if watched is self.table.viewport() and event.type()==QEvent.Type.Resize:self._fit_columns()
         return super().eventFilter(watched,event)
+    def _selected_txid(self):
+        row = self.table.currentRow()
+        if (0 <= row < len(self.rows)
+                and not self.table.isRowHidden(row)
+                and self.table.selectionModel().hasSelection()):
+            return self.rows[row].txid
+        return None
+    def _clear_selection(self):
+        self.table.clearSelection()
+        self.table.setCurrentCell(-1, -1)
     def render_snapshot(self,snap):
-        self.rows=(snap.pending_history + snap.history) if snap else ();self.search.clear();self.table.setRowCount(len(self.rows));self.detail_id.setText(ui_text('pages.no_transaction_selected'));self.detail_values.setText('');self.copy_button.setEnabled(False)
+        selected_txid = self._selected_txid() if snap is not None else None
+        self._has_snapshot = snap is not None
+        self.rows=(snap.pending_history + snap.history) if snap else ()
+        self.search.blockSignals(True)
+        try:
+            self.search.clear()
+        finally:
+            self.search.blockSignals(False)
+        if snap is None:
+            self.filter.blockSignals(True)
+            try:
+                self.filter.setCurrentIndex(0)
+            finally:
+                self.filter.blockSignals(False)
         self._offset=snap.history_offset if snap and type(snap.history_offset) is int else 0
         self._total=snap.history_count if snap and type(snap.history_count) is int else len(snap.history) if snap else 0
         shown=len(snap.history) if snap else 0
@@ -119,20 +142,31 @@ class HistoryPage(QWidget):
         if snap and snap.pending_atoms is None:
             self.scope.setText(self.scope.text() + ' · ' + ui_text('pending.unverified'))
         c=fusion_palette(self.mode)
-        for i,row in enumerate(self.rows):
-            net=row.credit_atoms-row.debit_atoms;direction=ui_text('pages.received') if net>0 else ui_text('pages.sent') if net<0 else ui_text('pages.activity')
-            pending = getattr(row, 'state', None) == 'pending'
-            if pending:
-                direction += ' · ' + ui_text('pending.state')
-            values=(direction,row.txid[:12]+'…','—' if pending else str(row.block_height),ui_text('pending.state') if pending else str(row.confirmations),format_wam(row.credit_atoms),format_wam(row.debit_atoms))
-            for j,value in enumerate(values):
-                item=QTableWidgetItem(value);item.setToolTip(row.txid);item.setData(Qt.ItemDataRole.UserRole,row.txid)
-                if j==0:item.setIcon(vector_icon('receive' if net>0 else 'send',direction_tone(c, net)))
-                if j in (1,4,5):item.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
-                if j>=2:item.setTextAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
-                self.table.setItem(i,j,item)
-            self.table.setRowHeight(i,48)
-        self.empty.setVisible(not self.rows);self.apply_filter();self._measure_full_width();self._fit_columns()
+        self.table.blockSignals(True)
+        try:
+            self._clear_selection()
+            self.table.setRowCount(len(self.rows))
+            reselect_row = None
+            for i,row in enumerate(self.rows):
+                net=row.credit_atoms-row.debit_atoms;direction=ui_text('pages.received') if net>0 else ui_text('pages.sent') if net<0 else ui_text('pages.activity')
+                pending = getattr(row, 'state', None) == 'pending'
+                if pending:
+                    direction += ' · ' + ui_text('pending.state')
+                values=(direction,row.txid[:12]+'…','—' if pending else str(row.block_height),ui_text('pending.state') if pending else str(row.confirmations),format_wam(row.credit_atoms),format_wam(row.debit_atoms))
+                for j,value in enumerate(values):
+                    item=QTableWidgetItem(value);item.setToolTip(row.txid);item.setData(Qt.ItemDataRole.UserRole,row.txid)
+                    if j==0:item.setIcon(vector_icon('receive' if net>0 else 'send',direction_tone(c, net)))
+                    if j in (1,4,5):item.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+                    if j>=2:item.setTextAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
+                    self.table.setItem(i,j,item)
+                self.table.setRowHeight(i,48)
+                if selected_txid is not None and row.txid == selected_txid:
+                    reselect_row = i
+            if reselect_row is not None:
+                self.table.selectRow(reselect_row)
+        finally:
+            self.table.blockSignals(False)
+        self.apply_filter();self._measure_full_width();self._fit_columns()
     def set_theme(self,mode):
         self.mode=mode;c=fusion_palette(mode)
         for i,row in enumerate(self.rows):
@@ -145,11 +179,25 @@ class HistoryPage(QWidget):
         for i,row in enumerate(self.rows):
             visible=(not term or term in row.txid.lower() or term in str(row.block_height)) and (choice==0 or choice==1 and row.credit_atoms>0 or choice==2 and row.debit_atoms>0)
             self.table.setRowHidden(i,not visible);shown+=visible
-        self.empty.setVisible(shown==0);self.empty.setText(ui_text('pages.no_matching_confirmed_transactions') if self.rows else ui_text('pages.no_verified_transactions'))
+        self.empty.setVisible(shown==0)
+        self.empty.setText(
+            ui_text('history.no_matching_activity') if self.rows else
+            ui_text('history.empty_verified') if self._has_snapshot else
+            ui_text('history.unavailable'))
+        row=self.table.currentRow()
+        if 0<=row<len(self.rows) and self.table.isRowHidden(row):
+            self.table.blockSignals(True)
+            try:
+                self._clear_selection()
+            finally:
+                self.table.blockSignals(False)
         self.show_details()
     def show_details(self):
         row=self.table.currentRow()
-        if not 0<=row<len(self.rows) or self.table.isRowHidden(row):self.detail_id.setText(ui_text('pages.no_transaction_selected'));self.detail_values.setText('');self.copy_button.setEnabled(False);return
+        if (not 0<=row<len(self.rows)
+                or self.table.isRowHidden(row)
+                or not self.table.selectionModel().hasSelection()):
+            self.detail_id.setText(ui_text('pages.no_transaction_selected'));self.detail_values.setText('');self.copy_button.setEnabled(False);return
         tx=self.rows[row];self.detail_id.setText(tx.txid)
         if getattr(tx, 'state', None) == 'pending':
             text = ui_text('pending.state')
@@ -167,9 +215,20 @@ class HistoryPage(QWidget):
         self.search.clear();self.filter.setCurrentIndex(0)
         for i,tx in enumerate(self.rows):
             if tx.txid==txid:self.table.selectRow(i);self.show_details();return
+        self.table.blockSignals(True)
+        try:
+            self._clear_selection()
+        finally:
+            self.table.blockSignals(False)
+        self.show_details()
+        self.detail_id.setText(ui_text('history.txid_not_displayed'))
     def copy_txid(self):
         row=self.table.currentRow()
-        if self.copy_button.isEnabled() and 0<=row<len(self.rows):QApplication.clipboard().setText(self.rows[row].txid)
+        if (self.copy_button.isEnabled()
+                and 0<=row<len(self.rows)
+                and not self.table.isRowHidden(row)
+                and self.table.selectionModel().hasSelection()):
+            QApplication.clipboard().setText(self.rows[row].txid)
     def _older(self):
         from .history_pages import GUI_HISTORY_LIMIT
         if self.older.isEnabled():self.page_requested.emit(self._offset+GUI_HISTORY_LIMIT)

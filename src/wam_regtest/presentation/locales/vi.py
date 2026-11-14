@@ -770,4 +770,8 @@ VI = {
     "errors.RBF_SIGNALLING_MISSING": "Giao dịch này thiếu tín hiệu cho phép thay thế BIP125 rõ ràng. Chưa ký gì.",
     "backup.reopen": "Mở lại ví",
     "backup.done": "Tiếp tục",
+    "history.no_matching_activity": "Không có hoạt động nào khớp trong phần hiển thị này.",
+    "history.empty_verified": "Không có hoạt động nào trong phần hiển thị này.",
+    "history.unavailable": "Lịch sử chưa khả dụng · hãy mở khóa và đồng bộ ví",
+    "history.txid_not_displayed": "Giao dịch không có trong phần hiển thị hiện tại. Điều này không xác định kết quả của giao dịch.",
 }

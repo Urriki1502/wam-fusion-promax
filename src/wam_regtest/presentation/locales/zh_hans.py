@@ -770,4 +770,8 @@ ZH_HANS = {
     "errors.RBF_SIGNALLING_MISSING": "此付款缺少明确的BIP125可替换信号。未进行任何签名。",
     "backup.reopen": "重新打开钱包",
     "backup.done": "继续",
+    "history.no_matching_activity": "当前显示中没有匹配的活动。",
+    "history.empty_verified": "当前显示中没有活动。",
+    "history.unavailable": "历史记录暂不可用 · 请解锁并同步钱包",
+    "history.txid_not_displayed": "该交易不在当前显示中。这并不能确定其交易结果。",
 }

@@ -4,6 +4,7 @@ No Core, profile, persistence or cryptographic authority. Count GUI dispatch and
 backend execution separately, as in PM-051; cleanup quit is outside the event.
 """
 from collections import Counter
+from dataclasses import replace
 import unittest
 from unittest.mock import patch
 
@@ -86,6 +87,57 @@ class HistoryCommands(unittest.TestCase):
                     self.assertEqual({c: backend_counts[c] for c in COMMANDS}, dict.fromkeys(COMMANDS, 0))
                     self.assertEqual(dispatch.call_count, 0)  # includes unknown command names
                     self.assertEqual(self.calls, [])
+
+    def test_absent_overview_route_and_copy_emit_zero_commands(self):
+        page = self.window.history_page
+        page.select_txid(INCOMING.txid)
+        requests = []
+        page.page_requested.connect(requests.append)
+        with patch.object(self.window, '_command', wraps=self.window._command) as dispatch:
+            self.window._select_transaction('99' * 32)
+            page.copy_txid()
+            self.assertFalse(page.copy_button.isEnabled())
+            self.assertEqual(page.detail_values.text(), '')
+            self.assertEqual(requests, [])
+            self.assertEqual(dispatch.call_count, 0)
+            self.assertEqual(self.calls, [])
+
+    def test_refresh_and_lock_through_window_boundaries(self):
+        from wam_regtest.fusion_ui import ui_text
+        page = self.window.history_page
+        page.select_txid(INCOMING.txid)
+        expected_detail = page.detail_values.text()
+        snap = snapshot()
+        verified_result = {
+            'fusion_snapshot': snap,
+            'receive_code': snap.receive_code,
+            'confirmed_atoms': snap.confirmed_atoms,
+            'available_atoms': snap.confirmed_atoms,
+            'signer_allowed': snap.signer_allowed,
+            'broadcast_allowed': snap.broadcast_allowed,
+        }
+        with patch.object(self.window, '_command', wraps=self.window._command) as dispatch:
+            for _ in range(3):
+                self.window._render_verified(verified_result)
+                self.app.processEvents()
+                self.assertEqual(page.table.currentRow(), 1)
+                self.assertEqual(page.detail_id.text(), INCOMING.txid)
+                self.assertEqual(page.detail_values.text(), expected_detail)
+                self.assertTrue(page.copy_button.isEnabled())
+            self.app.clipboard().setText('sentinel')
+            page.copy_button.click()
+            self.assertEqual(self.app.clipboard().text(), INCOMING.txid)
+            for locked in (True, False):
+                with self.subTest(locked=locked):
+                    with patch.object(self.owner, '_state', replace(self.owner.state, locked=locked)):
+                        self.window._clear_visuals()
+                    self.assertEqual(page.empty.text(), ui_text('history.unavailable'))
+                    self.assertFalse(page.copy_button.isEnabled())
+                    self.assertEqual(page.rows, ())
+                    self.assertEqual(page.scope.text(), '')
+                    self.assertEqual(page.detail_values.text(), '')
+            self.assertEqual(dispatch.call_count, 0)
+        self.assertEqual(self.calls, [])
 
     def test_clear_visuals_lock_boundary_clears_history_selection(self):
         page = self.window.history_page
