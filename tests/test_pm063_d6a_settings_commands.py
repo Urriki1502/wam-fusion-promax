@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import replace
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QDialog, QInputDialog, QMessageBox, QWidget
 
 from test_pm063_d6a_settings_state import (
@@ -18,6 +20,7 @@ from test_pm063_d6a_settings_state import (
 )
 from wam_regtest import ui_settings
 from wam_regtest.bip39_fusion_gui import Bip39FusionWindow
+from wam_regtest.bip39_owner_gui import Bip39TrialWindow
 from wam_regtest.fusion_pages import WalletConsent
 from wam_regtest.presentation.action_state import BASE_CONTROLS
 from wam_regtest.bip39_locale import t
@@ -28,8 +31,13 @@ from wam_sp.keystore import ScanAccount
 
 
 _BROADCAST_TXID = "e3" * 32
+_SECOND_TXID = "f4" * 32
 _CORE_SHA = "34" * 32
 _CHAIN_TIP = "56" * 32
+_DUMMY_MNEMONIC_12 = (
+    "abandon abandon abandon abandon abandon abandon "
+    "abandon abandon abandon abandon abandon about"
+)
 
 
 def _make_snapshot(**changes) -> WalletReadSnapshot:
@@ -154,6 +162,47 @@ def _surface_texts(widgets: list[QWidget]) -> list[str]:
                 if isinstance(val, str) and val:
                     texts.append(val)
     return texts
+
+
+@contextmanager
+def _reject_unexpected_modals(interval_ms: int = 10, watchdog_ms: int = 5000):
+    """Dismiss any modal QDialog/widget opened under offscreen so tests never hang."""
+    app = QApplication.instance()
+
+    def _dismiss() -> None:
+        if app is None:
+            return
+        modal = app.activeModalWidget()
+        if modal is not None:
+            if isinstance(modal, QDialog):
+                modal.reject()
+            else:
+                modal.close()
+
+    timer = QTimer()
+    timer.setInterval(interval_ms)
+    timer.timeout.connect(_dismiss)
+    timer.start()
+    watchdog = QTimer()
+    watchdog.setSingleShot(True)
+    watchdog.timeout.connect(_dismiss)
+    watchdog.start(watchdog_ms)
+    try:
+        yield
+    finally:
+        timer.stop()
+        watchdog.stop()
+        _dismiss()
+
+
+def _close_window_bounded(window: Bip39TrialWindow, executor: WalletExecutor) -> None:
+    """Close a test window safely even if a departure/backup modal opens on close()."""
+    with _reject_unexpected_modals():
+        _close_window(window, executor)
+        worker = getattr(window, "_worker", None)
+        if worker is not None:
+            worker.wait(2000)
+        QApplication.processEvents()
 
 
 class SettingsCommandBoundaryTests(unittest.TestCase):
@@ -509,7 +558,7 @@ class SettingsLifetimeTests(unittest.TestCase):
             finally:
                 _close_window(window, executor)
 
-    @unittest.expectedFailure  # D6A-5 remains: last_txid not reset on fault/open/quit (still fails at fault check; required-with-mnemonic_once open also keeps old status)
+    # D6A-5 fixed by PM-067: _clear_visuals / base lifetime clear last_txid on fault/open/quit and reset status on backup_status='required' open.
     def test_last_txid_and_status_cleared_on_fault_profile_switch_and_quit(self):
         with _isolated_ini({"QT_REDUCE_MOTION": "0"}):
             window, executor, _ = _make_window()
@@ -551,7 +600,167 @@ class SettingsLifetimeTests(unittest.TestCase):
                 for text in _surface_texts([window.last_txid]):
                     self.assertNotIn(_BROADCAST_TXID, text)
             finally:
-                _close_window(window, executor)
+                _close_window_bounded(window, executor)
+
+    def test_same_profile_snapshot_refresh_preserves_last_txid(self):
+        with _isolated_ini({"QT_REDUCE_MOTION": "0"}):
+            window, executor, _ = _make_window()
+            try:
+                _open_verified_session(window, executor, account_id="acct-refresh-01")
+                window._approved_commitment = b"\x01" * 32
+                window._on_ready("broadcast", _BROADCAST_TXID)
+                QApplication.processEvents()
+                self.assertEqual(window.last_txid.text(), _BROADCAST_TXID)
+
+                # Ordinary same-profile snapshot refresh (pending_confirm_txid=None and matching TXID)
+                # must never clear a valid session last_txid.
+                for pending in (_BROADCAST_TXID, None):
+                    snap = _make_snapshot(height=113, tip="78" * 32)
+                    window._on_ready(
+                        "snapshot",
+                        _make_result(
+                            snap=snap,
+                            payment_review=None,
+                            payment_signed=False,
+                            pending_confirm_txid=pending,
+                        ),
+                    )
+                    QApplication.processEvents()
+                    self.assertEqual(window.last_txid.text(), _BROADCAST_TXID)
+
+                # Non-faulted read denial on an alive Core also retains last_txid.
+                _set_executor_state(executor, locked=False, faulted=False, core_alive=True)
+                window._on_denied("WALLET_READ_DENIED")
+                QApplication.processEvents()
+                self.assertEqual(window.last_txid.text(), _BROADCAST_TXID)
+            finally:
+                _close_window_bounded(window, executor)
+
+    def test_fault_clears_last_txid_individually(self):
+        with _isolated_ini({"QT_REDUCE_MOTION": "0"}):
+            window, executor, _ = _make_window()
+            try:
+                _open_verified_session(window, executor, account_id="acct-fault-txid")
+                window._approved_commitment = b"\x01" * 32
+                window._on_ready("broadcast", _BROADCAST_TXID)
+                window.last_txid.setToolTip(_BROADCAST_TXID)
+                window.last_txid.setAccessibleName(_BROADCAST_TXID)
+                window.last_txid.setAccessibleDescription(_BROADCAST_TXID)
+                window.last_txid.selectAll()
+                QApplication.processEvents()
+
+                _set_executor_state(executor, faulted=True)
+                window._on_denied("WALLET_CORE_UNAVAILABLE")
+                QApplication.processEvents()
+
+                self.assertEqual(window.last_txid.text(), "")
+                self.assertEqual(window.last_txid.selectedText(), "")
+                self.assertEqual(_surface_texts([window.last_txid]), [])
+                self.assertEqual(window.status.text(), t("owner.faulted"))
+                self.assertNotIn(_BROADCAST_TXID, window.status.toolTip())
+            finally:
+                _close_window_bounded(window, executor)
+
+            # Base Bip39TrialWindow also clears last_txid on faulted _on_denied.
+            be = _RecordingBackend()
+            base_exec = WalletExecutor(lambda: be)
+            base_win = Bip39TrialWindow(base_exec)
+            base_win._poll.stop()
+            try:
+                base_win.last_txid.setText(_BROADCAST_TXID)
+                _set_executor_state(base_exec, locked=False, faulted=True, core_alive=False)
+                base_win._on_denied("WALLET_CORE_UNAVAILABLE")
+                QApplication.processEvents()
+                self.assertEqual(base_win.last_txid.text(), "")
+            finally:
+                _close_window_bounded(base_win, base_exec)
+
+    def test_open_profile_switch_clears_last_txid_and_required_mnemonic_resets_status(self):
+        with _isolated_ini({"QT_REDUCE_MOTION": "0"}):
+            window, executor, _ = _make_window()
+            try:
+                _open_verified_session(window, executor, account_id="acct-open-01")
+                window._approved_commitment = b"\x01" * 32
+                window._on_ready("broadcast", _BROADCAST_TXID)
+                window.last_txid.setToolTip(_BROADCAST_TXID)
+                window.last_txid.setAccessibleName(_BROADCAST_TXID)
+                window.last_txid.setAccessibleDescription(_BROADCAST_TXID)
+                QApplication.processEvents()
+                self.assertIn(_BROADCAST_TXID, window.status.text().replace("\u200b", ""))
+                self.assertIn(_BROADCAST_TXID, window.status.toolTip())
+
+                # Open returning into backup_status='required' with mnemonic_once must clear
+                # last_txid and reset both status text and tooltip to a neutral state.
+                window._on_ready(
+                    "open",
+                    {
+                        "account_id": "acct-open-02",
+                        "receive_code": _make_snapshot().receive_code,
+                        "backup_status": "required",
+                        "mnemonic_once": _DUMMY_MNEMONIC_12,
+                    },
+                )
+                QApplication.processEvents()
+                self.assertEqual(window.last_txid.text(), "")
+                self.assertEqual(_surface_texts([window.last_txid]), [])
+                self.assertEqual(window.status.text(), t("fusion.awaiting_verification"))
+                self.assertEqual(window.status.toolTip(), t("fusion.awaiting_verification"))
+                for text in _surface_texts([window.last_txid, window.status]):
+                    self.assertNotIn(_BROADCAST_TXID, text.replace("\u200b", ""))
+
+                # Reset backup flow before opening another verified profile; reopen snapshot
+                # with a new pending_confirm_txid must populate the new TXID cleanly.
+                window._backup_flow_active = False
+                window.backup_page.clear_phrase()
+                window.last_txid.setText(_BROADCAST_TXID)
+                _open_verified_session(window, executor, account_id="acct-open-03")
+                self.assertEqual(window.last_txid.text(), "")
+                snap2 = _make_snapshot(height=114, tip="88" * 32)
+                window._on_ready(
+                    "snapshot",
+                    _make_result(
+                        snap=snap2,
+                        payment_review=None,
+                        payment_signed=False,
+                        pending_confirm_txid=_SECOND_TXID,
+                    ),
+                )
+                QApplication.processEvents()
+                self.assertEqual(window.last_txid.text(), _SECOND_TXID)
+            finally:
+                _close_window_bounded(window, executor)
+
+    def test_quit_clears_last_txid_individually(self):
+        with _isolated_ini({"QT_REDUCE_MOTION": "0"}):
+            window, executor, _ = _make_window()
+            try:
+                _open_verified_session(window, executor, account_id="acct-quit-txid")
+                window._approved_commitment = b"\x01" * 32
+                window._on_ready("broadcast", _BROADCAST_TXID)
+                window.last_txid.setToolTip(_BROADCAST_TXID)
+                window.last_txid.setAccessibleName(_BROADCAST_TXID)
+                window.last_txid.setAccessibleDescription(_BROADCAST_TXID)
+                QApplication.processEvents()
+
+                window._on_ready("quit", {"quit": True})
+                QApplication.processEvents()
+                self.assertEqual(window.last_txid.text(), "")
+                self.assertEqual(_surface_texts([window.last_txid]), [])
+            finally:
+                _close_window_bounded(window, executor)
+
+            # Base Bip39TrialWindow also clears last_txid on quit.
+            be = _RecordingBackend()
+            base_exec = WalletExecutor(lambda: be)
+            base_win = Bip39TrialWindow(base_exec)
+            base_win._poll.stop()
+            try:
+                base_win.last_txid.setText(_BROADCAST_TXID)
+                base_win._on_ready("quit", {"quit": True})
+                QApplication.processEvents()
+                self.assertEqual(base_win.last_txid.text(), "")
+            finally:
+                _close_window_bounded(base_win, base_exec)
 
     # D6A-6 fixed by PM-061 (9256015): _clear_visuals clears overview.environment_core tooltip/a11y buffers.
     def test_environment_core_tooltip_cleared_on_lock_fault_and_profile_switch(self):

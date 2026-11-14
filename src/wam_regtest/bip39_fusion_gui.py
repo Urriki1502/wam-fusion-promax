@@ -808,6 +808,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.page_title.show()
         self.connection_pill.setText(t("regtest_preview"))
         if result.get("backup_status") == "required" and result.get("mnemonic_once"):
+            self.status.setText(t('fusion.awaiting_verification'))
             self.backup_page.set_phrase(result["mnemonic_once"].split())
         else:
             self.backup_page.set_deferred_mode()
@@ -1088,6 +1089,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self._shared_connected = False
         # Advanced/compatibility fields share the same lifetime as the pages.
         # Do not use lock delivery here: it also changes payment authority.
+        self.last_txid.clear()
         self.receive.clear()
         self.history.clear()
         self.account.setText(t('owner.account_locked'))
@@ -1095,7 +1097,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.tip.setText(t('owner.chain_unverified'))
         # Value-bearing labels have selectable and accessibility buffers even
         # when hidden. Invalidate their metadata with the displayed values.
-        for field in (self.receive, self.history, self.account, self.balance, self.tip,
+        for field in (self.last_txid, self.receive, self.history, self.account, self.balance, self.tip,
                       self.overview.balance_value, self.overview.balance_unit,
                       self.overview.fund_details, self.overview.utxo_details,
                       self.overview.evidence_text, self.overview.environment_core,
