@@ -169,18 +169,20 @@ class PaymentEvidenceCharacterization(unittest.TestCase):
         return self.token + '-' + stage + '.enc'
 
     def _expected(self, stage):
+        self.assertIsNone(self.review.fee_quote)
         return {
             'account_id': self.account_id,
             'atoms': 50_000,
             'commitment': COMMITMENT,
             'fee': 1000,
+            'fee_basis': {'kind': 'explicit'},
             'owner_binding': BINDING,
             'recipient': self.intent.code,
             'signed_psbt': self.signed.hex(),
             'stage': stage,
             'token': self.token,
             'txid': self.txid,
-            'version': 1,
+            'version': 2,
         }
 
     def _ciphertext(self, stage):

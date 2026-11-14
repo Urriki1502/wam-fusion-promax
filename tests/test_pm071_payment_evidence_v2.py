@@ -303,6 +303,41 @@ class PaymentEvidenceV2Tests(unittest.TestCase):
         # On disk, the sealed plaintext stays untouched v1.
         self.assertNotIn('fee_basis', self._read_raw_body(self.token, 'signed'))
 
+    def test_legacy_v1_sealed_format_pinned_and_reads_without_modifying_file(self):
+        legacy_token = 'c' * 32
+        v1_body = {
+            'account_id': self.account_id,
+            'atoms': 50_000,
+            'commitment': COMMITMENT,
+            'fee': self.review.fee,
+            'owner_binding': BINDING,
+            'recipient': self.code,
+            'signed_psbt': self.signed.hex(),
+            'stage': 'signed',
+            'token': legacy_token,
+            'txid': self.txid,
+            'version': 1,
+        }
+        plaintext = json.dumps(v1_body, sort_keys=True).encode()
+        sealed_v1 = seal(plaintext, PASSWORD, SEAL_PURPOSE)
+        directory = self.path / DIRECTORY_NAME
+        filename = f'{legacy_token}-signed.enc'
+        custody.storage().publish(directory, filename, sealed_v1)
+        enc_path = directory / filename
+        raw_before = enc_path.read_bytes()
+        self.assertEqual(raw_before, sealed_v1)
+
+        read_via_store = self._read(token=legacy_token, stage='signed')
+        read_via_session = self.session._read_payment_evidence(legacy_token, 'signed')
+        expected_read = dict(v1_body, fee_basis={'kind': 'legacy-unrecorded'})
+        self.assertEqual(read_via_store, expected_read)
+        self.assertEqual(read_via_session, expected_read)
+        self.assertEqual(enc_path.read_bytes(), raw_before)
+        self.assertEqual(
+            unseal(custody.storage().read(directory, filename), PASSWORD, SEAL_PURPOSE),
+            plaintext,
+        )
+
     def test_v2_round_trip_for_each_kind(self):
         # 1. kind == 'quote' (written by setUp via prepare_auto + sign)
         quoted = self._read(stage='signed')
