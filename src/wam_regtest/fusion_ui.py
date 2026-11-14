@@ -677,7 +677,7 @@ def keyboard_table(table, accessible_name):
     return table
 
 
-def page(title, subtitle, kicker=None):
+def page(title, subtitle, kicker=None, header=True):
     if kicker is None:
         kicker = ui_text('fusion.wam_fusion_regtest')
     scroll = QScrollArea()
@@ -691,9 +691,10 @@ def page(title, subtitle, kicker=None):
     layout = QVBoxLayout(root)
     layout.setContentsMargins(SHELL['page_side'], SHELL['page_top'], SHELL['page_right'], SHELL['page_bottom'])
     layout.setSpacing(SHELL['page_gap'])
-    layout.addWidget(label(kicker, 'FusionKicker'))
-    layout.addWidget(label(title, 'PageTitle'))
-    layout.addWidget(label(subtitle))
+    if header:
+        layout.addWidget(label(kicker, 'FusionKicker'))
+        layout.addWidget(label(title, 'PageTitle'))
+        layout.addWidget(label(subtitle))
     return scroll, layout
 
 

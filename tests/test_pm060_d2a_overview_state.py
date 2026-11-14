@@ -210,3 +210,39 @@ class ReceiveGeometry(unittest.TestCase):
         for row in rows:
             for key in ('pages.silent_payments_note', 'pages.disposable_funds'):
                 self.assertTrue(row[key + '_fully_visible'])
+
+    def test_receive_fixed_header_geometry(self):
+        """PM-065: fixed title/warnings stay put at both scroll ends."""
+        from types import SimpleNamespace
+        from wam_regtest.wallet_executor import ExecutorState
+        from wam_regtest.bip39_fusion_gui import Bip39FusionWindow
+        from wam_regtest.fusion_ui import SHELL
+        for size in ((900, 630), (1100, 720)):
+            with self.subTest(size=size):
+                owner = SimpleNamespace(state=ExecutorState(locked=False, core_alive=True), busy=False, closed=False)
+                w = Bip39FusionWindow(owner)
+                self.addCleanup(w.deleteLater)
+                w._poll.stop()
+                w.resize(*size)
+                w.receive_page.render_snapshot(snapshot())
+                w.navigation.setCurrentRow(1)
+                w.show()
+                for _ in range(8): self.app.processEvents()
+                page = w.receive_page
+                title = next(x for x in page.findChildren(QLabel)
+                             if x.text() == t('pages.receive') and x.objectName() == 'PageTitle')
+                warnings = [next(x for x in page.findChildren(QLabel) if x.text() == t(key))
+                            for key in ('pages.silent_payments_note', 'pages.disposable_funds')]
+                bar = page.scroll.verticalScrollBar()
+                for position in (0, bar.maximum()):
+                    bar.setValue(position)
+                    for _ in range(4): self.app.processEvents()
+                    title_rect = QRect(title.mapTo(page, QPoint(0, 0)), title.size())
+                    self.assertTrue(title.isVisible())
+                    self.assertTrue(page.rect().contains(title_rect),
+                                    'title not fully in page: %r %r' % (title_rect, page.rect()))
+                    for warning in warnings:
+                        rect = QRect(warning.mapTo(page, QPoint(0, 0)), warning.size())
+                        self.assertGreaterEqual(rect.x(), SHELL['page_side'])
+                        self.assertGreater(rect.top(), title_rect.bottom())
+                w.hide()

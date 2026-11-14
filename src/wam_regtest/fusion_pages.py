@@ -4,7 +4,7 @@ from .bip39_locale import t as ui_text
 from PySide6.QtCore import Qt, Signal, QRectF, QTimer
 from PySide6.QtGui import QColor,QPainter,QFont,QFontDatabase
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QLineEdit,QComboBox,QCheckBox,QTableWidget,QTableWidgetItem,QHeaderView,QApplication,QDialog,QDialogButtonBox,QFrame
-from .fusion_ui import label,panel,page,action,ResponsiveRow,AdaptiveButtonRow,keyboard_table,vector_icon,fusion_palette,activity_by_block,grow_with_wrapped_text,direction_tone,QR,pending_amount_text
+from .fusion_ui import SHELL,label,panel,page,action,ResponsiveRow,AdaptiveButtonRow,keyboard_table,vector_icon,fusion_palette,activity_by_block,grow_with_wrapped_text,direction_tone,QR,pending_amount_text
 from .wallet_read import format_wam
 
 
@@ -34,10 +34,9 @@ class PaymentQR(QWidget):
 
 class ReceivePage(QWidget):
     def __init__(self):
-        super().__init__();self.code=None;self.setObjectName('FusionInner');self.setAccessibleDescription(ui_text('pages.a_quieter_receiving_experience'));root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
-        self.scroll,layout=page(ui_text('pages.receive'),ui_text('pages.receive_subtitle'),ui_text('pages.silent_payments_receive'))
-        root.addWidget(grow_with_wrapped_text(label(ui_text('pages.silent_payments_note'))))
-        root.addWidget(grow_with_wrapped_text(label(ui_text('pages.disposable_funds'),'FusionGold')))
+        super().__init__();self.code=None;self.setObjectName('FusionInner');root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
+        header=QWidget();header_layout=QVBoxLayout(header);header_layout.setContentsMargins(SHELL['page_side'],SHELL['page_top'],SHELL['page_right'],0);header_layout.setSpacing(SHELL['page_gap']);header_layout.addWidget(label(ui_text('pages.silent_payments_receive'),'FusionKicker'));header_layout.addWidget(label(ui_text('pages.receive'),'PageTitle'));header_layout.addWidget(label(ui_text('pages.receive_subtitle')));header_layout.addWidget(grow_with_wrapped_text(label(ui_text('pages.silent_payments_note'))));header_layout.addWidget(grow_with_wrapped_text(label(ui_text('pages.disposable_funds'),'FusionGold')));root.addWidget(header)
+        self.scroll,layout=page(ui_text('pages.receive'),ui_text('pages.receive_subtitle'),ui_text('pages.silent_payments_receive'),header=False)
         root.addWidget(self.scroll)
         card,cl=panel(ui_text('pages.your_silent_payment_address'),ui_text('pages.receive_scope'))
         self.qr=PaymentQR();qrbox=QWidget();ql=QVBoxLayout(qrbox);ql.setContentsMargins(0,0,0,0);ql.addWidget(self.qr,alignment=Qt.AlignmentFlag.AlignCenter);ql.addWidget(label(ui_text('pages.exact_address_qr'),'FusionKicker'),alignment=Qt.AlignmentFlag.AlignCenter)

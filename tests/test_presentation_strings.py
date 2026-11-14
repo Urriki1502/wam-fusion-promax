@@ -254,6 +254,8 @@ class CatalogTests(unittest.TestCase):
         # Original catalog bytes remain checked by test_english_bytes_and_existing_vietnamese.
         retired = set(json.loads((ROOT / 'tests/pm062_english_literals.json').read_text())[
             'retired_history_callers'])
+        retired.update(json.loads((ROOT / 'tests/pm065_english_literals.json').read_text())[
+            'retired_callers'])
         for entries in FIXTURE['moved'].values():
             self.assertLessEqual({key for key in entries if pm014_key(key) not in retired}, used_pm014)
 
