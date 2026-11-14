@@ -75,6 +75,9 @@ def _isolated_ini(env_overrides: dict[str, str] | None = None):
         if env_overrides:
             patch_env.update(env_overrides)
         with patch.dict(os.environ, patch_env, clear=False):
+            assert ui_settings.native_store_enabled() is False, (
+                "PM-016 native preference store must be disabled in isolated tests"
+            )
             yield ini_path
 
 

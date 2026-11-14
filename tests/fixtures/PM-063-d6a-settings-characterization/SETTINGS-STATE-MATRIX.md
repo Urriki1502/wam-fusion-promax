@@ -69,7 +69,7 @@ Disclosure isolation: `_toggle_advanced(expanded)` (`bip39_fusion_gui.py:639-648
 - When `native_store_enabled()` is `False` (every test, trial launcher, and dev import):
   - `isolated_path()` (`ui_settings.py:34-44`) returns `Path(os.environ["WAM_UI_SETTINGS_PATH"])` if set and non-empty, or creates and memoizes a process-scoped temporary `Path(tempfile.mkdtemp(prefix="wam-ui-settings-")) / "ui-settings.ini"`.
   - `ui_settings()` (`ui_settings.py:47-58`) opens `QSettings(str(isolated_path()), QSettings.Format.IniFormat)` instead of `QSettings(ORGANIZATION, APPLICATION)` (`"WAM Privacy Wallet"`, `"REGTEST"`).
-- **Test guarantee (PM-063)**: All PM-063 tests assert `native_store_enabled() is False` and bind `WAM_UI_SETTINGS_PATH` (or inspect `isolated_path()`) inside a `TemporaryDirectory` so the owner's real macOS/Win/Linux preference store is never read or written.
+- **Test guarantee (PM-063)**: Every test in both PM-063 modules (`test_pm063_d6a_settings_state.py` and `test_pm063_d6a_settings_commands.py`) executes inside the shared `_isolated_ini` context manager (`tests/test_pm063_d6a_settings_state.py`), which binds `WAM_UI_SETTINGS_PATH` to a file inside a fresh `TemporaryDirectory` and asserts `ui_settings.native_store_enabled() is False` before yielding (failing before any window construction or `ui_settings()` call if native mode were enabled); preference/isolation tests additionally verify `isolated_path()`/`fileName()` or diff only the temporary `.ini` file so the owner's real macOS/Win/Linux preference store is never read or written.
 
 ### 3.2 All Preference Keys Across `src/wam_regtest/`
 
