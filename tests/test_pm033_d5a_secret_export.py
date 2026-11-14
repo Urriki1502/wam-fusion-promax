@@ -66,11 +66,32 @@ class SecretExportContracts(unittest.TestCase):
             widget.hide()
             widget.deleteLater()
         self.app.processEvents()
+        self.assertEqual(
+            self.app.keyboardModifiers(), Qt.KeyboardModifier.NoModifier,
+            "Secret export test left a keyboard modifier latched")
+
+    def _key_sequence(self, widget, sequence):
+        try:
+            QTest.keySequence(widget, sequence)
+        finally:
+            # QWidget QTest shortcuts leave Qt's cached modifiers latched even
+            # after their synthetic release. Release on the live target before
+            # a modal can close; keep tearDown a detector, not a state reset.
+            modifiers = Qt.KeyboardModifier.NoModifier
+            for index in range(sequence.count()):
+                modifiers |= sequence[index].keyboardModifiers()
+            for modifier, key in (
+                    (Qt.KeyboardModifier.MetaModifier, Qt.Key.Key_Meta),
+                    (Qt.KeyboardModifier.AltModifier, Qt.Key.Key_Alt),
+                    (Qt.KeyboardModifier.ControlModifier, Qt.Key.Key_Control),
+                    (Qt.KeyboardModifier.ShiftModifier, Qt.Key.Key_Shift)):
+                if modifiers & modifier:
+                    QTest.keyRelease(widget, key)
 
     def _attempt_shortcuts(self, widget):
         for key in (QKeySequence.StandardKey.SelectAll, QKeySequence.StandardKey.Copy,
                     QKeySequence.StandardKey.Cut):
-            QTest.keySequence(widget, QKeySequence(key))
+            self._key_sequence(widget, QKeySequence(key))
             self.assertEqual(self.clip.text(), 'PUBLIC CLIPBOARD SENTINEL')
 
     def test_displayed_words_cannot_select_copy_cut_context_export_or_drag(self):
@@ -132,7 +153,7 @@ class SecretExportContracts(unittest.TestCase):
     def _selection_contract(self, fields):
         for field in fields:
             field.setText('abandon')
-            QTest.keySequence(field, QKeySequence(QKeySequence.StandardKey.SelectAll))
+            self._key_sequence(field, QKeySequence(QKeySequence.StandardKey.SelectAll))
             self.assertFalse(field.hasSelectedText(),
                              'D5A-03: password masking still permits Select All')
             for nav_key in (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Home, Qt.Key.Key_End):
@@ -179,7 +200,7 @@ class SecretExportContracts(unittest.TestCase):
         for field in fields:
             field.setText('abandon')
             field.selectAll()
-            QTest.keySequence(field, QKeySequence(QKeySequence.StandardKey.Cut))
+            self._key_sequence(field, QKeySequence(QKeySequence.StandardKey.Cut))
             self.assertEqual(self.clip.text(), 'PUBLIC CLIPBOARD SENTINEL')
             self.assertEqual(field.text(), 'abandon',
                              'D5A-06: keyboard Cut must not delete or export password text')
@@ -249,11 +270,11 @@ class SecretExportContracts(unittest.TestCase):
                     edit.setPlainText('abandon')
                     entered_texts.append(edit.toPlainText())
                     edit.selectAll()
-                    QTest.keySequence(edit, QKeySequence(QKeySequence.StandardKey.SelectAll))
+                    self._key_sequence(edit, QKeySequence(QKeySequence.StandardKey.SelectAll))
                     selected = edit.textCursor().hasSelection()
                     edit.copy()
-                    QTest.keySequence(edit, QKeySequence(QKeySequence.StandardKey.Copy))
-                    QTest.keySequence(edit, QKeySequence(QKeySequence.StandardKey.Cut))
+                    self._key_sequence(edit, QKeySequence(QKeySequence.StandardKey.Copy))
+                    self._key_sequence(edit, QKeySequence(QKeySequence.StandardKey.Cut))
                     observed.append((selected, self.clip.text() != 'PUBLIC CLIPBOARD SENTINEL'))
                     entered_texts.append(edit.toPlainText())
                 dialog.reject()
@@ -342,16 +363,16 @@ class SecretExportContracts(unittest.TestCase):
                 QTest.keyClick(widget, Qt.Key.Key_Left)  # cursor at start -> '|abcd'
                 QTest.keyClick(widget, Qt.Key.Key_Delete)  # removes 'a' -> '|bcd'
                 self.clip.setText('ef')
-                QTest.keySequence(widget, QKeySequence(QKeySequence.StandardKey.Paste))
+                self._key_sequence(widget, QKeySequence(QKeySequence.StandardKey.Paste))
                 text = widget.toPlainText() if isinstance(widget, QPlainTextEdit) else widget.text()
                 self.assertEqual(text, 'efbcd')
 
                 # Negative: Copy, Cut, SelectAll, Shift+Arrow, drag export all blocked.
                 self.clip.setText('PUBLIC CLIPBOARD SENTINEL')
                 QTest.keyClick(widget, Qt.Key.Key_Right, Qt.KeyboardModifier.ShiftModifier)
-                QTest.keySequence(widget, QKeySequence(QKeySequence.StandardKey.SelectAll))
-                QTest.keySequence(widget, QKeySequence(QKeySequence.StandardKey.Copy))
-                QTest.keySequence(widget, QKeySequence(QKeySequence.StandardKey.Cut))
+                self._key_sequence(widget, QKeySequence(QKeySequence.StandardKey.SelectAll))
+                self._key_sequence(widget, QKeySequence(QKeySequence.StandardKey.Copy))
+                self._key_sequence(widget, QKeySequence(QKeySequence.StandardKey.Cut))
                 QTest.mousePress(widget, Qt.MouseButton.LeftButton, pos=QPoint(4, 4))
                 QTest.mouseMove(widget, QPoint(80, 4))
                 QTest.mouseRelease(widget, Qt.MouseButton.LeftButton, pos=QPoint(80, 4))
@@ -436,11 +457,11 @@ class SecretExportContracts(unittest.TestCase):
                 seen['echo'] = edit.echoMode()
                 seen['drag'] = edit.dragEnabled()
                 QTest.keyClicks(edit, 'secret-passphrase')
-                QTest.keySequence(edit, QKeySequence(QKeySequence.StandardKey.SelectAll))
+                self._key_sequence(edit, QKeySequence(QKeySequence.StandardKey.SelectAll))
                 QTest.keyClick(edit, Qt.Key.Key_Left, Qt.KeyboardModifier.ShiftModifier)
                 seen['selected'] = edit.hasSelectedText()
-                QTest.keySequence(edit, QKeySequence(QKeySequence.StandardKey.Copy))
-                QTest.keySequence(edit, QKeySequence(QKeySequence.StandardKey.Cut))
+                self._key_sequence(edit, QKeySequence(QKeySequence.StandardKey.Copy))
+                self._key_sequence(edit, QKeySequence(QKeySequence.StandardKey.Cut))
                 seen['text_after_cut'] = edit.text()
                 seen['clipboard_unchanged'] = self.clip.text() == 'PUBLIC CLIPBOARD SENTINEL'
                 dialog.accept()
