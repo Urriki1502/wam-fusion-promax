@@ -138,7 +138,8 @@ class Q06OwnedSpendSession(WalletSession):
             self._evidence = store
         return store
 
-    def _retain_signed_payment(self, stage, *, signed=None, review=None, token=None, txid=None):
+    def _retain_signed_payment(self, stage, *, signed=None, review=None, token=None, txid=None,
+                               legacy_unrecorded=False):
         """Create-only encrypted evidence; NEVER a replay/release authority.
 
         Native scanner reservations remain authoritative even if this
@@ -155,7 +156,8 @@ class Q06OwnedSpendSession(WalletSession):
                 stage, signed=signed, review=review, token=token, txid=txid,
                 password=self._password,
                 owner_binding=lambda: _owner_binding(self._q06_owner),
-                account_id=lambda: self.ring.public_metadata()['account_id'])
+                account_id=lambda: self.ring.public_metadata()['account_id'],
+                legacy_unrecorded=legacy_unrecorded)
         except Exception:
             self.faulted = self._q06_uncertain = True
             raise Q06SpendSessionError('Q06_PAYMENT_EVIDENCE_PRESERVED_NO_RETRY') from None
@@ -282,8 +284,30 @@ class Q06OwnedSpendSession(WalletSession):
                 raise Q06SpendSessionError('Q06_RESUME_NOT_ELIGIBLE')
             body = self._read_payment_evidence(token, 'signed')
             signed = bytes.fromhex(body['signed_psbt'])
+            fee_basis = body.get('fee_basis')
+            fee_quote = None
+            legacy_unrecorded = False
+            if isinstance(fee_basis, dict):
+                kind = fee_basis.get('kind')
+                if kind == 'quote':
+                    from .domain.fee_policy import FeeQuote
+                    quote_data = fee_basis['quote']
+                    fee_quote = FeeQuote(
+                        network=quote_data['network'],
+                        rate_atoms_per_kvb=quote_data['rate_atoms_per_kvb'],
+                        floor_atoms_per_kvb=quote_data['floor_atoms_per_kvb'],
+                        source=quote_data['source'],
+                        estimator=quote_data['estimator'],
+                        reasons=tuple(quote_data['reasons']),
+                        inputs_digest=quote_data['inputs_digest'],
+                    )
+                elif kind == 'legacy-unrecorded':
+                    legacy_unrecorded = True
+            # Evidence-only display/provenance: NEVER set rate_atoms_per_kvb
+            # or vsize on the resumed review (would arm preflight rate/vsize checks).
             review = SimpleNamespace(commitment=body['commitment'], code=body['recipient'],
-                                     atoms=body['atoms'], fee=body['fee'])
+                                     atoms=body['atoms'], fee=body['fee'],
+                                     fee_quote=fee_quote)
             rpc = self._rpc()
             if item['state'] == 'signed':
                 try:
@@ -300,7 +324,8 @@ class Q06OwnedSpendSession(WalletSession):
                 existing = self._read_payment_evidence(token, 'uncertain')
                 if existing is None:
                     self._retain_signed_payment('uncertain', signed=signed, review=review,
-                                                token=token, txid=txid)
+                                                token=token, txid=txid,
+                                                legacy_unrecorded=legacy_unrecorded)
                 elif existing['txid'] != txid:
                     self.faulted = self._q06_uncertain = True
                     raise Q06SpendSessionError('Q06_PAYMENT_EVIDENCE_PRESERVED_NO_RETRY')
@@ -317,7 +342,8 @@ class Q06OwnedSpendSession(WalletSession):
                 self.faulted = self._q06_uncertain = True
                 raise WalletSessionError('WALLET_BROADCAST_UNCERTAIN_LOCK_RETAINED') from None
             self._retain_signed_payment('broadcast', signed=signed, review=review,
-                                        token=token, txid=actual)
+                                        token=token, txid=actual,
+                                        legacy_unrecorded=legacy_unrecorded)
             self._q06_pending_confirm = actual
             return {'status': 'Q06_SIGNED_INTENT_RESUBMITTED', 'txid': actual,
                     'resigned': False, 'automatic': False, 'mainnet_allowed': False}

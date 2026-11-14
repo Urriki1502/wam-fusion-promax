@@ -379,12 +379,17 @@ def backend_type():
             if body is None:
                 raise ValueError("F3_SIGNED_EVIDENCE_MISSING")
             raw = PSBT.decode(bytes.fromhex(body["signed_psbt"])).finalize()
+            basis = body.get("fee_basis")
+            fee_quote = None
+            if isinstance(basis, dict) and basis.get("kind") == "quote":
+                fee_quote = dict(basis["quote"])
+                fee_quote["reasons"] = tuple(fee_quote["reasons"])
             return {"raw_sha256": sha256(raw).hexdigest(), "txid": body["txid"],
                     "atoms": body["atoms"], "fee": body["fee"], "vsize": serialized_vsize(raw),
                     "encrypted_sha256": sha256((session._evidence_store()._folder() /
                         (token + "-signed.enc")).read_bytes()).hexdigest(),
                     "commitment": body["commitment"], "token_sha256": sha256(token.encode()).hexdigest(),
-                    "fee_quote": body.get("fee_quote")}
+                    "fee_quote": fee_quote}
 
         def inspect(self):
             session = self._spend_session
