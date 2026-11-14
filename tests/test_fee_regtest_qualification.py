@@ -285,7 +285,7 @@ class Oracles(unittest.TestCase):
         return [{"allowed": True, "txid": "a" * 64, "wtxid": "b" * 64,
                  "vsize": 155, "fees": {"base": Decimal("0.00000155"),
                    "effective-feerate": Decimal("0.00001000"),
-                   "effective-includes": ["a" * 64]}}]
+                   "effective-includes": ["b" * 64]}}]
 
     def test_tma_requires_every_identity_and_amount_field(self):
         response = self.response()
@@ -297,9 +297,9 @@ class Oracles(unittest.TestCase):
             self.assertFalse(assertions_pass(assert_tma(changed, 155, 155, "a"*64, "b"*64)))
         self.assertFalse(assertions_pass(assert_tma([], 155, 155, "a"*64, "b"*64)))
 
-    def test_tma_oracle_requires_txid_includes_and_truncated_rate(self):
+    def test_tma_oracle_requires_wtxid_includes_and_truncated_rate(self):
         response = self.response()
-        response[0]['fees']['effective-includes'] = ['b' * 64]
+        response[0]['fees']['effective-includes'] = ['a' * 64]
         self.assertFalse(assert_tma(response, 155, 155, 'a'*64, 'b'*64)['effective_includes'])
         response = self.response()
         response[0]['vsize'] = 112
@@ -317,7 +317,7 @@ class Oracles(unittest.TestCase):
             "fees": {
                 "base": 1.55e-06,
                 "effective-feerate": 1e-05,
-                "effective-includes": ["a" * 64],
+                "effective-includes": ["b" * 64],
             },
         }]
         # json_capture itself remains strict and refuses floats everywhere.
@@ -349,7 +349,7 @@ class Oracles(unittest.TestCase):
             "fees": {
                 "base": 1.55e-06,
                 "effective-feerate": 1.383e-05,
-                "effective-includes": ["a" * 64],
+                "effective-includes": ["b" * 64],
             },
         }]
         self.assertTrue(assertions_pass(assert_tma(exact_reply, 112, 155, "a" * 64, "b" * 64)))
@@ -381,13 +381,13 @@ class Oracles(unittest.TestCase):
         # Any float in any other field (or non-list shape) still raises F3_RPC_TYPE_DENIED.
         other_float_cases = (
             [{"allowed": True, "txid": "a" * 64, "wtxid": "b" * 64, "vsize": 155.0,
-              "fees": {"base": 1.55e-06, "effective-feerate": 1e-05, "effective-includes": ["a" * 64]}}],
+              "fees": {"base": 1.55e-06, "effective-feerate": 1e-05, "effective-includes": ["b" * 64]}}],
             [{"allowed": True, "txid": "a" * 64, "wtxid": "b" * 64, "vsize": 155,
-              "fees": {"base": 1.55e-06, "effective-feerate": 1e-05, "ancestor": 1.55e-06, "effective-includes": ["a" * 64]}}],
+              "fees": {"base": 1.55e-06, "effective-feerate": 1e-05, "ancestor": 1.55e-06, "effective-includes": ["b" * 64]}}],
             [{"allowed": True, "txid": "a" * 64, "wtxid": "b" * 64, "vsize": 155,
               "fees": {"base": 1.55e-06, "effective-feerate": 1e-05, "effective-includes": [1.0]}}],
             [{"allowed": True, "txid": "a" * 64, "wtxid": "b" * 64, "vsize": 155, "extra": 0.5,
-              "fees": {"base": 1.55e-06, "effective-feerate": 1e-05, "effective-includes": ["a" * 64]}}],
+              "fees": {"base": 1.55e-06, "effective-feerate": 1e-05, "effective-includes": ["b" * 64]}}],
             {"fees": {"base": 1.55e-06}},
         )
         for bad_shape in other_float_cases:
@@ -965,7 +965,7 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
                 "fees": {
                     "base": 1.55e-06,
                     "effective-feerate": 1e-05,
-                    "effective-includes": [txid],
+                    "effective-includes": [wtxid],
                 },
             }]
             mempool_calls = iter([[], []])

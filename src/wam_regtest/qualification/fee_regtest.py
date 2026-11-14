@@ -370,7 +370,7 @@ def assert_tma(response, vsize, fee, txid, wtxid):
         if type(rate_value) is float:
             rate_value = _tma_float_to_decimal(rate_value, require_whole_atoms=False)
         rate = exact_atoms(rate_value)
-        # FE-006 fail-closed arithmetic, pending FE-007 schema confirmation.
+        # Confirmed by FE-007 on v0.1.13 (claude-run-20261114T014527Z).
         rate_holds = vsize > 0 and rate == (fee * 1000) // vsize
     except (ValueError, OverflowError):
         rate_holds = False
@@ -381,7 +381,7 @@ def assert_tma(response, vsize, fee, txid, wtxid):
         wtxid=type(wtxid) is str and row.get("wtxid") == wtxid and bool(re.fullmatch(r"[0-9a-f]{64}", wtxid)),
         base_fee=base == fee,
         effective_rate=rate_holds,
-        effective_includes=fees.get("effective-includes") == [txid],
+        effective_includes=fees.get("effective-includes") == [wtxid],
     )
     return checks
 

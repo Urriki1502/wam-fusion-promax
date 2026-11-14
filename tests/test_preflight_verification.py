@@ -3,6 +3,7 @@ from contextlib import nullcontext
 from copy import deepcopy
 from decimal import Decimal, localcontext
 from hashlib import sha256
+from pathlib import Path
 from threading import RLock
 from types import SimpleNamespace
 import json
@@ -24,13 +25,14 @@ class PreflightVerification(unittest.TestCase):
         self.tx = Tx((('11' * 32, 0),), ((9000, b'\x51\x20' + bytes(32)),))
         self.raw = self.tx.serialize([(bytes(65),)])
         self.txid = sha256(sha256(self.tx.serialize()).digest()).digest()[::-1].hex()
+        self.wtxid = sha256(sha256(self.raw).digest()).digest()[::-1].hex()
         self.vsize = serialized_vsize(self.raw)
         self.review = SimpleNamespace(fee=1000, vsize=self.vsize,
                                      rate_atoms_per_kvb=1000, commitment='c' * 64)
-        self.reply = [{'allowed': True, 'txid': self.txid, 'vsize': self.vsize,
+        self.reply = [{'allowed': True, 'txid': self.txid, 'wtxid': self.wtxid, 'vsize': self.vsize,
                        'fees': {'base': Decimal('0.00001000'),
                                 'effective-feerate': Decimal(1000000 // self.vsize).scaleb(-8),
-                                'effective-includes': [self.txid]}}]
+                                'effective-includes': [self.wtxid]}}]
         self.psbt = SimpleNamespace(finalize=lambda: self.raw, txid=lambda: self.txid)
         self.decode_patch = patch.object(PSBT, 'decode', return_value=self.psbt)
         self.decode_patch.start()
@@ -76,11 +78,11 @@ class PreflightVerification(unittest.TestCase):
         before = vars(session).copy()
         self.assertIsNone(invoke())
         self.assertEqual(vars(session), before)
-        self.reply[0]['fees'].pop('effective-includes')
-        self.assertIsNone(self.check())
 
     def test_mismatches_latch_on_both_paths(self):
-        cases = [('txid', 'f' * 64), ('txid', 'x' * 64), ('txid', None),
+        cases = [('wtxid', 'f' * 64), ('wtxid', self.txid),
+                 ('wtxid', None), ('wtxid', 42), ('wtxid', 'x' * 64),
+                 ('txid', 'f' * 64), ('txid', 'x' * 64), ('txid', None),
                  ('vsize', self.vsize + 1), ('vsize', True), ('vsize', float(self.vsize)),
                  ('fees.base', Decimal('0.00001001')), ('fees.base', Decimal('0.00000999')),
                  ('fees.base', 0.00001), ('fees.base', '0.00001'),
@@ -107,7 +109,8 @@ class PreflightVerification(unittest.TestCase):
                 self.assert_latched_both(reply)
 
     def test_missing_fields_latch_on_both_paths(self):
-        for path in ('txid', 'vsize', 'fees', 'fees.base', 'fees.effective-feerate'):
+        for path in ('txid', 'wtxid', 'vsize', 'fees', 'fees.base',
+                     'fees.effective-feerate', 'fees.effective-includes'):
             reply = deepcopy(self.reply)
             target = reply[0]
             keys = path.split('.')
@@ -171,3 +174,85 @@ class PreflightVerification(unittest.TestCase):
         session._rpc = lambda: self.fail('unauthorized preflight')
         with self.assertRaisesRegex(ValueError, 'EXPLICIT_APPROVAL_REQUIRED'):
             session.resume_signed_intent('a' * 32, self.txid)
+
+    def test_effective_includes_binds_witness_hash_not_txid(self):
+        self.assertNotEqual(self.txid, self.wtxid)
+        self.assertIsNone(self.check())
+        self.reply[0]['fees']['effective-includes'] = [self.txid]
+        self.assert_latched_both(self.reply)
+
+    def test_coherent_reply_cannot_substitute_a_different_witness_hash(self):
+        self.reply[0]['wtxid'] = 'f' * 64
+        self.reply[0]['fees']['effective-includes'] = ['f' * 64]
+        self.assert_latched_both(self.reply)
+
+    def test_final_witness_bytes_are_bound_even_when_txid_is_unchanged(self):
+        # Mutate only the last signature byte, retaining non-witness txid/size.
+        self.raw = self.raw[:-5] + bytes([self.raw[-5] ^ 1]) + self.raw[-4:]
+        self.assertEqual(serialized_vsize(self.raw), self.vsize)
+        self.assert_latched_both(self.reply)
+
+    def test_truncated_rate_boundary_is_exact_and_keeps_quote_floor(self):
+        expected = 1000000 // self.vsize
+        self.assertNotEqual(1000000 % self.vsize, 0)
+        for delta in (-1, 0, 1):
+            self.reply[0]['fees']['effective-feerate'] = Decimal(expected + delta).scaleb(-8)
+            if delta == 0:
+                self.assertIsNone(self.check())
+            else:
+                self.assert_latched_both(self.reply)
+        self.reply[0]['fees']['effective-feerate'] = Decimal(expected).scaleb(-8) + Decimal('0.000000001')
+        self.assert_latched_both(self.reply)
+
+
+class FE007CapturedReplies(unittest.TestCase):
+    """Replay exact Core stdout; only the external PSBT wrapper is substituted.
+
+    Core's P2WPKH fixtures are outside Fusion's P2TR-only size parser. Supply
+    their independently measured vsize here; PreflightVerification above keeps
+    the real wallet serializer/size checks on Fusion-format witness bytes.
+    """
+    def setUp(self):
+        self.fixture = json.loads((Path(__file__).parent / 'fixtures' /
+                                  'fe007_v013_preflight.json').read_text())
+
+    def test_accepted_one_and_two_input_exact_core_replies(self):
+        for name, fee in (('accept-1in2out', 2000), ('accept-2in2out', 3000)):
+            with self.subTest(name=name):
+                capture = self.fixture['accepted_raw'][name]
+                raw = bytes.fromhex(capture['hex'])
+                txid = capture['decoded']['txid']
+                vsize = capture['decoded']['vsize']
+                reply = decode(self.fixture['replies']['tma:' + name].encode(),
+                               'testmempoolaccept', [])
+                self.assertNotEqual(txid, capture['decoded']['hash'])
+                psbt = SimpleNamespace(finalize=lambda: raw, txid=lambda: txid)
+                review = SimpleNamespace(fee=fee, vsize=vsize, rate_atoms_per_kvb=2000)
+                with patch.object(PSBT, 'decode', return_value=psbt), patch(
+                        'wam_regtest.domain.preflight.serialized_vsize', return_value=vsize):
+                    with localcontext() as ctx:
+                        ctx.prec = 2
+                        self.assertIsNone(verify_preflight(reply, b'signed', review))
+                    reply[0]['fees']['effective-feerate'] += Decimal('0.00000001')
+                    with self.assertRaises(ValueError):
+                        verify_preflight(reply, b'signed', review)
+
+    def test_exact_core_rejections_need_no_economics_or_details(self):
+        expected = {
+            'reject-below-min-relay': 'FEE_POLICY_REJECTED',
+            'reject-input-spent-confirmed': 'INPUT_SPENT_OR_CONFLICTED',
+            'reject-non-final-locktime': 'POLICY_REJECTED',
+            'reject-maxfeerate-default': 'POLICY_REJECTED',
+            'already-in-mempool': 'ALREADY_IN_MEMPOOL',
+            'rbf-boundary-minus1': 'FEE_POLICY_REJECTED',
+            'rbf-adds-unconfirmed-input': 'CONFLICT_REJECTED',
+        }
+        for name, token in expected.items():
+            with self.subTest(name=name):
+                reply = decode(self.fixture['replies']['tma:' + name].encode(),
+                               'testmempoolaccept', [])
+                self.assertEqual(set(reply[0]), {'txid', 'wtxid', 'allowed', 'reject-reason'})
+                self.assertEqual(verify_preflight(reply, b'unneeded', None), token)
+        for reason in ('bad-txns-inputs-missingorspent', 'UNKNOWN', None):
+            reply = [{'allowed': False, 'reject-reason': reason}]
+            self.assertEqual(verify_preflight(reply, b'unneeded', None), 'POLICY_REJECTED')

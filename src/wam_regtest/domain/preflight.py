@@ -1,25 +1,23 @@
 """Read-only admission verification. Acceptance never authorizes submission."""
 from decimal import Decimal
+from hashlib import sha256
 import re
 
 from ..infrastructure.tx_size import serialized_vsize
 
 
-# Pending FE-007 confirmation against official v0.1.13. Missing required fields
-# on acceptance fail closed; effective-includes is optional, but checked if set.
+# Confirmed by FE-007 on v0.1.13 (claude-run-20261114T014527Z).
+# Missing required fields on acceptance fail closed.
 PREFLIGHT_REQUIRED_FIELDS = (
-    'txid', 'vsize', 'fees.base', 'fees.effective-feerate',
+    'txid', 'wtxid', 'vsize', 'fees.base', 'fees.effective-feerate',
+    'fees.effective-includes',
 )
 PREFLIGHT_REJECT_REASONS = {
     'min relay fee not met': 'FEE_POLICY_REJECTED',
     'insufficient fee': 'FEE_POLICY_REJECTED',
-    'bad-txns-inputs-missingorspent': 'INPUT_SPENT_OR_CONFLICTED',
-    'txn-mempool-conflict': 'CONFLICT_REJECTED',
+    'missing-inputs': 'INPUT_SPENT_OR_CONFLICTED',
     'replacement-adds-unconfirmed': 'CONFLICT_REJECTED',
-    'bip125-replacement-disallowed': 'CONFLICT_REJECTED',
-    'dust': 'POLICY_REJECTED',
     'non-final': 'POLICY_REJECTED',
-    'non-BIP68-final': 'POLICY_REJECTED',
     'max-fee-exceeded': 'POLICY_REJECTED',
     'txn-already-in-mempool': 'ALREADY_IN_MEMPOOL',
 }
@@ -82,6 +80,10 @@ def verify_preflight(reply, signed, review):
     if (type(txid) is not str or re.fullmatch('[0-9a-fA-F]{64}', txid) is None
             or txid != psbt.txid()):
         raise ValueError('WALLET_MEMPOOL_REPLY_DENIED')
+    wtxid = sha256(sha256(raw).digest()).digest()[::-1].hex()
+    if (type(fields['wtxid']) is not str or fields['wtxid'] != wtxid
+            or fields['fees.effective-includes'] != [wtxid]):
+        raise ValueError('WALLET_MEMPOOL_REPLY_DENIED')
     vsize = fields['vsize']
     if (type(vsize) is not int or vsize != serialized_vsize(raw)
             or (getattr(review, 'vsize', None) is not None and vsize != review.vsize)):
@@ -98,8 +100,5 @@ def verify_preflight(reply, signed, review):
     quote = getattr(review, 'rate_atoms_per_kvb', None)
     if (atoms_rate != expected_rate
             or (quote is not None and atoms_rate < quote)):
-        raise ValueError('WALLET_MEMPOOL_REPLY_DENIED')
-    if ('effective-includes' in item['fees']
-            and item['fees']['effective-includes'] != [txid]):
         raise ValueError('WALLET_MEMPOOL_REPLY_DENIED')
     return None
