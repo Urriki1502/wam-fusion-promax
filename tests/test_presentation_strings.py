@@ -184,13 +184,15 @@ class CatalogTests(unittest.TestCase):
                          expected | pm017_keys | status_keys | pm018_keys
                          | set(pm021['english']) | set(fe002['english']) | set(pm041['english'])
                          | set(fe003['english']) | {'backup.preparing', 'backup.checking', 'backup.scroll_accessible', 'backup.reopen', 'backup.done'}
-                         | set(pm062['english']))
+                         | set(pm062['english']) | {'errors.WALLET_CHANGE_BELOW_DUST'})
 
     def test_public_error_mapping_and_codes_unchanged(self):
         from wam_regtest.gui_errors import _MESSAGES, error_text, public_code
         fe003 = json.loads((ROOT / 'tests/fe003_english_literals.json').read_text())
         additions = {key.removeprefix('errors.'): value
                      for key, value in fe003['english'].items() if key.startswith('errors.')}
+        pm072 = json.loads((ROOT / 'tests/pm072_english_literals.json').read_text())
+        additions.update({key.removeprefix('errors.'): value for key, value in pm072['english'].items()})
         self.assertEqual(_MESSAGES, FIXTURE['errors'] | additions)
         for code, literal in FIXTURE['errors'].items():
             self.assertEqual(public_code(code), code)

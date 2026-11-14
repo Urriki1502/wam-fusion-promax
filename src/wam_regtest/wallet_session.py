@@ -26,6 +26,86 @@ class WalletSessionError(ValueError):
     pass
 
 
+def _provable_subdust_change(facts, amount, fee, rate=None):
+    """Read-only explanation of pinned WSP's default selector, never a selector.
+
+    Called only with unchanged pre/post-refusal coin and lock facts. Only classify
+    when all funding candidates in WSP's single-coin/greedy-prefix search leave
+    1..329 atoms, at both the attempted fee and the quoted input-count fee.
+    Missing, malformed, excessive or contradictory facts retain the old error.
+    """
+    from wam_sp.psbt import MAX_INPUTS, Tx
+    from .domain.fee_policy import fee_for_vsize
+    from .infrastructure.tx_size import taproot_keypath_vsize
+    try:
+        coins, locked = facts
+        if len(coins) > 10000:
+            return False
+        groups = {}
+        for c in coins:
+            if type(c['atoms']) is not int or c['atoms'] <= 0:
+                return False
+            if (c['txid'], c['vout']) not in locked:
+                groups.setdefault((c['account'], c['label']), []).append(c)
+        dust = False
+        script = b'\x51\x20' + bytes(32)
+        for group in groups.values():
+            candidates = [(c['atoms'], 1) for c in group]
+            total = 0
+            for count, c in enumerate(sorted(group, key=lambda c:
+                    (-c['atoms'], c['txid'], c['vout']))[:MAX_INPUTS], 1):
+                total += c['atoms']
+                candidates.append((total, count))
+            for total, count in candidates:
+                rest = total - amount - fee
+                if rest == 0 or rest >= 330:
+                    return False  # WSP should have accepted: unexplained refusal.
+                quoted_rest = rest
+                if rate is not None:
+                    tx = Tx(tuple(('11' * 32, i) for i in range(count)),
+                            ((amount, script), (330, script)))
+                    measured_fee = fee_for_vsize(
+                        taproot_keypath_vsize(tx, (65,) * count), rate)
+                    quoted_rest = total - amount - measured_fee
+                    if quoted_rest == 0 or quoted_rest >= 330:
+                        return False
+                if rest < 0:
+                    continue
+                if not 0 < quoted_rest < 330:
+                    return False
+                dust = True
+        return dust
+    except (KeyError, TypeError, ValueError, AttributeError, OverflowError):
+        return False
+
+
+def _selection_facts(wallet):
+    # WSP transactions cannot nest. Compare read-only snapshots around propose;
+    # any change or unavailable fact makes the explanation inconclusive.
+    try:
+        with wallet.scanner.store.transaction():
+            coins = wallet.scanner.coins(1)
+            locked = frozenset((r[0], r[1])
+                for table in ('reservations', 'mempool_spends')
+                for r in wallet.db.execute('SELECT txid,vout FROM ' + table))
+            return coins, locked
+    except Exception:
+        return None
+
+
+def _propose_with_change_reason(wallet, intent, fee, rate=None):
+    before = _selection_facts(wallet)
+    try:
+        return wallet.propose((intent,), fee)
+    except ValueError as error:
+        if (type(error) is ValueError
+                and error.args == ('INSUFFICIENT_SINGLE_CLUSTER_FUNDS',)
+                and before is not None and before == _selection_facts(wallet)
+                and _provable_subdust_change(before, intent.atoms, fee, rate)):
+            raise WalletSessionError('WALLET_CHANGE_BELOW_DUST') from None
+        raise
+
+
 def _finalize_preflight(signed):
     """Compute admission facts from the exact final PSBT witness bytes."""
     from wam_sp.psbt import PSBT
@@ -487,7 +567,7 @@ class WalletSession:
             intent = Intent(code, atoms)
             intent.validate()
             wallet = Wallet(self.scanner)
-            proposal = wallet.propose((intent,),fee)
+            proposal = _propose_with_change_reason(wallet, intent, fee)
             try:
                 prepared = Signer(self.ring).prepare(proposal)
                 replaceable = _psbt_replaceable(prepared.psbt)
@@ -552,7 +632,8 @@ class WalletSession:
                 if type(fee_atoms) is not int or not 1 <= fee_atoms <= MAX_FEE_ATOMS:
                     raise WalletSessionError("FEE_ABSOLUTE_LIMIT")
                 available_before = wallet.balance()["available_atoms"]
-                proposal = wallet.propose((intent,), fee_atoms)
+                proposal = _propose_with_change_reason(
+                    wallet, intent, fee_atoms, quoted.rate_atoms_per_kvb)
                 try:
                     prepared = Signer(self.ring).prepare(proposal)
                     replaceable = _psbt_replaceable(prepared.psbt)
@@ -590,8 +671,10 @@ class WalletSession:
                     # WSP raises this exact ValueError before inserting a
                     # reservation. WalletSessionError is a ValueError too, and
                     # every other message keeps its current refusal.
-                    if (type(error) is not ValueError
-                            or error.args != ("INSUFFICIENT_SINGLE_CLUSTER_FUNDS",)):
+                    if not ((type(error) is ValueError
+                             and error.args == ("INSUFFICIENT_SINGLE_CLUSTER_FUNDS",))
+                            or (type(error) is WalletSessionError
+                                and error.args == ("WALLET_CHANGE_BELOW_DUST",))):
                         raise
                     proposal, prepared, vsize, need, fee, available_before = propose_once(higher)
                     if need > fee:

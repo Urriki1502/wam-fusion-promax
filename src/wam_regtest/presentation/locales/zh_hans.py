@@ -774,4 +774,5 @@ ZH_HANS = {
     "history.empty_verified": "当前显示中没有活动。",
     "history.unavailable": "历史记录暂不可用 · 请解锁并同步钱包",
     "history.txid_not_displayed": "该交易不在当前显示中。这并不能确定其交易结果。",
+    "errors.WALLET_CHANGE_BELOW_DUST": "这笔付款会留下低于网络最小输出金额（330 atoms）的找零。请调整付款金额。",
 }

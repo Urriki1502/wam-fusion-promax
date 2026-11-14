@@ -328,7 +328,7 @@ class AutomaticFee(unittest.TestCase):
 
     def test_a_payment_that_fits_without_the_fee_is_refused(self):
         self._fund((10_000,))
-        with self.assertRaisesRegex(ValueError, "INSUFFICIENT_SINGLE_CLUSTER_FUNDS"):
+        with self.assertRaisesRegex(ValueError, "WALLET_CHANGE_BELOW_DUST"):
             # 9_600 alone leaves spendable change; 9_600 + the fee does not.
             self.session.prepare_auto(self.code, 9_600)
         self.assertEqual(_rows(self.scanner), [FOREIGN])
@@ -336,7 +336,7 @@ class AutomaticFee(unittest.TestCase):
 
     def test_change_below_dust_is_refused_before_save(self):
         self._fund((800,))
-        with self.assertRaisesRegex(ValueError, "INSUFFICIENT_SINGLE_CLUSTER_FUNDS"):
+        with self.assertRaisesRegex(ValueError, "WALLET_CHANGE_BELOW_DUST"):
             # 330 + 310 leaves a change below the 330 dust floor.
             self.session.prepare_auto(self.code, 330)
         self.assertEqual(_rows(self.scanner), [FOREIGN])
@@ -641,13 +641,9 @@ class AutomaticFee(unittest.TestCase):
         self.assertIsNone(self.session._prepared)
         self.assertEqual(self.vault.anchor.value, anchor)
 
-    def test_subdust_remainder_without_exact_fee_is_characterized_as_refused(self):
-        # Characterization only (D-FEE2-2). Do not absorb the remainder.
-        # Owner decision: absorb at most 329 atoms of sub-dust remainder into
-        # the fee, or refuse. Coin 100_400 and amount 100_000 leave rest 90
-        # over the quoted fee of 310, below the 330-atom change floor. The
-        # loop never computes a zero-remainder fee. Public code of this
-        # first-round refusal: WALLET_INPUT_FUNDS_UNAVAILABLE.
+    def test_subdust_remainder_without_exact_fee_has_dedicated_refusal(self):
+        # Enforced D-FEE2-2: 100_400 - 100_000 - 310 = 90 atoms of dust.
+        # Never absorb the remainder, reserve inputs, save or sign.
         from wam_regtest.gui_errors import operation_error
         coin, amount, quoted_fee = 100_400, 100_000, 310
         rest = coin - amount - quoted_fee
@@ -657,10 +653,11 @@ class AutomaticFee(unittest.TestCase):
         anchor = self.vault.anchor.value
         with self.assertRaises(ValueError) as caught:
             self.session.prepare_auto(self.code, amount)
-        self.assertIs(type(caught.exception), ValueError)
-        self.assertEqual(caught.exception.args, ("INSUFFICIENT_SINGLE_CLUSTER_FUNDS",))
+        from wam_regtest.wallet_session import WalletSessionError
+        self.assertIs(type(caught.exception), WalletSessionError)
+        self.assertEqual(caught.exception.args, ("WALLET_CHANGE_BELOW_DUST",))
         self.assertEqual(operation_error("prepare_auto", caught.exception),
-                         "WALLET_INPUT_FUNDS_UNAVAILABLE")
+                         "WALLET_CHANGE_BELOW_DUST")
         self.assertEqual(self.fees, [quoted_fee])
         self.assertNotIn(coin - amount, self.fees)
         self.assertEqual(_rows(self.scanner), [FOREIGN])

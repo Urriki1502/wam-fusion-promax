@@ -42,6 +42,10 @@ def operation_error(action,error):
         if code=='PAYMENT_AMOUNT':return 'WALLET_INPUT_AMOUNT_INVALID'
         if code=='FEE_POLICY':return 'WALLET_INPUT_FEE_INVALID'
         if code=='INSUFFICIENT_SINGLE_CLUSTER_FUNDS':return 'WALLET_INPUT_FUNDS_UNAVAILABLE'
+    # PM-072: the session alone proves the dust-change cause after WSP refuses.
+    if (action in ('prepare', 'prepare_auto') and type(error) is WalletSessionError
+            and code == 'WALLET_CHANGE_BELOW_DUST'):
+        return code
     if type(error) is WalletSessionError and code in _MESSAGES and code not in INPUT_ERRORS:
         return code
     if action in ('unlock','recover') and type(error) in (VaultError,WalletSessionError):

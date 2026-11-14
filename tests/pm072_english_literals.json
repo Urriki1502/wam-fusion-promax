@@ -1,0 +1,5 @@
+{
+  "english": {
+    "errors.WALLET_CHANGE_BELOW_DUST": "This payment would leave change below the network's minimum output (330 atoms). Adjust the amount."
+  }
+}

@@ -772,4 +772,5 @@ EN = {
     "history.empty_verified": "No activity in this display.",
     "history.unavailable": "History unavailable · unlock and sync the wallet",
     "history.txid_not_displayed": "Transaction not in the current display. This does not establish its outcome.",
+    "errors.WALLET_CHANGE_BELOW_DUST": "This payment would leave change below the network's minimum output (330 atoms). Adjust the amount.",
 }

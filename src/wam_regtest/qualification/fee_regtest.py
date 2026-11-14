@@ -71,10 +71,10 @@ FIXTURES = (
         "tamper-sign", "tamper-broadcast", "dismiss-sign", "close-sign",
         "dismiss-broadcast", "close-broadcast", "separate-approvals",
         "utxo-changed", "stale-quote", "crypto-failure", "lost-send-response")),
-    # D-FEE2-2 characterization: 100_000 + 310 < 100_400 < 100_000 + 310 + 330
-    # and no exact-remainder fee. Manifest must report OWNER DECISION PENDING, never PASS.
+    # Owner-approved D-FEE2-2: 90 atoms of change must be refused with the
+    # dedicated code, with the same no-side-effects assertions as F3 refusals.
     Fixture("D-FEE2-2", "subdust-sweep-characterization", (100_400,), 100_000,
-            refusal=True, characterization=True),
+            refusal=True),
 )
 
 

@@ -32,7 +32,7 @@ EVIDENCE_NAME = "fee3-frozen-evidence.json"
 CASES_DIR = "fee3-frozen-cases"
 SCHEMA = "wam-fee3-frozen/v1"
 WSP_SOURCE_COMMIT = "ac55f13423620252bdbf848c7e8a280c3b84721e"
-FROZEN_REQUIRED_CASES = ("F3-01", "F3-02", "F3-03", "F3-04", "F3-05", "F3-06", "F3-11", "F3-12", "F3-13")
+FROZEN_REQUIRED_CASES = ("F3-01", "F3-02", "F3-03", "F3-04", "F3-05", "F3-06", "F3-11", "F3-12", "F3-13", "D-FEE2-2")
 
 
 def row_name(fixture):
@@ -57,12 +57,10 @@ NON_FROZEN_ROWS = {
        for name, boundary in FAULTS.items()},
     "F3-14/remaining-authority-publication-duplicates": (
         "BLOCKED", "BLOCKED_ADDITIONAL_AUTHORITY_PUBLICATION_DUPLICATE_SCENARIOS_NOT_IMPLEMENTED"),
-    "D-FEE2-2/subdust-sweep-characterization": (
-        "NOT_IN_SCOPE", "NOT_IN_SCOPE_SOURCE_CHARACTERIZATION_OWNER_DECISION_PENDING"),
 }
 NON_FROZEN_STATUSES = ("BLOCKED", "NOT_IN_SCOPE")
 
-if (len(FROZEN_FIXTURES) != 26 or len(set(REQUIRED_ROWS)) != 26
+if (len(FROZEN_FIXTURES) != 27 or len(set(REQUIRED_ROWS)) != 27
         or set(REQUIRED_ROWS) & set(NON_FROZEN_ROWS)):
     raise RuntimeError("F3_FROZEN_CLOSED_SET_DENIED")
 

@@ -119,16 +119,16 @@ class Evidence(unittest.TestCase):
         }
         self.assertEqual(aggregate_status(complete), "PASS")
         bad_pass = dict(complete)
-        bad_pass["subdust-sweep-characterization"] = "PASS"
+        bad_pass["subdust-sweep-characterization"] = CHARACTERIZATION_PENDING_STATUS
         self.assertEqual(aggregate_status(bad_pass), "BLOCKED")
         complete.pop(next(iter(complete)))
         self.assertEqual(aggregate_status(complete), "BLOCKED")
         complete["unrecognized"] = "PASS"
         self.assertEqual(aggregate_status(complete), "BLOCKED")
 
-    def test_d_fee2_2_characterization_never_reports_pass(self):
+    def test_d_fee2_2_requires_enforced_refusal(self):
         fixture = next(f for f in FIXTURES if f.case == "D-FEE2-2")
-        self.assertTrue(fixture.characterization)
+        self.assertFalse(fixture.characterization)
         self.assertTrue(fixture.refusal)
         self.assertEqual(fixture.coins, (100_400,))
         self.assertEqual(fixture.amount, 100_000)
@@ -136,11 +136,16 @@ class Evidence(unittest.TestCase):
         result["fixture"] = fixture.name
         result["case_id"] = fixture.case
         result["assertions"] = {key: True for key in required_assertions(fixture)}
-        self.assertFalse(valid_pass_result(result))
+        self.assertTrue(valid_pass_result(result))
         self.assertFalse(valid_characterization_result(result))
+        for key in ("exact_refusal", "original_refusal", "no_state_change",
+                    "no_sign_or_submit", "no_mempool_change"):
+            result["assertions"][key] = False
+            self.assertFalse(valid_pass_result(result), key)
+            result["assertions"][key] = True
         result["status"] = CHARACTERIZATION_PENDING_STATUS
         self.assertFalse(valid_pass_result(result))
-        self.assertTrue(valid_characterization_result(result))
+        self.assertFalse(valid_characterization_result(result))
 
     def test_f3_01_requires_gui_sign_review_and_cancel_assertions(self):
         f301 = next(f for f in FIXTURES if f.case == "F3-01")

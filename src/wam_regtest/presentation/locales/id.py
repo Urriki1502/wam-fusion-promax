@@ -774,4 +774,5 @@ ID = {
     "history.empty_verified": "Tidak ada aktivitas di tampilan ini.",
     "history.unavailable": "Riwayat tidak tersedia · buka kunci dan sinkronkan dompet",
     "history.txid_not_displayed": "Transaksi tidak ada di tampilan saat ini. Hal ini tidak menentukan hasilnya.",
+    "errors.WALLET_CHANGE_BELOW_DUST": "Pembayaran ini akan menyisakan kembalian di bawah keluaran minimum jaringan (330 atoms). Sesuaikan jumlahnya.",
 }

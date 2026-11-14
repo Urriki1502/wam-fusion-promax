@@ -310,7 +310,7 @@ def backend_type():
                         return None
                     return super().execute(action, args, kwargs)
                 except Exception as error:
-                    if error.args in (("PAYMENT_AMOUNT",), ("INSUFFICIENT_SINGLE_CLUSTER_FUNDS",), ("FEE_DISPROPORTIONATE",)):
+                    if error.args in (("PAYMENT_AMOUNT",), ("INSUFFICIENT_SINGLE_CLUSTER_FUNDS",), ("FEE_DISPROPORTIONATE",), ("WALLET_CHANGE_BELOW_DUST",)):
                         o["original_refusal"] = error.args[0]
                     raise
 
@@ -755,11 +755,13 @@ def run_fixture(fixture, app, adapter, core, source, result, actor=None):
             after = request("fee_inspect", timeout=240)
             expected = ("WALLET_INPUT_AMOUNT_INVALID" if fixture.amount == 329
                         else "FEE_DISPROPORTIONATE" if fixture.amount in (330, 331)
+                        else "WALLET_CHANGE_BELOW_DUST" if fixture.case == "D-FEE2-2" or fixture.name == "change-329"
                         else "WALLET_INPUT_FUNDS_UNAVAILABLE")
             checks["exact_refusal"] = refusal == expected
             checks["original_refusal"] = observations.get("original_refusal") == (
                 "PAYMENT_AMOUNT" if fixture.amount == 329
                 else "FEE_DISPROPORTIONATE" if fixture.amount in (330, 331)
+                else "WALLET_CHANGE_BELOW_DUST" if fixture.case == "D-FEE2-2" or fixture.name == "change-329"
                 else "INSUFFICIENT_SINGLE_CLUSTER_FUNDS")
             checks["no_state_change"] = (after["reservation_sha256"] == before["reservation_sha256"]
                 and after["anchor_sha256"] == before["anchor_sha256"]

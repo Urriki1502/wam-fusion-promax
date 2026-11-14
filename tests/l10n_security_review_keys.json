@@ -1492,6 +1492,10 @@
     {
       "key": "history.txid_not_displayed",
       "reason": "PM-062 S: absent requested TXID clears selection/Copy without outcome inference; native review PENDING."
+    },
+    {
+      "key": "errors.WALLET_CHANGE_BELOW_DUST",
+      "reason": "PM-072 S/U: payment safety and user action; 330 atoms is the verified network output minimum. Machine-assisted; native review PENDING."
     }
   ]
 }

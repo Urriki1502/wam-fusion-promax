@@ -774,4 +774,5 @@ JA = {
     "history.empty_verified": "この表示にアクティビティはありません。",
     "history.unavailable": "履歴を利用できません · ウォレットをロック解除して同期してください",
     "history.txid_not_displayed": "この取引は現在の表示にありません。これによって取引結果が確定するわけではありません。",
+    "errors.WALLET_CHANGE_BELOW_DUST": "この支払いでは、お釣りがネットワークの最小出力額（330 atoms）を下回ります。金額を調整してください。",
 }

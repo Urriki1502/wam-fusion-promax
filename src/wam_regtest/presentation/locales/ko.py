@@ -774,4 +774,5 @@ KO = {
     "history.empty_verified": "이 보기에 활동이 없습니다.",
     "history.unavailable": "기록을 사용할 수 없습니다 · 지갑 잠금을 해제하고 동기화하십시오",
     "history.txid_not_displayed": "거래가 현재 보기에 없습니다. 이것이 거래 결과를 의미하지는 않습니다.",
+    "errors.WALLET_CHANGE_BELOW_DUST": "이 결제는 네트워크의 최소 출력 금액(330 atoms)보다 적은 거스름돈을 남깁니다. 금액을 조정하세요.",
 }
