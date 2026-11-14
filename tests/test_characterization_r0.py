@@ -669,7 +669,7 @@ class UnlockOpenProjection(unittest.TestCase):
 
 
 class ActionAvailability(unittest.TestCase):
-    """F-08. Button enablement is the current _set_actions truth table."""
+    """F-08. Authority truth table plus Fusion's D3A-3 valid-form gate."""
 
     def setUp(self):
         from wam_regtest.bip39_fusion_gui import Bip39FusionWindow
@@ -693,12 +693,25 @@ class ActionAvailability(unittest.TestCase):
         self.fusion.deleteLater()
         self.app.processEvents()
 
+    def _assert_fusion_form_gate(self):
+        self.fusion._ready = self.fusion._spend_enabled = True
+        self.fusion._set_actions()
+        self.assertFalse(self.fusion.send.isEnabled())
+        self.assertTrue(self.fusion.overview.go_send.isEnabled())
+        self.fusion.recipient_input.setText('wamrtsp1public')
+        self.fusion.amount_input.setText('1')
+        self.fusion._set_actions()
+        self.assertTrue(self.fusion.send.isEnabled())
+        self.assertTrue(self.fusion.overview.go_send.isEnabled())
+
     def test_set_actions_truth_table_for_trial_and_fusion(self):
         """F-08. send/broadcast/confirm/activate/lock/unlock/cancel over the
         GUI flags and executor locked/faulted/busy (plus reauthentication and
         core_alive, which spend_safe also reads). _resumable_intent and
         _last_review are varied and do not change these controls. Fusion's
-        non-shared _set_actions keeps the same seven results."""
+        non-shared _set_actions keeps the same seven results with a valid form;
+        an empty form gates Review while Send navigation remains available."""
+        self._assert_fusion_form_gate()
         for bits in itertools.product((False, True), repeat=len(ACTION_FLAGS)):
             flags = dict(zip(ACTION_FLAGS, bits))
             for core_alive in (True, False, None):
@@ -714,6 +727,7 @@ class ActionAvailability(unittest.TestCase):
 
     def test_worker_delivery_and_quit_disable_enabled_controls(self):
         """F-08. busy is also _worker, _delivering_result, or _quit_requested."""
+        self._assert_fusion_form_gate()
         baselines = {
             'send': dict(ready=True, spend=True, signed=False, pending=False,
                          commitment=False, recovered=False, unlock_allowed=False),

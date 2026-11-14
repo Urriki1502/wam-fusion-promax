@@ -258,6 +258,7 @@ class SendCommands(unittest.TestCase):
         """
         dialog = self.prepare()
         self.window._on_ready('lock', None)
+        self.assertEqual(self.actions(), ['prepare_auto'])
         self.command.reset_mock()
         dialog.cancel.click()
         self.wait_for(lambda: self.window._worker is None)

@@ -28,6 +28,7 @@ class BackendSafetyUi(unittest.TestCase):
  def tearDown(self):
   self.window._poll.stop();self.window.hide();self.window.deleteLater();self.app.processEvents()
  def test_cached_spend_flag_cannot_override_backend_safety(self):
+  self.window.recipient_input.setText('wamrtsp1public');self.window.amount_input.setText('1')
   for state in [ExecutorState(locked=True,core_alive=True),ExecutorState(locked=False,core_alive=False),ExecutorState(locked=False,core_alive=None),ExecutorState(locked=False,core_alive=True,reauthentication_required=True)]:
    with self.subTest(state=state):
     self.owner.state=state;self.window._set_actions()
@@ -36,6 +37,8 @@ class BackendSafetyUi(unittest.TestCase):
     self.assertFalse(self.window.broadcast.isEnabled());self.assertFalse(self.window.cancel.isEnabled())
     self.window._signed_ready=False;self.window._approved_commitment=None
  def test_authenticated_unlocked_core_keeps_existing_spend_controls(self):
+  self.window._set_actions();self.assertFalse(self.window.send.isEnabled());self.assertTrue(self.window.overview.go_send.isEnabled())
+  self.window.recipient_input.setText('wamrtsp1public');self.window.amount_input.setText('1')
   self.window._set_actions();self.assertTrue(self.window.send.isEnabled());self.assertTrue(self.window.overview.go_send.isEnabled())
  def test_denial_never_displays_or_retains_unregistered_private_text(self):
   commitment='a'*64;self.window._approved_commitment=commitment
