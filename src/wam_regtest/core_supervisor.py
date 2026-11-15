@@ -27,7 +27,9 @@ from .supervisor_protocol import (
     PROTOCOL, MAX_FRAME, ReplayGuard, decode_frame, public_status,
     SupervisorProtocolError, _distinct,
 )
-from .supervisor_store import create_once, read_exact, exclusive_lease
+from .supervisor_store import (
+    create_once, read_exact, exclusive_lease, stage_namespace, STAGE_DIRECTORY,
+)
 from .supervisor_journal import LifecycleJournal
 from .wsp_live import REGTEST_GENESIS
 from .infrastructure import core_compat
@@ -143,6 +145,15 @@ class CoreSupervisor:
             # Only a completely empty namespace may be initialized. Partial,
             # legacy or corrupt state stays untouched for explicit review.
             entries = {p.name for p in root.iterdir()} - {'supervisor.lock'}
+            if sys.platform == 'darwin' and STAGE_DIRECTORY in entries:
+                # DUR-02 R1: '.wam-stage' is tolerated only as a validated
+                # private directory (checked under this lease, no-follow,
+                # through descriptors; an untrusted one refuses). A fresh
+                # namespace still needs every other entry absent AND the
+                # stage directory empty; any child makes it partial.
+                # Nothing here creates, reads or deletes stage entries.
+                if stage_namespace(root) == 'empty' and entries == {STAGE_DIRECTORY}:
+                    entries = set()
             if not entries:
                 fresh=True
                 self.listener = _listener(0)

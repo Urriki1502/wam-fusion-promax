@@ -7,12 +7,18 @@ from contextlib import contextmanager
 import os
 from pathlib import Path
 import re
+import secrets
 import stat
 import sys
 
 MAX_CONTROL_FILE=4096
 CONTROL_NAMES=frozenset({"supervisor.token","supervisor.profile","supervisor.lock",
                          "supervisor.failure","supervisor.wallet"})
+# DUR-02 (macOS only): records are staged in this private subdirectory and
+# published with renameatx_np(RENAME_EXCL). Residue is never read or deleted.
+STAGE_DIRECTORY=".wam-stage"
+MAX_STAGE_RESIDUE=64
+_RENAME_EXCL=0x00000004
 
 
 class SupervisorStorageError(ValueError):pass
@@ -110,12 +116,202 @@ def _win_read(native,handle,limit):
     return b"".join(chunks)
 
 
+@contextmanager
+def _owned(descriptor):
+    """Close on exit; a close error never replaces an in-flight primary failure."""
+    try:yield descriptor
+    except BaseException:
+        try:os.close(descriptor)
+        except OSError:pass
+        raise
+    else:os.close(descriptor)
+
+
+def _stage_name(name):
+    """Private stage-name validator; stage names are never public record names."""
+    if type(name) is not str or not re.fullmatch(r"[0-9a-f]{16}\.tmp",name):
+        raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_NAME_DENIED")
+    return name
+
+
+def _component(name):
+    """One relative path component as bytes: never absolute, dot, '..', '/' or NUL."""
+    if (type(name) is not str or name in ("",".","..") or "/" in name or "\0" in name
+            or not name.isascii()):
+        raise SupervisorStorageError("SUPERVISOR_STORAGE_NAME_DENIED")
+    return name.encode("ascii")
+
+
+def _renameatx_np():
+    """Darwin-only binding with the frozen ABI (DUR-02 N1). Missing symbol refuses."""
+    if sys.platform!="darwin":
+        raise SupervisorStorageError("SUPERVISOR_NATIVE_STORE_REQUIRED")
+    import ctypes
+    try:function=ctypes.CDLL(None,use_errno=True).renameatx_np
+    except (OSError,AttributeError):
+        raise SupervisorStorageError("SUPERVISOR_STORAGE_RENAME_UNAVAILABLE") from None
+    function.argtypes=[ctypes.c_int,ctypes.c_char_p,ctypes.c_int,ctypes.c_char_p,ctypes.c_uint]
+    function.restype=ctypes.c_int
+    return function
+
+
+def _rename_exclusive(stage_directory,stage,root_directory,final):
+    """renameatx_np(RENAME_EXCL) between two held descriptors; no fallback or retry.
+
+    errno is read immediately after a failing call. EEXIST keeps the existing
+    create-once refusal; every other failure (ENOTSUP, EINVAL, EXDEV, EIO,
+    any nonzero result) is a fixed refusal with no plain rename, copy or
+    overwrite. The source must still be the staged inode: see _verify_stage.
+    """
+    import ctypes
+    import errno
+    source=_component(_stage_name(stage));target=_component(final)
+    function=_renameatx_np()
+    ctypes.set_errno(0)
+    result=function(stage_directory,source,root_directory,target,_RENAME_EXCL)
+    error=ctypes.get_errno()
+    if result==0:return
+    if result==-1 and error==errno.EEXIST:
+        raise SupervisorStorageError("SUPERVISOR_STORAGE_CREATE_DENIED")
+    raise SupervisorStorageError("SUPERVISOR_STORAGE_RENAME_DENIED")
+
+
+def _open_stage_directory(root_directory,*,create):
+    """root/.wam-stage opened no-follow through the held root descriptor (N2).
+
+    Owner, mode 0700, absent ACL, non-inheritable descriptor, same device as
+    the root and the name still bound to the opened inode. Pre-existing
+    metadata is never repaired. Returns None only when absent and create=False.
+    """
+    from .private_directory import validate_macos_private_directory
+    flags=os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC
+    try:
+        try:directory=os.open(STAGE_DIRECTORY,flags,dir_fd=root_directory)
+        except FileNotFoundError:
+            if not create:return None
+            try:os.mkdir(STAGE_DIRECTORY,0o700,dir_fd=root_directory)
+            except FileExistsError:pass
+            directory=os.open(STAGE_DIRECTORY,flags,dir_fd=root_directory)
+    except OSError:
+        raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_UNTRUSTED") from None
+    try:
+        validate_macos_private_directory(directory)
+        held=os.fstat(directory)
+        linked=os.stat(STAGE_DIRECTORY,dir_fd=root_directory,follow_symlinks=False)
+        if (held.st_dev!=os.fstat(root_directory).st_dev
+                or (linked.st_dev,linked.st_ino)!=(held.st_dev,held.st_ino)):
+            raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_UNTRUSTED")
+    except BaseException as error:
+        try:os.close(directory)
+        except OSError:pass
+        if isinstance(error,SupervisorStorageError) or not isinstance(error,(OSError,ValueError)):
+            raise
+        raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_UNTRUSTED") from None
+    return directory
+
+
+def _residue_count(stage_directory,limit):
+    """Count every entry of any type, stopping after limit+1 (bounded enumeration)."""
+    count=0
+    with os.scandir(stage_directory) as entries:
+        for _entry in entries:
+            count+=1
+            if count>limit:break
+    return count
+
+
+def _verify_stage(root_directory,stage_directory,stage,handle,size):
+    """Bind the source name to the held, complete, flushed staged inode (N2).
+
+    This narrows, but cannot remove, a same-UID race: renameatx_np renames
+    whatever the source name denotes at call time. The published final is
+    therefore re-verified against this identity after the rename.
+    """
+    from .private_directory import _require_absent_acl, validate_macos_private_directory
+    try:
+        held=os.fstat(handle)
+        entry=os.stat(stage,dir_fd=stage_directory,follow_symlinks=False)
+        if (not stat.S_ISREG(held.st_mode) or held.st_uid!=os.geteuid()
+                or held.st_nlink!=1 or stat.S_IMODE(held.st_mode)!=0o600
+                or held.st_size!=size
+                or not stat.S_ISREG(entry.st_mode) or entry.st_nlink!=1
+                or (entry.st_dev,entry.st_ino)!=(held.st_dev,held.st_ino)):
+            raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_CHANGED")
+        _require_absent_acl(handle)
+        validate_macos_private_directory(stage_directory)
+        directory=os.fstat(stage_directory)
+        linked=os.stat(STAGE_DIRECTORY,dir_fd=root_directory,follow_symlinks=False)
+        if (linked.st_dev,linked.st_ino)!=(directory.st_dev,directory.st_ino):
+            raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_CHANGED")
+    except SupervisorStorageError:raise
+    except (OSError,ValueError):
+        raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_CHANGED") from None
+    return held.st_dev,held.st_ino
+
+
+def _create_darwin(root,name,data):
+    """DUR-02: stage -> complete write -> fsync -> verify -> exclusive rename -> verify -> fsync(root).
+
+    Atomic publication against process interruption only. Durability is the
+    same as before (os.fsync of the file and of the final root directory); the
+    stage directory's own metadata change is not flushed and no power-loss or
+    F_FULLFSYNC claim is made (DUR-01a). Before the rename a failure leaves no
+    final; after it, any failure is raised while the complete final may exist
+    (never removed, replayed or reported as success). Residue is retained.
+    """
+    with _posix_dir(root) as directory:
+        # Ordinary duplicates (e.g. the first-failure record) refuse here,
+        # before staging, so they never accumulate residue.
+        try:os.stat(name,dir_fd=directory,follow_symlinks=False)
+        except FileNotFoundError:pass
+        else:raise SupervisorStorageError("SUPERVISOR_STORAGE_CREATE_DENIED")
+        with _owned(_open_stage_directory(directory,create=True)) as stage_directory:
+            # At most MAX_STAGE_RESIDUE entries including the pending stage.
+            if _residue_count(stage_directory,MAX_STAGE_RESIDUE)>=MAX_STAGE_RESIDUE:
+                raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_RESIDUE_LIMIT")
+            stage=_stage_name(secrets.token_hex(8)+".tmp")
+            with _owned(_posix_file(stage_directory,stage,create=True)) as handle:
+                offset=0
+                while offset<len(data):
+                    n=os.write(handle,data[offset:])
+                    if n<=0:raise SupervisorStorageError("SUPERVISOR_STORAGE_WRITE_DENIED")
+                    offset+=n
+                os.fsync(handle)
+                staged=_verify_stage(directory,stage_directory,stage,handle,len(data))
+                _rename_exclusive(stage_directory,stage,directory,name)
+                published=os.stat(name,dir_fd=directory,follow_symlinks=False)
+                if (published.st_dev,published.st_ino)!=staged:
+                    raise SupervisorStorageError("SUPERVISOR_STORAGE_PUBLISH_UNVERIFIED")
+        os.fsync(directory)
+
+
+def stage_namespace(root):
+    """macOS R1 helper: 'absent', 'empty' or 'occupied' for root/.wam-stage.
+
+    Validates through descriptors without following links; never creates,
+    reads or deletes anything. An untrusted stage directory refuses.
+    """
+    root=_root(root)
+    if sys.platform!="darwin":raise SupervisorStorageError("SUPERVISOR_NATIVE_STORE_REQUIRED")
+    try:
+        with _posix_dir(root) as directory:
+            stage=_open_stage_directory(directory,create=False)
+            if stage is None:return "absent"
+            with _owned(stage):
+                return "empty" if _residue_count(stage,0)==0 else "occupied"
+    except SupervisorStorageError:raise
+    except (OSError,ValueError):
+        raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_UNTRUSTED") from None
+
+
 def create_once(root,name,data):
     root=_root(root);_name(name)
     if name=="supervisor.lock" or type(data) is not bytes or not 1<=len(data)<=MAX_CONTROL_FILE:
         raise SupervisorStorageError("SUPERVISOR_STORAGE_CREATE_DENIED")
     try:
-        if sys.platform=="win32":
+        if sys.platform=="darwin":
+            _create_darwin(root,name,data)
+        elif sys.platform=="win32":
             native,handle,guard=_win_open(root,name,create=True)
             try:
                 import ctypes
