@@ -108,7 +108,7 @@
     "WALLET_PAYMENT_ALREADY_PENDING": "A payment review is already active. Finish that review or cancel its unsigned draft before preparing another.",
     "WALLET_SIGN_UNCERTAIN_LOCK_RETAINED": "Signing did not complete safely. Input reservations are irreversible. Do not retry automatically or release the locks.",
     "WALLET_BROADCAST_UNCERTAIN_LOCK_RETAINED": "Broadcast result is uncertain. The node may have accepted the transaction. Do not retry automatically; reservations remain locked.",
-    "WALLET_BROADCAST_REJECTED_LOCK_RETAINED": "The local node rejected the signed transaction before submission; it was not sent. Input reservations stay signed and locked. Nothing is retried or released automatically.",
+    "WALLET_BROADCAST_REJECTED_LOCK_RETAINED": "The local node rejected this attempt before submission. No transaction was sent in this attempt. Your inputs remain reserved. An earlier attempt may still have been submitted. Nothing is retried or released automatically.",
     "WALLET_BROADCAST_NOT_SUBMITTED_LOCK_RETAINED": "Pre-submission verification could not complete; the transaction was not sent by this wallet. Input reservations stay signed and locked. Nothing is retried or released automatically.",
     "WALLET_LOCK_CLEANUP_UNCERTAIN": "Lock could not close every wallet resource. Keys were dropped from this session and it is stopped; local wallet data and reservations are preserved. Restart the application before reopening; do not remove files.",
     "WALLET_ROOT_LEASE_UNCERTAIN_LOCK_RETAINED": "The independent custody lease was lost. Operations are stopped and reservations retained. Do not reset the witness or retry automatically.",

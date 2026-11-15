@@ -285,7 +285,7 @@ KO = {
     "errors.WALLET_PAYMENT_ALREADY_PENDING": "결제 검토가 이미 진행 중입니다. 다른 결제를 준비하기 전에 그 검토를 끝내거나 서명되지 않은 초안을 취소하십시오.",
     "errors.WALLET_SIGN_UNCERTAIN_LOCK_RETAINED": "서명이 안전하게 완료되지 않았습니다. 입력 예약은 되돌릴 수 없습니다. 자동으로 다시 시도하지 마십시오. 잠금을 해제하지 마십시오.",
     "errors.WALLET_BROADCAST_UNCERTAIN_LOCK_RETAINED": "브로드캐스트 결과가 불확실합니다. 노드가 거래를 수락했을 수 있습니다. 자동으로 다시 시도하지 마십시오. 예약은 잠긴 채로 유지됩니다.",
-    "errors.WALLET_BROADCAST_REJECTED_LOCK_RETAINED": "로컬 노드가 제출 전에 서명된 거래를 거부했습니다. 거래는 전송되지 않았습니다. 입력 예약은 서명된 채로 잠겨 있습니다. 아무것도 자동으로 다시 시도되지 않습니다. 잠금은 해제되지 않습니다.",
+    "errors.WALLET_BROADCAST_REJECTED_LOCK_RETAINED": "로컬 노드가 제출 전에 이 시도를 거부했습니다. 이 시도에서는 아무 거래도 전송되지 않았습니다. 입력은 계속 예약 상태로 유지됩니다. 이전 시도는 이미 제출되었을 수 있습니다. 아무것도 자동으로 다시 시도되거나 해제되지 않습니다.",
     "errors.WALLET_BROADCAST_NOT_SUBMITTED_LOCK_RETAINED": "제출 전 검증을 마치지 못했습니다. 이 지갑은 거래를 보내지 않았습니다. 입력 예약은 서명된 채로 잠겨 있습니다. 아무것도 자동으로 다시 시도되지 않습니다. 잠금은 해제되지 않습니다.",
     "errors.WALLET_LOCK_CLEANUP_UNCERTAIN": "잠금이 모든 지갑 자원을 닫지 못했습니다. 키는 이 세션에서 버려졌고 세션은 중지되었습니다. 로컬 지갑 데이터와 예약은 보존됩니다. 다시 열기 전에 애플리케이션을 다시 시작하십시오. 파일을 제거하지 마십시오.",
     "errors.WALLET_ROOT_LEASE_UNCERTAIN_LOCK_RETAINED": "독립 보관 임대가 손실되었습니다. 작업은 중지되고 예약은 유지됩니다. witness 를 초기화하지 마십시오. 자동으로 다시 시도하지 마십시오.",

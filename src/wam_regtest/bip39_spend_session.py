@@ -20,6 +20,7 @@ from .managed_wallet_checkpoint import _owned, _runtime
 from .managed_wallet_session import RuntimeGuard
 from .wallet_session import (
     WalletSession, WalletSessionError, WalletCoreCli, _verify_session_preflight,
+    _psbt_replaceable,
 )
 from .bip39_seed_vault import (
     _owned_password, _owner_binding, open_owned_seed_container,
@@ -330,18 +331,35 @@ class Q06OwnedSpendSession(WalletSession):
                                      atoms=body['atoms'], fee=body['fee'],
                                      fee_quote=fee_quote)
             rpc = self._rpc()
+            # RBF-RESUME-01: no resubmission without explicit BIP125 signalling
+            # on the stored PSBT. This local check precedes any preflight or
+            # submission; a missing signal keeps the durable state, locks,
+            # bytes and provenance exactly as they are and sends nothing.
+            if not _psbt_replaceable(signed):
+                raise WalletSessionError('RBF_SIGNALLING_MISSING')
+            try:
+                # REC-2 (SPEC §5 bullet 1): the SAME exact-byte preflight
+                # contract for a 'signed' AND an 'uncertain' intent, before
+                # any submission attempt.
+                rejection = _verify_session_preflight(rpc, signed, review)
+            except Exception:
+                # Malformed acceptance, bad identity, untrusted Core or a
+                # transport failure latches (Core trust is in doubt) exactly
+                # as on the signed path. Nothing was submitted in this
+                # attempt; the original uncertainty is never relabelled.
+                self.faulted = True
+                raise WalletSessionError(
+                    'WALLET_BROADCAST_NOT_SUBMITTED_LOCK_RETAINED') from None
+            if rejection is not None:
+                # Definitive typed policy rejection before this attempt's send:
+                # no new session fault, no new uncertainty latch, no send, no
+                # re-sign and no fee rewrite. The ORIGINAL state, locks, bytes
+                # and provenance are kept; historical uncertainty is NOT
+                # cleared by a clean refusal.
+                error = WalletSessionError("WALLET_BROADCAST_REJECTED_LOCK_RETAINED")
+                error.preflight_rejection = rejection  # fixed diagnostic token only
+                raise error
             if item['state'] == 'signed':
-                try:
-                    rejection = _verify_session_preflight(rpc, signed, review)
-                except Exception:
-                    self.faulted = True
-                    raise WalletSessionError(
-                        'WALLET_BROADCAST_NOT_SUBMITTED_LOCK_RETAINED') from None
-                if rejection is not None:
-                    # Durable state remains 'signed'; nothing was submitted.
-                    error = WalletSessionError("WALLET_BROADCAST_REJECTED_LOCK_RETAINED")
-                    error.preflight_rejection = rejection  # fixed diagnostic token only
-                    raise error
                 existing = self._read_payment_evidence(token, 'uncertain')
                 if existing is None:
                     self._retain_signed_payment('uncertain', signed=signed, review=review,

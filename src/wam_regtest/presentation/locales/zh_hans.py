@@ -285,7 +285,7 @@ ZH_HANS = {
     "errors.WALLET_PAYMENT_ALREADY_PENDING": "已有一次付款复核正在进行。请完成该复核，或取消其未签名草稿，然后再准备另一笔。",
     "errors.WALLET_SIGN_UNCERTAIN_LOCK_RETAINED": "签名没有安全完成。输入预留不可撤销。请不要自动重试。请不要释放锁定。",
     "errors.WALLET_BROADCAST_UNCERTAIN_LOCK_RETAINED": "广播结果不确定。节点可能已经接受该交易。请不要自动重试；预留保持锁定。",
-    "errors.WALLET_BROADCAST_REJECTED_LOCK_RETAINED": "本地节点在提交前拒绝了已签名交易；交易没有发出。输入预留保持已签名并锁定。不会自动重试或释放任何内容。",
+    "errors.WALLET_BROADCAST_REJECTED_LOCK_RETAINED": "本地节点在提交前拒绝了本次尝试。本次尝试未发送任何交易。您的输入仍处于预留状态。较早的尝试可能已经被提交。不会自动重试或释放任何内容。",
     "errors.WALLET_BROADCAST_NOT_SUBMITTED_LOCK_RETAINED": "提交前验证未能完成；此钱包没有发送该交易。输入预留保持已签名并锁定。不会自动重试或释放任何内容。",
     "errors.WALLET_LOCK_CLEANUP_UNCERTAIN": "锁定未能关闭每一项钱包资源。密钥已从本次会话丢弃，会话已停止；本地钱包数据和预留予以保留。重新打开之前请重启应用；不要删除文件。",
     "errors.WALLET_ROOT_LEASE_UNCERTAIN_LOCK_RETAINED": "独立托管租约已丢失。操作已停止，预留予以保留。请不要重置见证或自动重试。",

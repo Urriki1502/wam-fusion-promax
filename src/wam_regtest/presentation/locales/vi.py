@@ -285,7 +285,7 @@ VI = {
     "errors.WALLET_PAYMENT_ALREADY_PENDING": "Một lần xem lại thanh toán đang hoạt động. Hãy kết thúc lần xem lại đó hoặc hủy bản nháp chưa ký trước khi chuẩn bị khoản khác.",
     "errors.WALLET_SIGN_UNCERTAIN_LOCK_RETAINED": "Việc ký không hoàn tất an toàn. Các khoản giữ chỗ đầu vào không thể đảo ngược. Đừng thử lại tự động. Đừng giải phóng khóa.",
     "errors.WALLET_BROADCAST_UNCERTAIN_LOCK_RETAINED": "Kết quả phát chưa chắc chắn. Nút có thể đã nhận giao dịch. Đừng thử lại tự động; các khoản giữ chỗ vẫn khóa.",
-    "errors.WALLET_BROADCAST_REJECTED_LOCK_RETAINED": "Nút cục bộ đã từ chối giao dịch đã ký trước khi gửi; giao dịch chưa được gửi. Các khoản giữ chỗ đầu vào vẫn đã ký và bị khóa. Không có gì được thử lại hoặc giải phóng tự động.",
+    "errors.WALLET_BROADCAST_REJECTED_LOCK_RETAINED": "Nút cục bộ đã từ chối lần thử này trước khi gửi. Không có giao dịch nào được gửi trong lần thử này. Các đầu vào của bạn vẫn được giữ chỗ. Một lần thử trước đó vẫn có thể đã được gửi. Không có gì được thử lại hoặc giải phóng tự động.",
     "errors.WALLET_BROADCAST_NOT_SUBMITTED_LOCK_RETAINED": "Xác minh trước khi gửi không hoàn tất; ví này chưa gửi giao dịch. Các khoản giữ chỗ đầu vào vẫn đã ký và bị khóa. Không có gì được thử lại hoặc giải phóng tự động.",
     "errors.WALLET_LOCK_CLEANUP_UNCERTAIN": "Việc khóa không đóng được mọi tài nguyên ví. Khóa đã được bỏ khỏi phiên này và phiên đã dừng; dữ liệu ví cục bộ và các khoản giữ chỗ được giữ. Hãy khởi động lại ứng dụng trước khi mở lại; đừng xóa tệp.",
     "errors.WALLET_ROOT_LEASE_UNCERTAIN_LOCK_RETAINED": "Hợp đồng thuê lưu ký độc lập đã mất. Các thao tác đã dừng và các khoản giữ chỗ được giữ. Đừng đặt lại witness hoặc thử lại tự động.",

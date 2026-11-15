@@ -126,6 +126,15 @@ class WalletExecutor:
                 if type(code) is not str or not re.fullmatch('[A-Z][A-Z0-9_]{1,95}',code):
                     code='WALLET_EXECUTOR_DENIED'
                 error=WalletExecutorError(code)
+                # REC-2 (SPEC §5.1): carry ONLY the fixed allowlisted
+                # preflight-rejection token, validated by exact type against
+                # the allowlist. Never str(exception); arbitrary exception
+                # text never crosses this boundary, and a missing or unknown
+                # diagnostic stays safely generic (attribute absent).
+                from .wallet_session import PREFLIGHT_REJECTION_TOKENS
+                token=getattr(failure,'preflight_rejection',None)
+                if type(token) is str and token in PREFLIGHT_REJECTION_TOKENS:
+                    error.preflight_rejection=token
             finally:
                 # State and idle transition precede delivery, so a caller that
                 # received a result may submit exactly one next operation.

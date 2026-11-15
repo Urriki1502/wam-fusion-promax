@@ -38,10 +38,11 @@ ENGLISH_GUI_ERRORS = {'FEE_ABSOLUTE_LIMIT': 'The fee exceeds 0.01 WAM. Nothing w
                                                  'the transaction was not sent by this wallet. '
                                                  'Input reservations stay signed and locked. '
                                                  'Nothing is retried or released automatically.',
- 'WALLET_BROADCAST_REJECTED_LOCK_RETAINED': 'The local node rejected the signed transaction before '
-                                            'submission; it was not sent. Input reservations stay '
-                                            'signed and locked. Nothing is retried or released '
-                                            'automatically.',
+ 'WALLET_BROADCAST_REJECTED_LOCK_RETAINED': 'The local node rejected this attempt before '
+                                            'submission. No transaction was sent in this '
+                                            'attempt. Your inputs remain reserved. An earlier '
+                                            'attempt may still have been submitted. Nothing is '
+                                            'retried or released automatically.',
  'WALLET_BROADCAST_UNCERTAIN_LOCK_RETAINED': 'Broadcast result is uncertain. The node may have '
                                              'accepted the transaction. Do not retry '
                                              'automatically; reservations remain locked.',

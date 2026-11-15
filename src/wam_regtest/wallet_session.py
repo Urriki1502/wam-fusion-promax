@@ -132,6 +132,16 @@ def _verify_session_preflight(rpc, signed, review):
                             quoted_rate_atoms_per_kvb=getattr(review, 'rate_atoms_per_kvb', None))
 
 
+# REC-2 (SPEC §5.1): fixed public allowlist of definitive preflight-rejection
+# tokens. Exactly the tokens domain.preflight.verify_preflight can return on a
+# definitive rejection (PREFLIGHT_REJECT_REASONS values plus the generic
+# POLICY_REJECTED fallback). Only these may cross the session → executor → GUI
+# boundary; missing/unknown diagnostics stay safely generic.
+PREFLIGHT_REJECTION_TOKENS = frozenset((
+    'FEE_POLICY_REJECTED', 'INPUT_SPENT_OR_CONFLICTED', 'CONFLICT_REJECTED',
+    'ALREADY_IN_MEMPOOL', 'POLICY_REJECTED'))
+
+
 def _fee_code(error):
     """Public fee-policy token, or one generic refusal. Never a message string."""
     code = error.args[0] if error.args and type(error.args[0]) is str else ""
