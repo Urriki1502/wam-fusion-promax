@@ -7,7 +7,7 @@ from unittest.mock import Mock, call, patch
 
 import test_q05_core_supervisor as lifecycle_fixture
 from wam_regtest import core_supervisor as module
-from wam_regtest.core_process import CoreBindingError, OwnedCoreBinding
+from wam_regtest.core_process import CoreBindingError, OwnedCoreBinding, managed_core_argv
 from wam_regtest.json_rpc import RpcError
 
 POLICY = {'minrelaytxfee': Decimal('0.00001000'),
@@ -86,7 +86,7 @@ class StartupContracts(unittest.TestCase):
         self.assertIs(owner.process, process)
         self.assertEqual(owner.state, 'ready')
         self.assertEqual(spawn.call_args.args[0],
-            [str(owner.node), f'-datadir={owner.directory}', '-daemon=0', '-nosettings'])
+            managed_core_argv(owner.node, owner.directory))
         registered.assert_called_once_with(process, owner.core, owner.directory,
                                            authorized_disposable_mutation=True)
         binding.assert_socket.assert_called_once()
@@ -111,7 +111,7 @@ class StartupContracts(unittest.TestCase):
         class Process:
             def __init__(self,args):self.args=args
             def poll(self):return None
-        baseline=[str(node),f'-datadir={self.root}','-daemon=0','-nosettings']
+        baseline=managed_core_argv(node,self.root)
         with patch.object(core_process.subprocess,'Popen',Process), \
                 patch.object(core_process,'verified_core_paths',return_value=(node,cli,{})), \
                 patch.object(core_process,'_metadata',return_value=('unit fixture',)):
@@ -143,7 +143,7 @@ class StartupContracts(unittest.TestCase):
                 patch.object(module,'_read_cli',side_effect=_cli_reply) as boot:
             owner.start(timeout=1,_defer_shared_network=True)
         self.assertEqual(spawn.call_args.args[0],
-            [str(owner.node),f'-datadir={owner.directory}','-daemon=0','-nosettings','-networkactive=0'])
+            managed_core_argv(owner.node, owner.directory, defer_network=True))
         rpc.assert_called_once_with(owner.core,owner.directory,
                                     authorized_readonly=True,binding=binding)
         self.assertEqual(boot.call_args_list,[
