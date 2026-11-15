@@ -164,6 +164,9 @@ def qualify(core,source):
                     or restored["account_id"]!=opened["account_id"]
                     or restored["receive_code"]!=opened["receive_code"]):
                 raise ValueError("Q06_OWNER_NEW_PROFILE_RESTORE_IDENTITY_DENIED")
+            # F-ACK-01: typed restore words are not a backup acknowledgement.
+            if restored.get("backup_status")!="deferred" or restored.get("restored") is not True:
+                raise ValueError("Q06_OWNER_RESTORE_BACKUP_STATUS_DENIED")
             stage("FRESH_OWNER_CORE_SCAN_START")
             second_view=second.request("snapshot",timeout=120)
             stage("FRESH_OWNER_CORE_SCAN_PASS")

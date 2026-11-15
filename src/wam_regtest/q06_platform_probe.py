@@ -376,6 +376,9 @@ def qualify(core, source, root, receipt, *, confirmed=False,
         if (restored["mnemonic_once"]
                 or restored["receive_code"] != opened["receive_code"]
                 or restored["account_id"] != opened["account_id"]
+                # F-ACK-01: typed restore words are not a backup acknowledgement.
+                or restored.get("backup_status") != "deferred"
+                or restored.get("restored") is not True
                 or fresh_view["height"] != 0
                 or fresh_view["confirmed_atoms"] != 0
                 or fresh_view["history_count_shown"] != 0

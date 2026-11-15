@@ -47,7 +47,10 @@
       "leave_backup_title": "Leave without finishing backup?",
       "leave_backup_message": "These 12 words are shown only once and will not be displayed again. If you leave now, this wallet locks and reopening it requires words from this phrase. Leave only if you have already written all 12 words down in order.",
       "leave_backup_stay": "Stay",
-      "leave_backup_confirm": "Leave and lock wallet"
+      "leave_backup_confirm": "Leave and lock wallet",
+      "owner.restore_prompt": "Enter exactly 12 disposable REGTEST recovery words. Never enter mainnet words. Restoring recovers this wallet's keys and its confirmed history on this chain. Payments that were signed, pending or uncertain on the original profile are not copied: keep the original profile and check them there.",
+      "wallet.restore_scope_notice": "Restoring from 12 words recovers keys and confirmed history only. Signed, pending or uncertain payments stay with the profile that made them. A missing record here never means a payment failed or is safe to retry. If the original profile is unavailable, the status of its unfinished payments stays unknown.",
+      "wallet.backup_explanation_restored": "You entered your 12 words to restore this wallet. Confirm three of them to record that your backup is kept safe. This does not copy payments from the original profile."
     },
     "vi": {
       "app_name": "WAM Fusion",

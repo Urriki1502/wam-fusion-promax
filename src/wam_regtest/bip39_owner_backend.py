@@ -138,7 +138,11 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                 reveal = phrase
                 backup_status = "required"
             else:
-                backup_status = "verified"
+                # F-ACK-01: typing the words to restore is not an
+                # authenticated backup acknowledgement. The first session
+                # reports the deferred sidecar truthfully; only the existing
+                # challenge (verify_backup_challenge) records "verified".
+                backup_status = "deferred"
             folder, public = create_owned_seed_container(
                 owner, self.source, password, phrase,
                 authorized=True, keychain=self.keychain)
@@ -157,7 +161,9 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
         self._secret = bytearray(password)
         self._seed_folder = folder
         self._public = public
+        restored = {"restored": True} if mode == "restore" else {}
         return {
+            **restored,
             "profile": public["profile"], "account_id": public["account_id"],
             "receive_code": public["receive_code"],
             "status": "Q06_REGTEST_READ_ONLY_OWNER_OPENED",

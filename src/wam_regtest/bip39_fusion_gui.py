@@ -332,6 +332,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
             t('wallet.recovery_title'),
             t('wallet.recovery_subtitle'),
         )
+        # F-GAP-1: always visible directly under the recovery subtitle, so the
+        # restore scope stays discoverable in every session and after restart.
+        self.restore_scope_notice = label(t('wallet.restore_scope_notice'))
+        self.restore_scope_notice.setObjectName('RestoreScopeNotice')
+        rl.addWidget(self.restore_scope_notice)
         rl.addWidget(self.recovery)
         rl.addWidget(label(
             t('wallet.reservations_retained'),
@@ -652,7 +657,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
     def _quick_backup(self):
         dialog = WalletConsent(
             t('wallet.backup_title'),
-            t('wallet.backup_explanation'),
+            t('wallet.backup_explanation_restored') if getattr(self, '_restored_session', False)
+            else t('wallet.backup_explanation'),
             self, accept_text=t('wallet.verify_words'))
         try:
             if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -811,6 +817,10 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self.status.setText(t('fusion.awaiting_verification'))
             self.backup_page.set_phrase(result["mnemonic_once"].split())
         else:
+            if result.get("restored") is True:
+                # The words were typed to restore, so they are not "unsaved"
+                # or "shown once": explain the challenge truthfully.
+                self.status.setText(t('wallet.backup_explanation_restored'))
             self.backup_page.set_deferred_mode()
         self.stack.setCurrentWidget(self.backup_page)
 

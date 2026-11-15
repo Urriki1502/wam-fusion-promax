@@ -578,6 +578,10 @@ class Bip39TrialWindow(QWidget):
     def _on_ready(self, action, result):
         if action in ('open', 'lock', 'quit', 'unlock'):
             self._resumable_intent = None
+            # F-ACK-01: only the first session of a restore carries
+            # restored=True; unlock, reopen and restart never do.
+            self._restored_session = (action == 'open' and isinstance(result, dict)
+                                      and result.get('restored') is True)
         if action in ('open', 'lock', 'quit'):
             self._recovered_unsigned_cancel = False
         elif action in ('snapshot', 'activate', 'unlock') and isinstance(result, dict):
