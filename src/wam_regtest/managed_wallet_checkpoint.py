@@ -7,6 +7,7 @@ Selectively adapts historical Q05 create/reopen, keeping current native vault,
 from hashlib import sha256
 import hmac
 import json
+import os
 from pathlib import Path
 import re
 import secrets
@@ -235,6 +236,20 @@ def _snapshot(ring,scanner,rpc,vault):
     return _locked_observation(ring,scanner,rpc,vault,Wallet(scanner))
 
 
+def _remove_known_scanner_lock(runtime):
+    """Remove only this owned runtime's verified .scan.lock after runtime unlink."""
+    lock=runtime.with_name(runtime.name+'.scan.lock')
+    if lock.exists() or lock.is_symlink():
+        info=lock.lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink!=1
+                or lock.is_symlink() or getattr(info,'st_file_attributes',0)&0x400
+                or (sys.platform!='win32'
+                    and (info.st_uid!=os.geteuid()
+                         or stat.S_IMODE(info.st_mode)!=0o600))):
+            raise ManagedWalletError('MANAGED_WALLET_SCAN_LOCK_UNCERTAIN')
+        lock.unlink()
+
+
 def _close_owned_runtime(ring,scanner,runtime):
     scanner.close();ring.close()
     # Only the fresh runtime created by THIS call can be removed after an
@@ -243,6 +258,7 @@ def _close_owned_runtime(ring,scanner,runtime):
            or runtime.with_name(runtime.name+s).is_symlink() for s in ('-journal','-wal','-shm')):
         raise ManagedWalletError('MANAGED_WALLET_RUNTIME_CLOSE_UNCERTAIN')
     runtime.unlink()
+    _remove_known_scanner_lock(runtime)
 
 
 def checkpoint(owner,source,password,*,authorized=False,keychain=None,create=False):

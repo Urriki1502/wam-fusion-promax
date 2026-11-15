@@ -8,7 +8,8 @@ from contextlib import ExitStack
 
 from . import custody
 from .managed_wallet_checkpoint import (
-    ManagedWalletError,_inputs,_owned,_runtime,_read_reference,_publish_reference,_snapshot,
+    ManagedWalletError,_inputs,_owned,_runtime,_read_reference,_publish_reference,
+    _remove_known_scanner_lock,_snapshot,
 )
 from .supervisor_identity import directory_identity
 from .wallet_recovery import _records,active_location,has_recovery_records,require_anchor_floor
@@ -58,6 +59,7 @@ class RuntimeGuard:
         if (before.st_dev,before.st_ino)!=(after.st_dev,after.st_ino) or not stat.S_ISREG(after.st_mode):
             raise ValueError('WALLET_MANAGED_RUNTIME_CHANGED')
         self.path.unlink()
+        _remove_known_scanner_lock(self.path)
 
     def close(self):
         if self.fd is not None:os.close(self.fd);self.fd=None
@@ -98,12 +100,6 @@ def _require_no_prior_runtime(owner,wallet_id,active_name=None):
     recovery records, never from file times or a second record format."""
     rows,_previous=_records(owner,wallet_id)
     completed=[row['action'] for row in rows if row['state']=='COMMIT']
-    active_action=None
-    if type(active_name) is str:
-        match=re.fullmatch(r'wallet-runtime-recovery-([0-9a-f]{16})\.sqlite',active_name)
-        if match is not None:active_action=match.group(1)
-    if active_action is not None and active_action not in completed:
-        completed.append(active_action)
     latest=completed[-1] if completed else None
     for entry in owner.directory.iterdir():
         name=entry.name
@@ -111,7 +107,11 @@ def _require_no_prior_runtime(owner,wallet_id,active_name=None):
         match=_RUNTIME_ARTIFACT.fullmatch(name)
         if match is None:
             raise ManagedWalletError('MANAGED_WALLET_PRIOR_RUNTIME_PRESERVED')
-        action=match.group(2)
+        base,action=match.group(1),match.group(2)
+        if name.endswith('.scan.lock'):
+            base_path=owner.directory/base
+            if not base_path.exists() and not base_path.is_symlink():
+                continue
         superseded=(latest is not None if action is None
                     else action!=latest and action in completed)
         if not superseded:
@@ -208,6 +208,7 @@ def close_session(session):
             raise ValueError('WALLET_MANAGED_RUNTIME_PRESERVED')
         session._managed_runtime_guard.remove_owned()
     except (OSError,ValueError,RuntimeError):
+        session.faulted=True
         raise WalletSessionError('WALLET_MANAGED_RUNTIME_PRESERVED') from None
     finally:
         session.scanner=session.ring=None;session._password=None
