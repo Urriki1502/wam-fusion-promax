@@ -6,6 +6,7 @@ proof.
 """
 from contextlib import ExitStack, nullcontext
 from hashlib import sha256
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -52,6 +53,7 @@ from wam_regtest.wallet_session import WalletSession, WalletSessionError
 PASSWORD = b'public-test-password'
 PHRASE = Mnemonic('english').to_mnemonic(bytes(16))
 PROFILE_ID = 'a' * 32
+SOURCE = Path(importlib.util.find_spec('wam_sp').origin).resolve().parents[2]
 
 
 def _private_core_root(parent):
@@ -238,10 +240,8 @@ class QuitNoticeStoreContracts(unittest.TestCase):
             acknowledge_unresolved(self.root)
 
     def test_rn1_stage_without_link_is_unreadable_ackable_and_never_collides(self):
-        real_link = os.link
-
         def crash_before_link(*args, **kwargs):
-            raise RuntimeError('simulated-crash-before-link')
+            raise OSError('simulated-crash-before-link')
 
         with exclusive_lease(self.root):
             with patch.object(module.os, 'link', side_effect=crash_before_link):
@@ -293,7 +293,7 @@ class QuitNoticeStoreContracts(unittest.TestCase):
 
     def test_rn2_link_done_stage_not_unlinked_accepted_and_completed_under_lease(self):
         with exclusive_lease(self.root):
-            with patch.object(module.os, 'unlink', side_effect=RuntimeError('simulated-crash-after-link')):
+            with patch.object(module.os, 'unlink', side_effect=OSError('simulated-crash-after-link')):
                 with self.assertRaises(QuitNoticeError):
                     publish_notice(
                         self.root,
@@ -423,6 +423,48 @@ class QuitNoticeStoreContracts(unittest.TestCase):
             self.assertTrue((self.root / 'supervisor.notice-ack.000065').exists())
             self.assertEqual(unacknowledged(self.root, expected_profile_id=PROFILE_ID), ())
 
+    def test_rn2_ack_stage_completed_under_lease_and_hyphenated_unreadable_ackable(self):
+        with exclusive_lease(self.root):
+            published = publish_notice(
+                self.root,
+                profile_id=PROFILE_ID,
+                session_kind='Q05',
+                wallet_outcome='RUNTIME_PRESERVED',
+                core_stop='CLEAN',
+                codes=('WALLET_MANAGED_RUNTIME_PRESERVED',),
+                journal_seq=1,
+            )
+            with patch.object(module.os, 'unlink', side_effect=OSError('simulated-crash-after-ack-link')):
+                with self.assertRaises(QuitNoticeError):
+                    publish_ack(
+                        self.root,
+                        {
+                            'kind': 'notice',
+                            'seq': published['seq'],
+                            'body_sha256': published['body_sha256'],
+                        },
+                    )
+        ack_path = self.root / 'supervisor.notice-ack.000001'
+        stages = [p for p in self.root.iterdir() if p.name.startswith('supervisor.notice.stage-')]
+        self.assertTrue(ack_path.exists())
+        self.assertEqual(len(stages), 1)
+        self.assertEqual(ack_path.lstat().st_nlink, 2)
+
+        bad_hyphen = self.root / 'supervisor.notice-corrupt'
+        bad_hyphen.write_bytes(b'corrupt-artifact')
+        bad_hyphen.chmod(0o600)
+
+        with exclusive_lease(self.root):
+            unresolved = unacknowledged(self.root, expected_profile_id=PROFILE_ID)
+            self.assertEqual([u['name'] for u in unresolved], ['supervisor.notice-corrupt'])
+            self.assertFalse(stages[0].exists())
+            self.assertEqual(ack_path.lstat().st_nlink, 1)
+            acks = acknowledge_unresolved(self.root, expected_profile_id=PROFILE_ID)
+            self.assertEqual(len(acks), 1)
+            self.assertEqual(acks[0]['name'], 'supervisor.notice-corrupt')
+        self.assertEqual(unacknowledged(self.root, expected_profile_id=PROFILE_ID), ())
+        self.assertTrue(bad_hyphen.exists())
+
 
 class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
     setUp = fixture.SupervisorLifecycleUnit.setUp
@@ -439,6 +481,10 @@ class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
         try:
             if not executor.closed:
                 backend._notice_persist_failed = False
+                backend._quit_cleanup_uncertain = False
+                backend.session = None
+                if hasattr(backend, '_spend_session'):
+                    backend._spend_session = None
                 owner = getattr(backend, 'owner', None)
                 if owner is not None:
                     owner.process = None
@@ -455,10 +501,12 @@ class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
             ('Q06', Bip39ReadOnlyBackend, ValueError('Q06_SPEND_RUNTIME_PRESERVED')),
         ):
             with self.subTest(kind=kind):
-                sub_root = self.root if kind == 'Q05' else _private_core_root(self.root.parent / 'q06')
-                if not sub_root.parent.exists():
-                    sub_root.parent.mkdir(mode=0o700)
-                    sub_root.mkdir(mode=0o700)
+                if kind == 'Q05':
+                    sub_root = self.root
+                else:
+                    q06_parent = self.root.parent / 'q06'
+                    q06_parent.mkdir(mode=0o700, exist_ok=True)
+                    sub_root = _private_core_root(q06_parent)
                 backend = cls(sub_root, self.core, self.core)
                 owner = _live_mock_owner(sub_root)
                 backend.owner = owner
@@ -479,6 +527,7 @@ class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
                         executor.request('quit', timeout=5)
                     self.assertTrue(backend._notice_persist_failed)
                     self.assertFalse(executor.closed)
+                    self.assertIs(executor.state.core_alive, False)
                     owner.release.assert_not_called()
                     owner.close.assert_not_called()
 
@@ -536,6 +585,8 @@ class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
         try:
             if not executor.closed and executor._backend is not None:
                 executor._backend._notice_persist_failed = False
+                executor._backend._quit_cleanup_uncertain = False
+                executor._backend.session = None
                 if executor._backend.owner is not None:
                     executor._backend.owner.process = None
                 try:
@@ -634,7 +685,7 @@ class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
         backend.owner = owner
         backend._core = lambda: owner
 
-        keys = Bip39Regtest12Keys(PHRASE, source=self.core, authorized_disposable=True)
+        keys = Bip39Regtest12Keys(PHRASE, source=SOURCE, authorized_disposable=True)
         keys._q06_generation = 1
         with patch('wam_regtest.bip39_seed_vault.open_owned_seed_container') as opened:
             opened.return_value.__enter__ = lambda *a, **kw: keys
@@ -695,7 +746,7 @@ class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
         q06_backend = Bip39ReadOnlyBackend(self.root, self.core, self.core)
         q06_backend.owner = owner
         q06_backend._core = lambda: owner
-        keys = Bip39Regtest12Keys(PHRASE, source=self.core, authorized_disposable=True)
+        keys = Bip39Regtest12Keys(PHRASE, source=SOURCE, authorized_disposable=True)
         keys._q06_generation = 1
         with patch('wam_regtest.bip39_seed_vault.open_owned_seed_container') as opened:
             opened.return_value.__enter__ = lambda *a, **kw: keys
@@ -721,6 +772,105 @@ class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
             with self.assertRaises(WalletSessionError) as caught:
                 WalletSession.open_owned(owner, self.core, PASSWORD, authorized=True)
         self.assertEqual(caught.exception.args, ('WALLET_MANAGED_OPEN_DENIED',))
+
+    def test_quit_publishes_notice_before_release_and_close_for_q05_and_q06(self):
+        cases = (
+            ('Q05', ManagedWalletBackend, WalletSessionError('WALLET_LOCK_CLEANUP_UNCERTAIN'), 'CLEANUP_UNCERTAIN'),
+            ('Q05', ManagedWalletBackend, WalletSessionError('WALLET_MANAGED_RUNTIME_PRESERVED'), 'RUNTIME_PRESERVED'),
+            ('Q06', Bip39ReadOnlyBackend, ValueError('Q06_SPEND_RUNTIME_UNCERTAIN'), 'CLEANUP_UNCERTAIN'),
+            ('Q06', Bip39ReadOnlyBackend, ValueError('Q06_SPEND_RUNTIME_PRESERVED'), 'RUNTIME_PRESERVED'),
+        )
+        for idx, (kind, cls, err, expected_outcome) in enumerate(cases):
+            with self.subTest(kind=kind, expected_outcome=expected_outcome):
+                parent = self.root.parent / f'order_{idx}'
+                parent.mkdir(mode=0o700, exist_ok=True)
+                sub_root = _private_core_root(parent)
+                backend = cls(sub_root, self.core, self.core)
+                owner = _live_mock_owner(sub_root)
+                events = []
+
+                def on_lock():
+                    events.append('lock')
+                    raise err
+
+                def on_recover_stop():
+                    events.append('recover_stop')
+                    owner.process = None
+
+                def on_release():
+                    events.append('release')
+
+                def on_close():
+                    events.append('close')
+
+                owner.recover_stop.side_effect = on_recover_stop
+                owner.release.side_effect = on_release
+                owner.close.side_effect = on_close
+                backend.owner = owner
+                if kind == 'Q05':
+                    session = Mock(locked=False, faulted=True, _core_reauthentication_required=False)
+                    session.lock.side_effect = on_lock
+                    backend.session = session
+                else:
+                    spend = Mock(locked=False, faulted=True, _q06_uncertain=True, _core_reauthentication_required=False)
+                    spend.lock.side_effect = on_lock
+                    backend._spend_session = spend
+                    backend._secret = bytearray(PASSWORD)
+
+                real_publish = module.publish_notice
+
+                def traced_publish(*a, **kw):
+                    events.append('publish_notice')
+                    return real_publish(*a, **kw)
+
+                executor = self._executor(backend)
+                with exclusive_lease(sub_root), \
+                        patch('wam_regtest.rpc_scope.identity', return_value=SimpleNamespace(faulted=False)), \
+                        patch('wam_regtest.quit_notice.publish_notice', side_effect=traced_publish):
+                    result = executor.request('quit', timeout=5)
+                self.assertEqual(
+                    events,
+                    ['lock', 'recover_stop', 'publish_notice', 'release', 'close'],
+                )
+                self.assertIs(result['runtime_preserved'], True)
+                self.assertTrue(executor.closed)
+                items = unacknowledged(sub_root, expected_profile_id=PROFILE_ID)
+                self.assertEqual(len(items), 1)
+                self.assertEqual(items[0]['notice']['session_kind'], kind)
+                self.assertEqual(items[0]['notice']['wallet_outcome'], expected_outcome)
+                self.assertEqual(items[0]['notice']['core_stop'], 'CLEAN')
+                self.assertEqual(items[0]['notice']['journal_seq'], 3)
+                self.assertEqual(items[0]['notice']['codes'], [err.args[0]])
+
+    def test_capacity_64_during_quit_triggers_notice_persist_failed(self):
+        with exclusive_lease(self.root):
+            for seq in range(1, MAX_NOTICES + 1):
+                publish_notice(
+                    self.root,
+                    profile_id=PROFILE_ID,
+                    session_kind='Q05',
+                    wallet_outcome='RUNTIME_PRESERVED',
+                    core_stop='CLEAN',
+                    codes=('WALLET_MANAGED_RUNTIME_PRESERVED',),
+                    journal_seq=seq,
+                )
+        backend = ManagedWalletBackend(self.root, self.core, self.core)
+        owner = _live_mock_owner(self.root)
+        backend.owner = owner
+        session = Mock(locked=False, faulted=True, _core_reauthentication_required=False)
+        session.lock.side_effect = WalletSessionError('WALLET_MANAGED_RUNTIME_PRESERVED')
+        backend.session = session
+        executor = self._executor(backend)
+        with exclusive_lease(self.root), \
+                patch('wam_regtest.rpc_scope.identity', return_value=SimpleNamespace(faulted=False)):
+            with self.assertRaisesRegex(WalletExecutorError, '^NOTICE_PERSIST_FAILED$'):
+                executor.request('quit', timeout=5)
+            self.assertTrue(backend._notice_persist_failed)
+            self.assertFalse(executor.closed)
+            owner.release.assert_not_called()
+            owner.close.assert_not_called()
+            with self.assertRaisesRegex(WalletExecutorError, '^NOTICE_PERSIST_FAILED$'):
+                executor.request('control', 'release', timeout=5)
 
 
 if __name__ == '__main__':

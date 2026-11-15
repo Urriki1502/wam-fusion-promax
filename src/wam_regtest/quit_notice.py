@@ -88,10 +88,7 @@ _RE_NOTICE = re.compile(r'supervisor\.notice\.([0-9]{6})')
 _RE_ACK = re.compile(r'supervisor\.notice-ack\.([0-9]{6})')
 _RE_STAGE = re.compile(r'supervisor\.notice\.stage-([0-9a-f]{16})')
 _RE_ARTIFACT_NAME = re.compile(
-    r'supervisor\.(?:notice|notice-ack)\.[0-9]{6}'
-    r'|supervisor\.notice\.stage-[0-9a-f]{16}'
-    r'|supervisor\.failure'
-    r'|supervisor\.notice\..*'
+    r'supervisor\.notice.*|supervisor\.failure'
 )
 _RE_HEX32 = re.compile(r'[0-9a-f]{32}')
 _RE_HEX64 = re.compile(r'[0-9a-f]{64}')
@@ -272,7 +269,7 @@ def validate_ack_record(obj):
         raw_sha256 = obj['raw_sha256']
         size = obj['size']
         if (type(name) is not str or not name or len(name) > 128
-                or '/' in name or '\\' in name or '\x00' in name
+                or '/' in name or '\\' in name or '\x00' in name or '..' in name
                 or _RE_ARTIFACT_NAME.fullmatch(name) is None):
             raise QuitNoticeError('QUIT_NOTICE_ACK_NAME_DENIED')
         if type(raw_sha256) is not str or _RE_HEX64.fullmatch(raw_sha256) is None:
