@@ -1,0 +1,1 @@
+Source: github.com/bitcoin/bips @ b34d9f7 (2026-11-10). BIP352/374/375 are licensed BSD-2-Clause (see each BIP header). Data files copied verbatim.
