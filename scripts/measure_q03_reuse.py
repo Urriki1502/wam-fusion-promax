@@ -29,6 +29,7 @@ from wam_regtest.core import (
     verified_core_paths,
 )
 from wam_regtest.rpc_scope import register, unregister
+from wam_regtest.core_process import managed_core_argv
 from wam_regtest.custody import private_temporary_directory
 from wam_regtest.telemetry import reset as reset_telemetry, snapshot as telemetry_snapshot
 from wam_regtest.wallet_session import WalletSession
@@ -97,7 +98,7 @@ def measure_reuse(core_dir: Path, source_root: Path, cycles: int = 5, *, cookie_
         try:
             with (datadir / "core-output.log").open("xb") as log:
                 proc = subprocess.Popen(
-                    [str(node), f"-datadir={datadir}", "-daemon=0"],
+                    managed_core_argv(node, datadir),
                     cwd=datadir,
                     env=env,
                     stdin=subprocess.DEVNULL,

@@ -15,6 +15,7 @@ from wam_regtest.desktop import qt_application,shutdown_qt
 from wam_regtest.operational_gui import OperationalWalletWindow
 from wam_regtest.wallet_probe import _approve_dialog,_capture_fusion_views
 from wam_regtest.rpc_scope import register,unregister
+from wam_regtest.core_process import managed_core_argv
 from wam_regtest import custody
 
 RESULTS=[];OUT=None
@@ -58,7 +59,7 @@ def isolated_chain(core,source):
   env={'PATH':'/usr/bin:/bin:/usr/sbin:/sbin','HOME':str(data),'LC_ALL':'C'}
   prefix=[str(cli),f'-datadir={data}'];proc=None
   try:
-   with (data/'core-output.log').open('xb') as log:proc=subprocess.Popen([str(node),f'-datadir={data}','-daemon=0'],cwd=data,env=env,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT)
+   with (data/'core-output.log').open('xb') as log:proc=subprocess.Popen(managed_core_argv(node, data),cwd=data,env=env,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT)
    register(proc,core,data,authorized_disposable_mutation=True)
    end=time.monotonic()+90
    while True:
