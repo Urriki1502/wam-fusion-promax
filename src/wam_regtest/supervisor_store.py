@@ -48,8 +48,7 @@ def _posix_dir(root):
     try:fd=private(root)
     except (OSError,ValueError):
         raise SupervisorStorageError("SUPERVISOR_STORAGE_ROOT_UNTRUSTED") from None
-    try:yield fd
-    finally:os.close(fd)
+    with _owned(fd):yield fd
 
 
 def _posix_file(fd,name,*,create=False,nonblocking=True):
@@ -165,6 +164,13 @@ def _rename_exclusive(stage_directory,stage,root_directory,final):
     """
     import ctypes
     import errno
+    _name(final)
+    if final=="supervisor.lock":
+        raise SupervisorStorageError("SUPERVISOR_STORAGE_CREATE_DENIED")
+    if (type(stage_directory) is not int or stage_directory<0
+            or type(root_directory) is not int or root_directory<0
+            or stage_directory==root_directory):
+        raise SupervisorStorageError("SUPERVISOR_STORAGE_RENAME_DENIED")
     source=_component(_stage_name(stage));target=_component(final)
     function=_renameatx_np()
     ctypes.set_errno(0)
@@ -229,19 +235,23 @@ def _verify_stage(root_directory,stage_directory,stage,handle,size):
     """
     from .private_directory import _require_absent_acl, validate_macos_private_directory
     try:
-        held=os.fstat(handle)
         entry=os.stat(stage,dir_fd=stage_directory,follow_symlinks=False)
+        _require_absent_acl(handle)
+        held=os.fstat(handle)
         if (not stat.S_ISREG(held.st_mode) or held.st_uid!=os.geteuid()
                 or held.st_nlink!=1 or stat.S_IMODE(held.st_mode)!=0o600
                 or held.st_size!=size
-                or not stat.S_ISREG(entry.st_mode) or entry.st_nlink!=1
+                or not stat.S_ISREG(entry.st_mode) or entry.st_uid!=os.geteuid()
+                or entry.st_nlink!=1 or stat.S_IMODE(entry.st_mode)!=0o600
+                or entry.st_size!=size
                 or (entry.st_dev,entry.st_ino)!=(held.st_dev,held.st_ino)):
             raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_CHANGED")
-        _require_absent_acl(handle)
         validate_macos_private_directory(stage_directory)
         directory=os.fstat(stage_directory)
+        root_info=os.fstat(root_directory)
         linked=os.stat(STAGE_DIRECTORY,dir_fd=root_directory,follow_symlinks=False)
-        if (linked.st_dev,linked.st_ino)!=(directory.st_dev,directory.st_ino):
+        if (directory.st_dev!=root_info.st_dev or directory.st_dev!=held.st_dev
+                or (linked.st_dev,linked.st_ino)!=(directory.st_dev,directory.st_ino)):
             raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_CHANGED")
     except SupervisorStorageError:raise
     except (OSError,ValueError):
@@ -259,6 +269,7 @@ def _create_darwin(root,name,data):
     final; after it, any failure is raised while the complete final may exist
     (never removed, replayed or reported as success). Residue is retained.
     """
+    from .private_directory import _require_absent_acl
     with _posix_dir(root) as directory:
         # Ordinary duplicates (e.g. the first-failure record) refuse here,
         # before staging, so they never accumulate residue.
@@ -267,7 +278,7 @@ def _create_darwin(root,name,data):
         else:raise SupervisorStorageError("SUPERVISOR_STORAGE_CREATE_DENIED")
         with _owned(_open_stage_directory(directory,create=True)) as stage_directory:
             # At most MAX_STAGE_RESIDUE entries including the pending stage.
-            if _residue_count(stage_directory,MAX_STAGE_RESIDUE)>=MAX_STAGE_RESIDUE:
+            if _residue_count(stage_directory,MAX_STAGE_RESIDUE-1)>=MAX_STAGE_RESIDUE:
                 raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_RESIDUE_LIMIT")
             stage=_stage_name(secrets.token_hex(8)+".tmp")
             with _owned(_posix_file(stage_directory,stage,create=True)) as handle:
@@ -279,8 +290,19 @@ def _create_darwin(root,name,data):
                 os.fsync(handle)
                 staged=_verify_stage(directory,stage_directory,stage,handle,len(data))
                 _rename_exclusive(stage_directory,stage,directory,name)
-                published=os.stat(name,dir_fd=directory,follow_symlinks=False)
-                if (published.st_dev,published.st_ino)!=staged:
+                try:
+                    published=os.stat(name,dir_fd=directory,follow_symlinks=False)
+                    after=os.fstat(handle)
+                    _require_absent_acl(handle)
+                except (OSError,ValueError):
+                    raise SupervisorStorageError("SUPERVISOR_STORAGE_PUBLISH_UNVERIFIED") from None
+                if ((published.st_dev,published.st_ino)!=staged
+                        or (after.st_dev,after.st_ino)!=staged
+                        or not stat.S_ISREG(published.st_mode)
+                        or published.st_uid!=os.geteuid()
+                        or published.st_nlink!=1
+                        or stat.S_IMODE(published.st_mode)!=0o600
+                        or published.st_size!=len(data)):
                     raise SupervisorStorageError("SUPERVISOR_STORAGE_PUBLISH_UNVERIFIED")
         os.fsync(directory)
 

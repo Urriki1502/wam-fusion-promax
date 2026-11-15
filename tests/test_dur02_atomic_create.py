@@ -18,7 +18,7 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from wam_regtest import supervisor_store as store
 from wam_regtest.supervisor_store import (
@@ -157,23 +157,61 @@ class DarwinPublication(unittest.TestCase):
 
     # --- N3: pre- vs post-publication errors -------------------------------
 
-    def test_root_fsync_error_after_rename_raises_with_final_present_and_complete(self):
-        real = os.fsync
+    def test_root_fsync_and_close_errors_after_rename_raise_with_final_present(self):
+        real_fsync = os.fsync
         calls = []
 
-        def failing(fd):
+        def failing_fsync(fd):
             calls.append(fd)
             if len(calls) == 2:  # 1 = stage file, 2 = final root directory
                 raise OSError(errno.EIO, "injected")
-            return real(fd)
+            return real_fsync(fd)
 
-        with patch.object(os, "fsync", failing):
+        with patch.object(os, "fsync", failing_fsync):
             with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_CREATE_UNVERIFIED"):
                 create_once(self.root, NAME, DATA)
         self.assertEqual(len(calls), 2)
         self.assertEqual(read_exact(self.root, NAME, length=32), DATA)  # not removed
         with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_CREATE_DENIED"):
             create_once(self.root, NAME, DATA)  # retry still errors
+
+        # Close failure on the final root directory after rename + fsync also raises and retains final.
+        real_close = os.close
+        root_fds = set()
+
+        def track_fsync(fd):
+            real_fsync(fd)
+            if len(calls) == 1:
+                root_fds.add(fd)
+            calls.append(fd)
+
+        def failing_root_close(fd):
+            real_close(fd)
+            if fd in root_fds:
+                raise OSError(errno.EIO, "close-injected")
+
+        calls.clear()
+        with patch.object(os, "fsync", track_fsync), patch.object(os, "close", failing_root_close):
+            with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_CREATE_UNVERIFIED"):
+                create_once(self.root, "supervisor.profile", DATA)
+        self.assertEqual(read_exact(self.root, "supervisor.profile", length=32), DATA)
+        with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_CREATE_DENIED"):
+            create_once(self.root, "supervisor.profile", DATA)
+
+    def test_primary_failure_is_preserved_when_cleanup_close_also_fails(self):
+        real_close = os.close
+        seen = []
+
+        def failing_close(fd):
+            real_close(fd)
+            if seen and fd in (seen[0][0], seen[0][2]):
+                raise OSError(errno.EIO, "cleanup-close")
+
+        with patch.object(store, "_renameatx_np", self.fake_binding(-1, errno.EIO, seen)):
+            with patch.object(os, "close", failing_close):
+                with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_RENAME_DENIED"):
+                    create_once(self.root, NAME, DATA)
+        self.assert_no_final()
 
     def test_prepublication_io_errors_raise_and_never_publish(self):
         cases = (
@@ -242,8 +280,13 @@ class DarwinPublication(unittest.TestCase):
                 self.assertEqual((target, flags), (NAME.encode(), 0x4))
 
     def test_missing_symbol_or_library_refuses_without_fallback(self):
-        for loader in (Mock(return_value=object()), Mock(side_effect=OSError("no libc"))):
-            with self.subTest(loader=loader), patch.object(ctypes, "CDLL", loader), self.no_fallback():
+        real_cdll = ctypes.CDLL
+        for missing in (lambda *a, **kw: object(), Mock(side_effect=OSError("no libc"))):
+            def cdll(name, *args, **kwargs):
+                if name is None:
+                    return missing(name, *args, **kwargs)
+                return real_cdll(name, *args, **kwargs)
+            with self.subTest(missing=missing), patch.object(ctypes, "CDLL", cdll), self.no_fallback():
                 with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_RENAME_UNAVAILABLE"):
                     create_once(self.root, NAME, DATA)
             self.assert_no_final()
@@ -255,6 +298,14 @@ class DarwinPublication(unittest.TestCase):
         for bad in ("../x.tmp", "0123456789abcdef", "0123456789ABCDEF.tmp", "supervisor.token"):
             with self.subTest(stage=bad), self.assertRaises(SupervisorStorageError):
                 store._stage_name(bad)
+        with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_NAME_DENIED"):
+            store._rename_exclusive(3, "0123456789abcdef.tmp", 4, "../evil")
+        with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_CREATE_DENIED"):
+            store._rename_exclusive(3, "0123456789abcdef.tmp", 4, "supervisor.lock")
+        for bad_pair in ((-1, 4), (3, -1), (3, 3), ("3", 4)):
+            with self.subTest(fds=bad_pair):
+                with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_RENAME_DENIED"):
+                    store._rename_exclusive(bad_pair[0], "0123456789abcdef.tmp", bad_pair[1], NAME)
 
     # --- residue bound ------------------------------------------------------
 
@@ -339,7 +390,7 @@ class DarwinPublication(unittest.TestCase):
         self.assertEqual(sorted(self.residue())[-1], "moved")
         self.assertEqual(len(self.residue()), 2)
 
-    def test_stage_symlink_hardlink_and_acl_are_refused(self):
+    def test_stage_symlink_hardlink_mode_size_and_acl_are_refused(self):
         def symlink(path):
             os.rename(path, path.with_name("moved-s"))
             os.symlink(path.with_name("moved-s"), path)
@@ -347,7 +398,14 @@ class DarwinPublication(unittest.TestCase):
         def hardlink(path):
             os.link(path, path.with_name("second-link"))
 
-        for action in (symlink, hardlink, _add_acl):
+        def bad_mode(path):
+            os.chmod(path, 0o644)
+
+        def bad_size(path):
+            with open(path, "ab") as f:
+                f.write(b"x")
+
+        for action in (symlink, hardlink, bad_mode, bad_size, _add_acl):
             with self.subTest(action=getattr(action, "__name__", "acl")):
                 self.race_at_stage_fsync(action)
                 for entry in list(self.stage.iterdir()):  # test-owned fixture reset only
@@ -373,6 +431,30 @@ class DarwinPublication(unittest.TestCase):
             with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_PUBLISH_UNVERIFIED"):
                 create_once(self.root, NAME, DATA)
         self.assertEqual((self.root.parent / "published").read_bytes(), DATA)
+        self.assertTrue((self.root / NAME).exists())
+
+    def test_post_rename_hardlink_and_acl_tamper_raise_unverified_without_deleting(self):
+        real = store._rename_exclusive
+
+        def link_final(*args):
+            real(*args)
+            os.link(self.root / NAME, self.root / "extra-link")
+
+        with patch.object(store, "_rename_exclusive", link_final):
+            with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_PUBLISH_UNVERIFIED"):
+                create_once(self.root, NAME, DATA)
+        self.assertTrue((self.root / NAME).exists())
+        self.assertTrue((self.root / "extra-link").exists())
+        (self.root / "extra-link").unlink()
+        (self.root / NAME).unlink()
+
+        def acl_final(*args):
+            real(*args)
+            _add_acl(self.root / NAME)
+
+        with patch.object(store, "_rename_exclusive", acl_final):
+            with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_PUBLISH_UNVERIFIED"):
+                create_once(self.root, NAME, DATA)
         self.assertTrue((self.root / NAME).exists())
 
     # --- names, enumeration and lock unchanged ------------------------------
@@ -484,11 +566,10 @@ class OtherPlatformsUnchanged(unittest.TestCase):
     @unittest.skipUnless(DARWIN, "uses the native descriptor helper to stand in for Linux custody")
     def test_linux_branch_writes_the_final_directly_and_duplicates_still_error(self):
         from wam_regtest import linux_private_storage
-        from wam_regtest.private_directory import open_macos_private_directory
 
         @contextmanager
         def directory(root):
-            fd = open_macos_private_directory(root)
+            fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
             try:
                 yield fd
             finally:
@@ -522,7 +603,7 @@ class OtherPlatformsUnchanged(unittest.TestCase):
             flush = staticmethod(lambda handle: True)
             close = staticmethod(lambda handle: None)
 
-        guard = Mock()
+        guard = MagicMock()
         self.stack.enter_context(patch.object(store.sys, "platform", "win32"))
         self.stack.enter_context(patch.object(store, "_win_open", Mock(return_value=(Native, 7, guard))))
         create_once(self.root, NAME, DATA)
@@ -579,10 +660,13 @@ class SupervisorInitialization(unittest.TestCase):
         residue = self.stage / "0123456789abcdef.tmp"
         residue.write_bytes(b"residue")
         os.chmod(residue, 0o600)
-        with patch.object(store, "read_exact", wraps=store.read_exact):
+        with patch.object(self.module, "read_exact", wraps=store.read_exact) as read_spy:
             reopened = self.owner()
         self.assertEqual(reopened.state, "stopped")
         self.assertEqual(residue.read_bytes(), b"residue")
+        read_names = [call.args[1] for call in read_spy.call_args_list]
+        self.assertNotIn("0123456789abcdef.tmp", read_names)
+        self.assertNotIn(STAGE_DIRECTORY, read_names)
 
     def test_fresh_root_with_only_an_empty_validated_stage_initializes(self):
         self.stage.mkdir(mode=0o700)
@@ -591,22 +675,60 @@ class SupervisorInitialization(unittest.TestCase):
         self.assertEqual(owner.journal.state, "CLEAN")
 
     def test_stage_only_namespace_with_any_child_is_partial_and_refused(self):
-        for child in ("0123456789abcdef.tmp", "unknown-name", "subdir"):
+        for child in ("0123456789abcdef.tmp", "unknown-name", "subdir", "symlink"):
             with self.subTest(child=child):
                 self.stage.mkdir(mode=0o700)
                 path = self.stage / child
-                path.mkdir() if child == "subdir" else path.write_bytes(b"keep")
+                if child == "subdir":
+                    path.mkdir()
+                elif child == "symlink":
+                    os.symlink("/nonexistent", path)
+                else:
+                    path.write_bytes(b"keep")
                 self.assert_partial_refused([STAGE_DIRECTORY])
-                self.assertTrue(path.exists())  # never deleted
+                self.assertTrue(os.path.lexists(path))  # never deleted
                 path.rmdir() if child == "subdir" else path.unlink()
                 self.stage.rmdir()
 
     def test_partial_roots_still_refuse_with_or_without_an_empty_stage(self):
+        # token-only and chain-only partial roots
         (self.root / "supervisor.token").write_bytes(b"t" * 32)
         os.chmod(self.root / "supervisor.token", 0o600)
         self.assert_partial_refused(["supervisor.token"])
         self.stage.mkdir(mode=0o700)
         self.assert_partial_refused(["supervisor.token", STAGE_DIRECTORY])
+        (self.root / "supervisor.token").unlink()
+        self.stage.rmdir()
+
+        (self.root / "chain").mkdir(mode=0o700)
+        with self.assertRaisesRegex(self.module.ManagedCoreError, "MANAGED_PROFILE_DENIED"):
+            self.module.CoreSupervisor(self.root, self.core, authorized=True)
+        self.assertFalse(self.stage.exists())
+        self.stage.mkdir(mode=0o700)
+        with self.assertRaisesRegex(self.module.ManagedCoreError, "MANAGED_PROFILE_DENIED"):
+            self.module.CoreSupervisor(self.root, self.core, authorized=True)
+        (self.root / "chain").rmdir()
+        self.stage.rmdir()
+
+        # profile-only partial root (valid profile bytes, missing token/chain/journal)
+        owner = self.owner()
+        profile_bytes = read_exact(self.root, "supervisor.profile")
+        owner.close()
+        for entry in list(self.root.iterdir()):
+            if entry.is_dir():
+                for child in sorted(entry.rglob("*"), reverse=True):
+                    child.rmdir() if child.is_dir() else child.unlink()
+                entry.rmdir()
+            elif entry.name != "supervisor.profile":
+                entry.unlink()
+        with self.assertRaises((self.module.ManagedCoreError, OSError, ValueError)):
+            self.module.CoreSupervisor(self.root, self.core, authorized=True)
+        self.assertFalse(self.stage.exists())
+        self.stage.mkdir(mode=0o700)
+        with self.assertRaises((self.module.ManagedCoreError, OSError, ValueError)):
+            self.module.CoreSupervisor(self.root, self.core, authorized=True)
+        self.assertFalse((self.root / "chain").exists())
+        self.assertEqual(read_exact(self.root, "supervisor.profile"), profile_bytes)
 
     def test_refused_init_never_creates_a_stage_directory(self):
         (self.root / "unknown").write_bytes(b"keep")
@@ -626,6 +748,10 @@ class SupervisorInitialization(unittest.TestCase):
         with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_STAGE_UNTRUSTED"):
             self.module.CoreSupervisor(self.root, self.core, authorized=True)
         self.assertEqual(stat.S_IMODE(os.stat(self.stage).st_mode), 0o755)
+        os.chmod(self.stage, 0o700)
+        _add_acl(self.stage)
+        with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_STAGE_UNTRUSTED"):
+            self.module.CoreSupervisor(self.root, self.core, authorized=True)
 
     def test_tolerance_is_darwin_only(self):
         self.stage.mkdir(mode=0o700)
