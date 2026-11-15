@@ -1,5 +1,6 @@
 """Owner-local live sessions; no passwords or signing on supervisor IPC."""
 import os
+import re
 import stat
 import threading
 import sys
@@ -7,10 +8,10 @@ from contextlib import ExitStack
 
 from . import custody
 from .managed_wallet_checkpoint import (
-    _inputs,_owned,_runtime,_read_reference,_publish_reference,_snapshot,
+    ManagedWalletError,_inputs,_owned,_runtime,_read_reference,_publish_reference,_snapshot,
 )
 from .supervisor_identity import directory_identity
-from .wallet_recovery import active_location,has_recovery_records,require_anchor_floor
+from .wallet_recovery import _records,active_location,has_recovery_records,require_anchor_floor
 
 
 class RuntimeGuard:
@@ -85,6 +86,38 @@ def check_session(session):
         raise WalletSessionError('WALLET_MANAGED_OWNER_UNVERIFIED') from None
 
 
+_RUNTIME_ARTIFACT=re.compile(
+    r'(wallet-runtime(?:-recovery-([0-9a-f]{16}))?\.sqlite)'
+    r'(?:-journal|-wal|-shm|\.scan\.lock)?')
+
+
+def _require_no_prior_runtime(owner,wallet_id,active_name=None):
+    """Refuse normal open over a prior runtime that no completed recovery
+    has superseded. Superseded bytes stay on disk as evidence; nothing here
+    deletes or modifies any artifact. Ordering comes only from the existing
+    recovery records, never from file times or a second record format."""
+    rows,_previous=_records(owner,wallet_id)
+    completed=[row['action'] for row in rows if row['state']=='COMMIT']
+    active_action=None
+    if type(active_name) is str:
+        match=re.fullmatch(r'wallet-runtime-recovery-([0-9a-f]{16})\.sqlite',active_name)
+        if match is not None:active_action=match.group(1)
+    if active_action is not None and active_action not in completed:
+        completed.append(active_action)
+    latest=completed[-1] if completed else None
+    for entry in owner.directory.iterdir():
+        name=entry.name
+        if not name.startswith('wallet-runtime') or '.sqlite' not in name:continue
+        match=_RUNTIME_ARTIFACT.fullmatch(name)
+        if match is None:
+            raise ManagedWalletError('MANAGED_WALLET_PRIOR_RUNTIME_PRESERVED')
+        action=match.group(2)
+        superseded=(latest is not None if action is None
+                    else action!=latest and action in completed)
+        if not superseded:
+            raise ManagedWalletError('MANAGED_WALLET_PRIOR_RUNTIME_PRESERVED')
+
+
 def open_owned(cls,owner,source,password,*,authorized=False,keychain=None,create=False,mining_address=None):
     from .vault import CheckpointVault
     from .wallet_session import WalletCoreCli,WalletSessionError
@@ -102,7 +135,8 @@ def open_owned(cls,owner,source,password,*,authorized=False,keychain=None,create
             wallet_id=secrets.token_hex(16)
         else:
             wallet_id=_read_reference(owner)
-            folder,name,floor=active_location(owner,wallet_id);runtime=_runtime(owner,name)
+            folder,name,floor=active_location(owner,wallet_id)
+            _require_no_prior_runtime(owner,wallet_id,name);runtime=_runtime(owner,name)
         anchor=custody.anchor(wallet_id,keychain)
         context=anchor.lease();context.__enter__();lease=context
         require_anchor_floor(anchor.read(),floor);_owned(owner)
@@ -163,8 +197,15 @@ def close_session(session):
             keys.callback(session.scanner.close)
             keys.callback(session._close_rpc)
             if session._disclosure_gate is not None:keys.callback(session._disclosure_gate.close)
-        if getattr(session,'_managed_checkpoint_uncertain',False):
-            raise ValueError('WALLET_MANAGED_UNANCHORED_RUNTIME')
+        preserve=bool(getattr(session,'_managed_checkpoint_uncertain',False))
+        if getattr(session,'faulted',False) is True:preserve=True
+        vault=getattr(session,'vault',None)
+        if not preserve and vault is not None:
+            try:
+                if vault.anchor.read()!=vault._expected:preserve=True
+            except Exception:preserve=True
+        if preserve:
+            raise ValueError('WALLET_MANAGED_RUNTIME_PRESERVED')
         session._managed_runtime_guard.remove_owned()
     except (OSError,ValueError,RuntimeError):
         raise WalletSessionError('WALLET_MANAGED_RUNTIME_PRESERVED') from None
