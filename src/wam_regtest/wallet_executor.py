@@ -159,6 +159,8 @@ class WalletExecutor:
 
 class ManagedWalletBackend:
     """Original Core + wallet stay in this executor for their entire lifetime."""
+    _session_kind = 'Q05'
+
     def __init__(self,root,core,source,*,keychain=None,mining_address=None,_anchor_factory=None,shared_profile=None):
         self.root=root;self.core=core;self.source=source;self.keychain=keychain
         self.mining_address=mining_address;self.owner=self.session=None
@@ -167,6 +169,7 @@ class ManagedWalletBackend:
         self.shared_profile = shared_profile
         self._quit_cleanup_uncertain=False
         self._quit_cleanup_codes=set()
+        self._notice_persist_failed=False
 
     def attach_executor(self,executor):
         if self._executor is not None:raise WalletExecutorError('WALLET_EXECUTOR_ALREADY_BOUND')
@@ -186,7 +189,7 @@ class ManagedWalletBackend:
             reauthentication_required=s is not None and s._core_reauthentication_required,
             core_alive=p is not None and p.poll() is None)
 
-    def _core(self):
+    def _ensure_owner(self):
         if self._executor is None:raise WalletExecutorError('WALLET_EXECUTOR_OWNER_REQUIRED')
         if self.owner is None:
             from .core_supervisor import CoreSupervisor
@@ -200,8 +203,12 @@ class ManagedWalletBackend:
             self.owner._control_bridge=lambda op:self._executor.request('control',op)
             self._control_thread=threading.Thread(target=self._serve_control,name='WAM-control-io',daemon=True)
             self._control_thread.start()
-        if self.owner.process is None:self._start_core()
         return self.owner
+
+    def _core(self):
+        owner=self._ensure_owner()
+        if owner.process is None:self._start_core()
+        return owner
 
     def _start_core(self):
         self.owner.start(timeout=90)
@@ -234,6 +241,65 @@ class ManagedWalletBackend:
         if len(args)==1 and type(args[0]) is str and re.fullmatch('[A-Z0-9_]+',args[0]):
             code=args[0]
         if code is not None:codes.add(code)
+
+    def _extract_notice_code(self,error):
+        args=getattr(error,'args',())
+        if len(args)==1 and type(args[0]) is str and re.fullmatch('[A-Z0-9_]+',args[0]):
+            return args[0]
+        return 'MANAGED_UNCLASSIFIED_FAILURE'
+
+    def _publish_quit_notice(self,owner,*,core_stop,stop_error=None):
+        import json
+        from .quit_notice import NOTICE_CODE_ALLOWLIST,publish_notice
+        from .supervisor_protocol import _distinct
+        from .supervisor_store import read_exact
+        profile_id=None
+        if owner is not None and isinstance(getattr(owner,'profile',None),dict):
+            candidate=owner.profile.get('profile_id')
+            if type(candidate) is str:profile_id=candidate
+        if profile_id is None:
+            raw=read_exact(self.root,'supervisor.profile')
+            parsed=json.loads(raw.decode('ascii'),object_pairs_hook=_distinct)
+            profile_id=parsed.get('profile_id')
+        cleanup_codes=set(getattr(self,'_quit_cleanup_codes',()))
+        if not getattr(self,'_quit_cleanup_uncertain',False):
+            wallet_outcome='NONE'
+        elif (any(c in ('WALLET_LOCK_CLEANUP_UNCERTAIN','Q06_SPEND_RUNTIME_UNCERTAIN')
+                  for c in cleanup_codes)
+              and not any(c in ('WALLET_MANAGED_RUNTIME_PRESERVED','Q06_SPEND_RUNTIME_PRESERVED')
+                          for c in cleanup_codes)):
+            wallet_outcome='CLEANUP_UNCERTAIN'
+        else:
+            wallet_outcome='RUNTIME_PRESERVED'
+        raw_codes=set(cleanup_codes)
+        if stop_error is not None:
+            raw_codes.add(self._extract_notice_code(stop_error))
+        codes=sorted({c if c in NOTICE_CODE_ALLOWLIST else 'MANAGED_UNCLASSIFIED_FAILURE'
+                        for c in raw_codes})[:8]
+        events=getattr(getattr(owner,'journal',None),'events',()) if owner is not None else ()
+        journal_seq=events[-1].get('seq',len(events)) if events else 0
+        return publish_notice(
+            self.root,
+            profile_id=profile_id,
+            session_kind=self._session_kind,
+            wallet_outcome=wallet_outcome,
+            core_stop=core_stop,
+            codes=codes,
+            journal_seq=journal_seq,
+        )
+
+    def acknowledge_quit_notices(self):
+        from .quit_notice import acknowledge_unresolved
+        if self.owner is not None:
+            owner=self.owner
+        elif '_core' in self.__dict__:
+            owner=self._core()
+        else:
+            owner=self._ensure_owner()
+        profile=getattr(owner,'profile',None)
+        profile_id=profile.get('profile_id') if isinstance(profile,dict) else None
+        acks=acknowledge_unresolved(owner.root,expected_profile_id=profile_id)
+        return immutable({'acknowledged':acks,'count':len(acks)})
 
     def _quit_result(self):
         codes=getattr(self,'_quit_cleanup_codes',())
@@ -295,9 +361,13 @@ class ManagedWalletBackend:
         if action=='control':
             if self.owner is None or len(args)!=1:
                 raise WalletExecutorError('MANAGED_CONTROL_OPERATION_DENIED')
+            if args[0]=='release' and getattr(self,'_notice_persist_failed',False):
+                raise WalletExecutorError('NOTICE_PERSIST_FAILED')
             if args[0]!='status':self._lock()
             return self.owner.control_operation(args[0])
         if action in ('core_restart','quit'):
+            if getattr(self,'_notice_persist_failed',False):
+                raise WalletExecutorError('NOTICE_PERSIST_FAILED')
             from .wallet_session import WalletSessionError
             try:
                 self._lock()
@@ -308,6 +378,8 @@ class ManagedWalletBackend:
             owner=self.owner
             if owner is not None:
                 p=owner.process
+                stop_error=None
+                core_stop='NOT_ATTEMPTED'
                 if p is not None and p.poll() is None:
                     # Wallet CLI/HTTP failures quarantine the shared scope
                     # independently of the supervisor's status latch. Explicit
@@ -315,10 +387,17 @@ class ManagedWalletBackend:
                     # recovery path, never retry a write or clear the grant.
                     from .rpc_scope import identity
                     scope=identity(owner.directory)
-                    if (owner._faulted or scope is not None and scope.faulted
-                            or getattr(self,'_quit_cleanup_uncertain',False)):
-                        owner.recover_stop()
-                    else:owner.shutdown()
+                    try:
+                        if (owner._faulted or scope is not None and scope.faulted
+                                or getattr(self,'_quit_cleanup_uncertain',False)):
+                            owner.recover_stop()
+                        else:
+                            owner.shutdown()
+                        core_stop='CLEAN'
+                    except Exception as error:
+                        stop_error=error
+                        code=self._extract_notice_code(error)
+                        core_stop='UNCERTAIN' if code=='MANAGED_SHUTDOWN_UNCERTAIN' else 'BLOCKED'
                 elif p is not None:
                     if action=='quit':
                         raise WalletExecutorError('MANAGED_DEAD_OWNER_RECOVERY_REQUIRED')
@@ -326,11 +405,28 @@ class ManagedWalletBackend:
                     owner.recover_dead(authorized=True)
                     return None
                 if action=='quit':
+                    if getattr(self,'_quit_cleanup_uncertain',False) or stop_error is not None:
+                        try:
+                            self._publish_quit_notice(owner,core_stop=core_stop,stop_error=stop_error)
+                        except Exception:
+                            self._notice_persist_failed=True
+                            raise WalletExecutorError('NOTICE_PERSIST_FAILED') from None
+                    if stop_error is not None:
+                        raise stop_error
                     owner.release();owner.close()
                     return self._quit_result()
+                if stop_error is not None:
+                    raise stop_error
                 owner.start()
                 return None
-            if action=='quit':return self._quit_result()
+            if action=='quit':
+                if getattr(self,'_quit_cleanup_uncertain',False):
+                    try:
+                        self._publish_quit_notice(None,core_stop='NOT_ATTEMPTED',stop_error=None)
+                    except Exception:
+                        self._notice_persist_failed=True
+                        raise WalletExecutorError('NOTICE_PERSIST_FAILED') from None
+                return self._quit_result()
             return None
         if self.session is None:raise WalletExecutorError('WALLET_LOCKED_OR_FAULTED')
         methods={'snapshot':self.session.snapshot,'prepare':self.session.prepare,

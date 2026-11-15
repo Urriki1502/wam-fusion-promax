@@ -119,12 +119,17 @@ def _require_no_prior_runtime(owner,wallet_id,active_name=None):
 
 
 def open_owned(cls,owner,source,password,*,authorized=False,keychain=None,create=False,mining_address=None):
+    from .quit_notice import unacknowledged
     from .vault import CheckpointVault
     from .wallet_session import WalletCoreCli,WalletSessionError
     import secrets
     ring=scanner=rpc=lease=guard=None
     try:
         _inputs(owner,source,password,authorized)
+        profile=getattr(owner,'profile',None)
+        profile_id=profile.get('profile_id') if isinstance(profile,dict) else None
+        if unacknowledged(owner.root,expected_profile_id=profile_id):
+            raise WalletSessionError('QUIT_NOTICE_REVIEW_REQUIRED')
         if type(create) is not bool:raise ValueError('WALLET_MANAGED_MODE_DENIED')
         floor=None
         if create:
@@ -175,6 +180,10 @@ def open_owned(cls,owner,source,password,*,authorized=False,keychain=None,create
         # runtime evidence and closes keys/lease; never repairs or sweeps files.
         ring=scanner=lease=guard=None
         return session
+    except WalletSessionError as error:
+        if error.args==('QUIT_NOTICE_REVIEW_REQUIRED',):
+            raise
+        raise WalletSessionError('WALLET_MANAGED_OPEN_DENIED') from None
     except (OSError,ValueError,RuntimeError):
         raise WalletSessionError('WALLET_MANAGED_OPEN_DENIED') from None
     finally:

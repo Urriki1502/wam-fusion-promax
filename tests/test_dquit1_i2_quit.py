@@ -7,27 +7,34 @@ report. Mocked Core and owners here are never genuine-Core proof.
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
 import test_q05_core_supervisor as fixture
 from wam_regtest import core_supervisor as module
+from wam_regtest import custody
 from wam_regtest.core import CoreSmokeError
 from wam_regtest.core_supervisor import ManagedCoreError, STOP_EXIT_BUDGET
 from wam_regtest.bip39_owner_backend import Bip39ReadOnlyBackend
+from wam_regtest.supervisor_store import exclusive_lease
 from wam_regtest.wallet_executor import (
     FrozenDict, ManagedWalletBackend, WalletExecutor,
 )
 from wam_regtest.wallet_session import WalletSessionError
 
 
-def _live_owner():
+def _live_owner(root=None):
     owner = Mock()
     owner.process = Mock()
     owner.process.poll.return_value = None
     owner._faulted = False
     owner.directory = Path.cwd()
+    if root is not None:
+        owner.root = root
+        owner.profile = {'profile_id': 'a' * 32}
+        owner.journal = SimpleNamespace(events=[])
     return owner
 
 
@@ -38,6 +45,18 @@ def _clears_process(owner):
 
 
 class QuitRoutingContracts(unittest.TestCase):
+    def setUp(self):
+        if sys.platform == 'darwin':
+            self._tmpdir = custody.private_temporary_directory('dquit1_i2_')
+        else:
+            self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        self.root = Path(self._tmpdir.name) / 'wam-fusion-core-0123456789abcdef'
+        self.root.mkdir(mode=0o700)
+        self._lease = exclusive_lease(self.root)
+        self._lease.__enter__()
+        self.addCleanup(self._lease.__exit__, None, None, None)
+
     def _executor(self, backend):
         executor = WalletExecutor(lambda: backend)
         executor._backend = backend
@@ -59,7 +78,7 @@ class QuitRoutingContracts(unittest.TestCase):
             executor.join(5)
 
     def _q05_backend(self, lock_error=None):
-        backend = ManagedWalletBackend(None, None, None)
+        backend = ManagedWalletBackend(self.root, None, None)
         session = Mock()
         session.locked = False
         session.faulted = lock_error is not None
@@ -67,7 +86,7 @@ class QuitRoutingContracts(unittest.TestCase):
         if lock_error is not None:
             session.lock.side_effect = lock_error
         backend.session = session
-        owner = _live_owner()
+        owner = _live_owner(self.root)
         owner.shutdown.side_effect = _clears_process(owner)
         owner.recover_stop.side_effect = _clears_process(owner)
         backend.owner = owner
@@ -75,7 +94,7 @@ class QuitRoutingContracts(unittest.TestCase):
 
     def _q06_backend(self, lock_error=None):
         backend = Bip39ReadOnlyBackend(
-            Path('/unused'), Path('/unused'), Path('/unused'))
+            self.root, self.root, self.root)
         backend._secret = bytearray(b'public-test-secret')
         spend = Mock()
         spend.locked = False
@@ -89,8 +108,8 @@ class QuitRoutingContracts(unittest.TestCase):
             'profile': 'q06', 'account_id': 'fixture',
             'receive_code': 'wamrtsp1fixture',
         }
-        backend._seed_folder = Path('/unused') / ('bip39-12-' + 'a' * 32)
-        owner = _live_owner()
+        backend._seed_folder = self.root / ('bip39-12-' + 'a' * 32)
+        owner = _live_owner(self.root)
         owner.shutdown.side_effect = _clears_process(owner)
         owner.recover_stop.side_effect = _clears_process(owner)
         backend.owner = owner

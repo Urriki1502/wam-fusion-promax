@@ -134,10 +134,19 @@ class ExplicitRecoveryContracts(unittest.TestCase):
         b.owner.release.assert_called_once_with();b.owner.close.assert_called_once_with()
 
     def test_quarantined_rpc_failed_reattest_retains_owner_without_retry(self):
-        b=self.backend();b.owner.process.poll.return_value=None
+        import sys, tempfile
+        from wam_regtest import custody
+        from wam_regtest.supervisor_store import exclusive_lease
+        tmp = custody.private_temporary_directory('q05_exec_') if sys.platform == 'darwin' else tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name) / 'wam-fusion-core-0123456789abcdef'
+        root.mkdir(mode=0o700)
+        b=self.backend();b.root=root;b.owner.root=root
+        b.owner.profile={'profile_id':'a'*32};b.owner.journal=SimpleNamespace(events=[])
+        b.owner.process.poll.return_value=None
         b.owner._faulted=False;b.owner.directory=Path.cwd()
         b.owner.recover_stop.side_effect=ValueError('CORE_RPC_PROCESS_IDENTITY_DENIED')
-        with patch('wam_regtest.rpc_scope.identity',return_value=SimpleNamespace(faulted=True)):
+        with exclusive_lease(root),patch('wam_regtest.rpc_scope.identity',return_value=SimpleNamespace(faulted=True)):
             with self.assertRaisesRegex(ValueError,'PROCESS_IDENTITY_DENIED'):
                 b.execute('quit',(),{})
         b.owner.shutdown.assert_not_called();b.owner.start.assert_not_called()

@@ -22,8 +22,26 @@ from .foundation import diagnostics
 from .wallet_executor import ManagedWalletBackend, WalletExecutorError
 
 
+def _read_unresolved_quit_notices(owner):
+    from .core_supervisor import CoreSupervisor
+    from .quit_notice import unacknowledged
+    root = getattr(owner, "root", None)
+    if type(owner) is CoreSupervisor or (
+            type(root) is type(Path())
+            and re.fullmatch(r"wam-fusion-core-[0-9a-f]{16}", root.name)):
+        profile = getattr(owner, "profile", None)
+        profile_id = profile.get("profile_id") if isinstance(profile, dict) else None
+        return unacknowledged(root, expected_profile_id=profile_id)
+    if type(root) is type(Path()) and root.exists():
+        if any(p.name.startswith("supervisor.notice") or p.name == "supervisor.failure"
+               for p in root.iterdir()):
+            return unacknowledged(root)
+    return ()
+
+
 class Bip39ReadOnlyBackend(ManagedWalletBackend):
     """All owned-Core and native-keychain calls execute on WalletExecutor thread."""
+    _session_kind = "Q06"
 
     def __init__(self, root, core, source, *, keychain=None, _anchor_factory=None, shared_profile=None):
         super().__init__(root, core, source, keychain=keychain,
@@ -185,6 +203,7 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
         """
         self._invalidate_backup_challenge()
         owner = self._core()
+        unresolved = _read_unresolved_quit_notices(owner)
         from .bip39_seed_vault import open_owned_seed_container
         folder = self._only_seed(owner)
         acknowledged, deferred, integrity = self._q06_read_ack(folder)
@@ -230,6 +249,7 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
             "backup_status": backup_status,
             "checkpoint_present": (owner.directory / (
                 'bip39-12-scan-' + folder.name.removeprefix('bip39-12-'))).exists(),
+            "unresolved_notices": unresolved,
             "signer_allowed": False, "broadcast_allowed": False, "mainnet_allowed": False,
         }
 
@@ -306,6 +326,9 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
             raise Q06ReadOnlyError("Q06_GUI_ALREADY_ACTIVATED")
         if self._secret is None or self._seed_folder is None:
             raise Q06ReadOnlyError("Q06_GUI_LOCKED")
+        owner = self._core()
+        if _read_unresolved_quit_notices(owner):
+            raise Q06ReadOnlyError("QUIT_NOTICE_REVIEW_REQUIRED")
         # Enforce the MAC-authenticated backup acknowledgement boundary on
         # every spending activation, matching reconcile_reorg rather than
         # trusting UI routing or an unauthenticated sidecar read.
@@ -313,7 +336,7 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
             raise Q06ReadOnlyError("Q06_GUI_BACKUP_ACK_REQUIRED")
         from .bip39_spend_session import open_owned_spend_session
         session = open_owned_spend_session(
-            self._core(), self._seed_folder, self.source,
+            owner, self._seed_folder, self.source,
             bytes(self._secret), authorized=True, keychain=self.keychain)
         try:
             diagnostics.q06_spend_marker('MACOS_Q06_SPEND_OPEN_SESSION_PASS')
@@ -642,6 +665,8 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                     diagnostics.record('UNLOCK_ACTIVATION', error)
                     self._resume_spend = False
                     self._lock_q06()
+                    if error.args == ("QUIT_NOTICE_REVIEW_REQUIRED",):
+                        raise
                     raise Q06ReadOnlyError('Q06_GUI_UNLOCK_RECONCILIATION_DENIED') from None
             return opened
         if action == "open":
@@ -725,6 +750,8 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                     error, fallback='Q06_SPEND_RUNTIME_PRESERVED')
             return super().execute(action, args, kwargs)
         if action == "control":
+            if args and args[0] == "release" and getattr(self, "_notice_persist_failed", False):
+                raise WalletExecutorError("NOTICE_PERSIST_FAILED")
             if args and args[0] != "status":
                 try:
                     self._lock_q06()
