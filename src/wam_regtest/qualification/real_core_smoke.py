@@ -14,6 +14,7 @@ import time
 from ..core import (
     CoreSmokeError, _port, _read_cli, _write_private_config, verified_core_paths,
 )
+from ..core_process import managed_core_argv
 from ..custody import private_temporary_directory
 from ..infrastructure import core_compat
 
@@ -133,7 +134,7 @@ def smoke_real_core(core_dir: Path, *, explicit_consent: bool, timeout: int = 12
             with (datadir / "core-output.log").open("xb") as log:
                 # Only the exact path/hash from signed receipt; no shell or user keys.
                 proc = subprocess.Popen(
-                    [str(node), f"-datadir={datadir}", "-daemon=0"],
+                    managed_core_argv(node, datadir),
                     stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                     cwd=node.parent if sys.platform=="win32" else datadir,
                     env=child_env,

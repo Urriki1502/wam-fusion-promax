@@ -58,6 +58,7 @@ import tempfile
 import time
 from . import cli_rpc
 from .core import _read_cli,_port,_write_private_config,verified_core_paths,CoreSmokeError
+from .core_process import managed_core_argv
 from .cli_rpc import CliRpcError
 from .rpc_scope import register,unregister,reauthenticate_owned,identity
 from .wsp_live import LiveCoreReadOnlyCli,RealWspScanError,REGTEST_GENESIS
@@ -227,7 +228,7 @@ class _Node:
         with (self.directory/('node-'+secrets.token_hex(4)+'.log')).open(
                 'x+b' if sys.platform=='darwin' else 'xb') as log:
             if sys.platform=='darwin':os.fchmod(log.fileno(),0o600)
-            self.proc=subprocess.Popen([str(self.node),'-datadir='+str(self.directory),'-daemon=0'],
+            self.proc=subprocess.Popen(managed_core_argv(self.node,self.directory),
                 cwd=self.node.parent if sys.platform=='win32' else self.directory,env=env,
                 stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT,
                 creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0) if sys.platform=='win32' else 0)

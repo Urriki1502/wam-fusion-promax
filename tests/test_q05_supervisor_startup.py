@@ -1,13 +1,23 @@
 """Startup fault fixtures; genuine Popen/kernel/Core proof is a separate probe."""
 from contextlib import ExitStack
+from decimal import Decimal
 import subprocess
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 import test_q05_core_supervisor as lifecycle_fixture
 from wam_regtest import core_supervisor as module
 from wam_regtest.core_process import CoreBindingError, OwnedCoreBinding
 from wam_regtest.json_rpc import RpcError
+
+POLICY = {'minrelaytxfee': Decimal('0.00001000'),
+          'incrementalrelayfee': Decimal('0.00001000'), 'fullrbf': True}
+
+
+def _cli_reply(cmd, timeout=None):
+    if cmd[-1] == 'getmempoolinfo':
+        return dict(POLICY)
+    return {'chain': 'regtest'}
 
 
 class StartupContracts(unittest.TestCase):
@@ -58,7 +68,7 @@ class StartupContracts(unittest.TestCase):
         spawn = stack.enter_context(patch.object(module.subprocess, 'Popen', return_value=process))
         stack.enter_context(patch.object(module, 'OwnedCoreBinding', return_value=binding))
         registered = stack.enter_context(patch.object(module, 'register'))
-        stack.enter_context(patch.object(module,'_read_cli',return_value={'chain':'regtest'}))
+        stack.enter_context(patch.object(module,'_read_cli',side_effect=_cli_reply))
         stack.enter_context(patch.object(module.socket, 'create_connection', return_value=probe))
         read = Mock()
         read.call.return_value={'blocks':101,'chain':'regtest'}
@@ -76,7 +86,7 @@ class StartupContracts(unittest.TestCase):
         self.assertIs(owner.process, process)
         self.assertEqual(owner.state, 'ready')
         self.assertEqual(spawn.call_args.args[0],
-            [str(owner.node), f'-datadir={owner.directory}', '-daemon=0'])
+            [str(owner.node), f'-datadir={owner.directory}', '-daemon=0', '-nosettings'])
         registered.assert_called_once_with(process, owner.core, owner.directory,
                                            authorized_disposable_mutation=True)
         binding.assert_socket.assert_called_once()
@@ -101,7 +111,7 @@ class StartupContracts(unittest.TestCase):
         class Process:
             def __init__(self,args):self.args=args
             def poll(self):return None
-        baseline=[str(node),f'-datadir={self.root}','-daemon=0']
+        baseline=[str(node),f'-datadir={self.root}','-daemon=0','-nosettings']
         with patch.object(core_process.subprocess,'Popen',Process), \
                 patch.object(core_process,'verified_core_paths',return_value=(node,cli,{})), \
                 patch.object(core_process,'_metadata',return_value=('unit fixture',)):
@@ -130,14 +140,17 @@ class StartupContracts(unittest.TestCase):
         before=(owner.directory/'wam.conf').read_bytes()
         process,binding,registered,rpc,spawn=self.startup(owner)
         with patch('wam_regtest.shared_regtest.block_magic',return_value='57414d52'), \
-                patch.object(module,'_read_cli',return_value={'chain':'regtest'}) as boot:
+                patch.object(module,'_read_cli',side_effect=_cli_reply) as boot:
             owner.start(timeout=1,_defer_shared_network=True)
         self.assertEqual(spawn.call_args.args[0],
-            [str(owner.node),f'-datadir={owner.directory}','-daemon=0','-networkactive=0'])
+            [str(owner.node),f'-datadir={owner.directory}','-daemon=0','-nosettings','-networkactive=0'])
         rpc.assert_called_once_with(owner.core,owner.directory,
                                     authorized_readonly=True,binding=binding)
-        boot.assert_called_once_with([str(owner.cli),f'-datadir={owner.directory}',
-                                      'getblockchaininfo'],timeout=unittest.mock.ANY)
+        self.assertEqual(boot.call_args_list,[
+            call([str(owner.cli),f'-datadir={owner.directory}',
+                  'getblockchaininfo'],timeout=unittest.mock.ANY),
+            call([str(owner.cli),f'-datadir={owner.directory}',
+                  'getmempoolinfo'],timeout=unittest.mock.ANY)])
         self.assertEqual((owner.directory/'wam.conf').read_bytes(),before)
         self.assertIs(owner.process,process)
 
@@ -176,7 +189,7 @@ class StartupContracts(unittest.TestCase):
                     transient.enter_context(patch.object(module.subprocess,'Popen',return_value=process))
                     transient.enter_context(patch.object(module,'OwnedCoreBinding',return_value=Mock(spec=OwnedCoreBinding)))
                     transient.enter_context(patch.object(module,'register'))
-                    transient.enter_context(patch.object(module,'_read_cli',return_value={'chain':'regtest'}))
+                    transient.enter_context(patch.object(module,'_read_cli',side_effect=_cli_reply))
                     transient.enter_context(patch.object(module.socket,'create_connection',return_value=MockSocket()))
                     rpc = transient.enter_context(patch.object(module,'ManagedReadRpc',side_effect=RpcError(code)))
                     with self.assertRaises(RpcError): owner.start(timeout=1)
@@ -216,11 +229,18 @@ class StartupContracts(unittest.TestCase):
     def test_signed_cli_bootstrap_warmup_does_not_open_http_early(self):
         owner=self.owner()
         process,binding,registered,rpc,spawn=self.startup(owner)
-        with patch.object(module,'_read_cli',side_effect=[
-                module.CoreSmokeError('CORE_RPC_WARMUP'),{'chain':'regtest'}]) as boot, \
+        attempts={'n':0}
+        def _warmup_reply(cmd,timeout=None):
+            if cmd[-1]=='getmempoolinfo':
+                return dict(POLICY)
+            attempts['n']+=1
+            if attempts['n']==1:
+                raise module.CoreSmokeError('CORE_RPC_WARMUP')
+            return {'chain':'regtest'}
+        with patch.object(module,'_read_cli',side_effect=_warmup_reply) as boot, \
              patch.object(module.time,'sleep'):
             owner.start(timeout=1)
-        self.assertEqual(boot.call_count,2)
+        self.assertEqual(boot.call_count,3)
         self.assertEqual(rpc.call_count,1)
         self.assertEqual(spawn.call_count,1)
 

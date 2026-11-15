@@ -19,6 +19,15 @@ class CoreBindingError(ValueError):
     pass
 
 
+def managed_core_argv(node, directory, *, defer_network=False):
+    argv = [str(node), f'-datadir={directory}', '-daemon=0']
+    if sys.platform == 'darwin':
+        argv.append('-nosettings')
+    if defer_network:
+        argv.append('-networkactive=0')
+    return argv
+
+
 def _metadata(path):
     if sys.platform=='win32':
         # Keep native Core-file owner/DACL/reparse custody on every boundary;
@@ -142,12 +151,12 @@ class OwnedCoreBinding:
         self.process,self.core,self.directory=process,core,directory
         self.node,self.cli,self.receipt=verified_core_paths(core)
         self._image_path=str(self.node.resolve(strict=True))
-        self._argv=[str(self.node),f'-datadir={directory}','-daemon=0']
+        self._argv=managed_core_argv(self.node,directory)
         # A qualification bootstrap may withhold P2P until attestation and
         # custody complete. Exactly this finite flag is supported; no other
         # launch options or process substitution gain authority.
-        if process.args==self._argv+['-networkactive=0']:
-            self._argv=self._argv+['-networkactive=0']
+        if process.args==managed_core_argv(self.node,directory,defer_network=True):
+            self._argv=managed_core_argv(self.node,directory,defer_network=True)
         if process.args!=self._argv or process.poll() is not None:raise CoreBindingError('RPC_OWNED_PROCESS_REQUIRED')
         self._files=(_metadata(self.node),_metadata(self.cli))
         self._assert_image()

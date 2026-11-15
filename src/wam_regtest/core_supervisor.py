@@ -5,6 +5,7 @@ creator's Popen grants authority. No PID adoption, external attachment, generic
 RPC, wallet keys, automatic recovery, config repair or chain deletion.
 """
 from contextlib import ExitStack, contextmanager
+from decimal import Decimal
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -16,7 +17,7 @@ import sys
 import time
 
 from .core import verified_core_paths, _write_private_config, _read_cli, CoreSmokeError
-from .core_process import OwnedCoreBinding, CoreBindingError, _metadata
+from .core_process import OwnedCoreBinding, CoreBindingError, _metadata, managed_core_argv
 from .custody import create_directory, storage
 from .json_rpc import ManagedReadRpc, RpcError
 from .network_policy import local_rpc_port
@@ -42,7 +43,7 @@ DIAGNOSTIC_CODES = frozenset((
     'RPC_EXECUTABLE_CHANGED','RPC_PROCESS_IMAGE_DENIED','RPC_ENDPOINT_OWNER_DENIED',
     'RPC_OWNED_PROCESS_EXITED','MANAGED_START_TIMEOUT','MANAGED_IDENTITY_CHANGED',
     'CORE_RPC_WARMUP','CORE_RPC_UNAVAILABLE','CORE_RPC_SCOPE_FAULTED',
-    'MANAGED_SHUTDOWN_UNCERTAIN',
+    'MANAGED_SHUTDOWN_UNCERTAIN','MANAGED_CORE_POLICY_DENIED',
     'MANAGED_RECOVERY_HEIGHT_REGRESSED',
     # Shared REGTEST peer-policy refusals raised by read attestation. Public
     # fixed codes (no address); previously recorded as UNCLASSIFIED (V19).
@@ -258,8 +259,7 @@ class CoreSupervisor:
             else:
                 creation_owner = nullcontext()
             with creation_owner:
-                args=[str(self.node), f'-datadir={self.directory}', '-daemon=0']
-                if _defer_shared_network:args.append('-networkactive=0')
+                args=managed_core_argv(self.node,self.directory,defer_network=_defer_shared_network)
                 self.process = subprocess.Popen(
                     args,
                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -291,6 +291,16 @@ class CoreSupervisor:
                     # ordinary reads still use the unchanged Q03 HTTP client.
                     _read_cli([str(self.cli),f'-datadir={self.directory}',
                                'getblockchaininfo'],timeout=min(5,max(.1,deadline-time.monotonic())))
+                    policy=_read_cli([str(self.cli),f'-datadir={self.directory}',
+                               'getmempoolinfo'],timeout=min(5,max(.1,deadline-time.monotonic())))
+                    if (type(policy) is not dict
+                            or type(policy.get('minrelaytxfee')) is not Decimal
+                            or policy.get('minrelaytxfee')!=Decimal('0.00001000')
+                            or type(policy.get('incrementalrelayfee')) is not Decimal
+                            or policy.get('incrementalrelayfee')!=Decimal('0.00001000')
+                            or type(policy.get('fullrbf')) is not bool
+                            or policy.get('fullrbf') is not True):
+                        raise ManagedCoreError('MANAGED_CORE_POLICY_DENIED')
                     self.read = ManagedReadRpc(self.core, self.directory,
                         authorized_readonly=True, binding=self.binding)
                     info=self.read.call('getblockchaininfo')
