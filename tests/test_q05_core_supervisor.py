@@ -177,11 +177,19 @@ class SupervisorLifecycleUnit(unittest.TestCase):
         self.assertEqual(owner.state, 'stopped')
 
     def test_uncertain_stop_retains_owner_and_never_force_kills(self):
+        # D-QUIT-1 I2: a non-timeout RPC error means the stop was never
+        # delivered, so shutdown reports STOP_NOT_DELIVERED without
+        # spending the exit wait (previously any RPC error, including a
+        # reply timeout, collapsed into SHUTDOWN_UNCERTAIN and the exit
+        # wait was skipped even when delivery was merely uncertain).
         owner = self.owner()
         self.runtime(owner)
+        process = owner.process
         with patch.object(module, '_read_cli', side_effect=RuntimeError('private diagnostic')):
-            with self.assertRaisesRegex(ManagedCoreError, '^MANAGED_SHUTDOWN_UNCERTAIN$'):
+            with self.assertRaisesRegex(ManagedCoreError, '^MANAGED_STOP_NOT_DELIVERED$'):
                 owner.shutdown()
+        self.assertIs(owner.process, process)
+        process.wait.assert_not_called()
         self.assertEqual(owner.state, 'recovery-needed')
         owner.process.terminate.assert_not_called()
         owner.process.kill.assert_not_called()

@@ -29,7 +29,7 @@ class FrozenDict(dict):
 def immutable(value):
     if value is None or type(value) in (str,int,bool,float,bytes):return value
     if type(value) in (tuple,list):return tuple(immutable(v) for v in value)
-    if type(value) is dict:return FrozenDict((k,immutable(v)) for k,v in value.items())
+    if isinstance(value,dict):return FrozenDict((k,immutable(v)) for k,v in value.items())
     if is_dataclass(value) and value.__dataclass_params__.frozen:
         return replace(value,**{f.name:immutable(getattr(value,f.name)) for f in fields(value)})
     raise WalletExecutorError('WALLET_EXECUTOR_RESULT_DENIED')
@@ -165,6 +165,8 @@ class ManagedWalletBackend:
         self._executor=None;self._anchor_factory=_anchor_factory;self._anchor_ready=False
         self._control_thread=None;self._control_fault=False
         self.shared_profile = shared_profile
+        self._quit_cleanup_uncertain=False
+        self._quit_cleanup_codes=set()
 
     def attach_executor(self,executor):
         if self._executor is not None:raise WalletExecutorError('WALLET_EXECUTOR_ALREADY_BOUND')
@@ -219,6 +221,24 @@ class ManagedWalletBackend:
 
     def _lock(self):
         if self.session is not None:self.session.lock()
+
+    def _record_quit_cleanup(self,error,fallback=None):
+        # Sticky for the rest of this process: a later clean lock must not
+        # forget that an earlier cleanup outcome is still uncertain.
+        self._quit_cleanup_uncertain=True
+        codes=getattr(self,'_quit_cleanup_codes',None)
+        if codes is None:
+            codes=set();self._quit_cleanup_codes=codes
+        code=fallback
+        args=getattr(error,'args',())
+        if len(args)==1 and type(args[0]) is str and re.fullmatch('[A-Z0-9_]+',args[0]):
+            code=args[0]
+        if code is not None:codes.add(code)
+
+    def _quit_result(self):
+        codes=getattr(self,'_quit_cleanup_codes',())
+        return immutable({'runtime_preserved':bool(getattr(self,'_quit_cleanup_uncertain',False)),
+            'codes':tuple(sorted(codes))})
 
     def execute(self,action,args,kwargs):
         refuse_explicit_prepare(action)
@@ -278,7 +298,13 @@ class ManagedWalletBackend:
             if args[0]!='status':self._lock()
             return self.owner.control_operation(args[0])
         if action in ('core_restart','quit'):
-            self._lock()
+            from .wallet_session import WalletSessionError
+            try:
+                self._lock()
+            except WalletSessionError as error:
+                # A preserved runtime must not prevent the one Core stop;
+                # the sticky outcome is reported by a successful quit.
+                self._record_quit_cleanup(error)
             owner=self.owner
             if owner is not None:
                 p=owner.process
@@ -289,7 +315,9 @@ class ManagedWalletBackend:
                     # recovery path, never retry a write or clear the grant.
                     from .rpc_scope import identity
                     scope=identity(owner.directory)
-                    if owner._faulted or scope is not None and scope.faulted:owner.recover_stop()
+                    if (owner._faulted or scope is not None and scope.faulted
+                            or getattr(self,'_quit_cleanup_uncertain',False)):
+                        owner.recover_stop()
                     else:owner.shutdown()
                 elif p is not None:
                     if action=='quit':
@@ -297,8 +325,12 @@ class ManagedWalletBackend:
                     # recover_dead performs the single attested restart itself.
                     owner.recover_dead(authorized=True)
                     return None
-                if action=='quit':owner.release();owner.close()
-                else:owner.start()
+                if action=='quit':
+                    owner.release();owner.close()
+                    return self._quit_result()
+                owner.start()
+                return None
+            if action=='quit':return self._quit_result()
             return None
         if self.session is None:raise WalletExecutorError('WALLET_LOCKED_OR_FAULTED')
         methods={'snapshot':self.session.snapshot,'prepare':self.session.prepare,

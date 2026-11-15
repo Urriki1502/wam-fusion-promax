@@ -716,9 +716,20 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
             if args or kwargs:raise Q06ReadOnlyError("Q06_GUI_LOCK_ARGUMENTS_DENIED")
             self._lock_q06();return None
         if action == "quit":
-            self._lock_q06()
+            try:
+                self._lock_q06()
+            except Exception as error:
+                # A faulted spend session always refuses lock; Quit must
+                # still reach the one authenticated Core stop below.
+                self._record_quit_cleanup(
+                    error, fallback='Q06_SPEND_RUNTIME_PRESERVED')
             return super().execute(action, args, kwargs)
         if action == "control":
-            self._lock_q06() if args and args[0] != "status" else None
+            if args and args[0] != "status":
+                try:
+                    self._lock_q06()
+                except Exception as error:
+                    self._record_quit_cleanup(
+                        error, fallback='Q06_SPEND_RUNTIME_PRESERVED')
             return super().execute(action, args, kwargs)
         raise Q06ReadOnlyError("Q06_GUI_SPENDING_NOT_IMPLEMENTED")

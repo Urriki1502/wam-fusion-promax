@@ -36,6 +36,9 @@ from .infrastructure import core_compat
 
 PROFILE_SCHEMA = 'wam-fusion-owned-supervisor-profile/v1'
 BUSY_COOLDOWN = 12
+# Measured reply-to-exit <= 2 s across 11 genuine samples
+# (evidence/RESEARCH-BASE/probes, FEE-3 fixtures); 10x margin.
+STOP_EXIT_BUDGET = 20
 # Fixed private diagnostics, never arbitrary exception text or credentials.
 DIAGNOSTIC_CODES = frozenset((
     'RPC_HTTP_DENIED','RPC_MANAGED_OPEN_DENIED','RPC_CORE_WARMUP',
@@ -45,7 +48,7 @@ DIAGNOSTIC_CODES = frozenset((
     'RPC_EXECUTABLE_CHANGED','RPC_PROCESS_IMAGE_DENIED','RPC_ENDPOINT_OWNER_DENIED',
     'RPC_OWNED_PROCESS_EXITED','MANAGED_START_TIMEOUT','MANAGED_IDENTITY_CHANGED',
     'CORE_RPC_WARMUP','CORE_RPC_UNAVAILABLE','CORE_RPC_SCOPE_FAULTED',
-    'MANAGED_SHUTDOWN_UNCERTAIN','MANAGED_CORE_POLICY_DENIED',
+    'MANAGED_SHUTDOWN_UNCERTAIN','MANAGED_STOP_NOT_DELIVERED','MANAGED_CORE_POLICY_DENIED',
     'MANAGED_RECOVERY_HEIGHT_REGRESSED',
     # Shared REGTEST peer-policy refusals raised by read attestation. Public
     # fixed codes (no address); previously recorded as UNCLASSIFIED (V19).
@@ -380,19 +383,39 @@ class CoreSupervisor:
         self.state = 'recovery-needed'
         return public_status(state=self.state)
 
+    def _deliver_stop_and_observe_exit(self, stage):
+        # Delivery and exit are separate facts: Core replies to stop before
+        # it exits, and a reply timeout may still mean the stop arrived.
+        self.journal.append('STOPPING',self.process.pid)
+        try:
+            _read_cli([str(self.cli), f'-datadir={self.directory}', 'stop'])
+        except Exception as error:
+            delivered_uncertain = (
+                type(error) is CoreSmokeError
+                and error.args == ('CORE_RPC_TIMEOUT_UNCERTAIN',))
+            if not delivered_uncertain and self.process.poll() is None:
+                # Never delivered and still running: keep the original
+                # Popen and lease for an explicit later stop. No kill.
+                self._faulted = True
+                self.state = 'recovery-needed'
+                self._record_failure(
+                    stage, ManagedCoreError('MANAGED_STOP_NOT_DELIVERED'))
+                raise ManagedCoreError('MANAGED_STOP_NOT_DELIVERED') from None
+        try:
+            self.process.wait(timeout=STOP_EXIT_BUDGET)
+        except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+            self._faulted = True
+            self.state = 'recovery-needed'
+            self._record_failure(
+                stage, ManagedCoreError('MANAGED_SHUTDOWN_UNCERTAIN'))
+            raise ManagedCoreError('MANAGED_SHUTDOWN_UNCERTAIN') from None
+
     def shutdown(self):
         if self.process is None or self._faulted:
             raise ManagedCoreError('MANAGED_STOP_NOT_ALLOWED')
         self._check_profile()
         self.binding._assert_image()
-        self.journal.append('STOPPING',self.process.pid)
-        try:
-            _read_cli([str(self.cli), f'-datadir={self.directory}', 'stop'])
-            self.process.wait(timeout=20)
-        except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
-            self._faulted = True
-            self.state = 'recovery-needed'
-            raise ManagedCoreError('MANAGED_SHUTDOWN_UNCERTAIN') from None
+        self._deliver_stop_and_observe_exit('shutdown')
         if self.read is not None:
             self.read.close()
         self.journal.append('CLEAN')
@@ -419,14 +442,7 @@ class CoreSupervisor:
         # or a foreign PID-based mutation capability. It checks endpoint before
         # auth and attests REGTEST genesis/version/peers before stop.
         reauthenticate_owned(self.directory,authorized=True)
-        self.journal.append('STOPPING',self.process.pid)
-        try:
-            _read_cli([str(self.cli),f'-datadir={self.directory}','stop'])
-            self.process.wait(timeout=20)
-        except (OSError,ValueError,RuntimeError,subprocess.TimeoutExpired) as error:
-            self._faulted=True;self.state='recovery-needed'
-            self._record_failure('recover-stop',error)
-            raise ManagedCoreError('MANAGED_SHUTDOWN_UNCERTAIN') from None
+        self._deliver_stop_and_observe_exit('recover-stop')
         if self.read is not None:self.read.close()
         self.journal.append('CLEAN')
         unregister(self.directory)
