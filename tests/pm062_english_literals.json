@@ -1,0 +1,29 @@
+{
+  "job": "PM-062",
+  "english": {
+    "history.no_matching_activity": "No matching activity in this display.",
+    "history.empty_verified": "No activity in this display.",
+    "history.unavailable": "History unavailable · unlock and sync the wallet",
+    "history.txid_not_displayed": "Transaction not in the current display. This does not establish its outcome."
+  },
+  "marks": {
+    "history.no_matching_activity": "S/U",
+    "history.empty_verified": "S",
+    "history.unavailable": "S",
+    "history.txid_not_displayed": "S"
+  },
+  "native_review": {
+    "en": "PENDING",
+    "zh-Hans": "PENDING",
+    "vi": "PENDING",
+    "ko": "PENDING",
+    "id": "PENDING",
+    "ja": "PENDING"
+  },
+  "note": "New scoped History keys for D4A-1..3; existing catalog entries and placeholders unchanged.",
+  "retired_history_callers": [
+    "pages.history_empty",
+    "pages.no_matching_confirmed_transactions",
+    "pages.no_verified_transactions"
+  ]
+}

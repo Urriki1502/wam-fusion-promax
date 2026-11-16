@@ -1,0 +1,1733 @@
+{
+  "source": "371f10e36fad8c6122998179658b407f7cddff4a",
+  "new_keys": [
+    "desktop.appearance_auto",
+    "desktop.appearance_dark",
+    "desktop.appearance_light",
+    "desktop.auto_platform",
+    "desktop.brand_version",
+    "desktop.brand_wam",
+    "desktop.core_standards",
+    "desktop.core_verified",
+    "desktop.demo_warning",
+    "desktop.not_synced",
+    "desktop.platform_linux",
+    "desktop.platform_macos",
+    "desktop.platform_system",
+    "desktop.platform_windows",
+    "desktop.privacy_wallet",
+    "desktop.regtest_badge",
+    "desktop.sync_live",
+    "desktop.unverified_scan",
+    "desktop.verified_disposable",
+    "desktop.verified_readonly",
+    "desktop.verifying_core",
+    "desktop.waiting_shutdown",
+    "desktop.window_title",
+    "desktop.workspace_kicker",
+    "managed.authenticate_checkpoint",
+    "managed.core_restarted",
+    "managed.finishing_shutdown",
+    "managed.locking",
+    "managed.menu",
+    "managed.open_wallet",
+    "managed.passphrase_prompt",
+    "managed.passphrase_title",
+    "managed.passphrase_warning",
+    "managed.passphrase_warning_title",
+    "managed.ready",
+    "managed.recovery_complete_prompt",
+    "managed.recovery_completed",
+    "managed.recovery_fresh_prompt",
+    "managed.recovery_title",
+    "managed.restart_body",
+    "managed.restart_title",
+    "managed.stop_quit",
+    "managed.verify_restart",
+    "managed.warning",
+    "managed.window_title",
+    "operational.amount_accessible",
+    "operational.amount_kicker",
+    "operational.anchor_checked",
+    "operational.anchor_guard",
+    "operational.anchor_reverify",
+    "operational.appearance",
+    "operational.appearance_auto_note",
+    "operational.appearance_subtitle",
+    "operational.application",
+    "operational.application_subtitle",
+    "operational.approve_sign",
+    "operational.atom_arithmetic",
+    "operational.awaiting_state",
+    "operational.backup_contents",
+    "operational.backup_file",
+    "operational.backup_filter",
+    "operational.backup_parent",
+    "operational.backup_passphrase",
+    "operational.backup_passphrase_prompt",
+    "operational.backup_saved",
+    "operational.broadcast",
+    "operational.broadcast_submitted",
+    "operational.cancel_draft",
+    "operational.canceling_draft",
+    "operational.checkpoint_anchor",
+    "operational.confirmed_tx",
+    "operational.core_identity_unverified",
+    "operational.core_sha",
+    "operational.core_subtitle",
+    "operational.create_keys",
+    "operational.developer_core",
+    "operational.disclosure_accessible",
+    "operational.disclosure_item",
+    "operational.disclosure_panel",
+    "operational.disclosure_panel_subtitle",
+    "operational.disclosure_passphrase",
+    "operational.disclosure_question",
+    "operational.disclosure_title",
+    "operational.disposable_title",
+    "operational.encrypted_backup",
+    "operational.encrypted_backup_subtitle",
+    "operational.encrypted_wallet",
+    "operational.encrypted_wallet_subtitle",
+    "operational.faulted_retained",
+    "operational.field_block_height",
+    "operational.field_credit_atoms",
+    "operational.field_debit_atoms",
+    "operational.field_txid",
+    "operational.fresh_chain",
+    "operational.heading_review",
+    "operational.heading_signed",
+    "operational.last_verified",
+    "operational.linux_core_subtitle",
+    "operational.linux_experimental",
+    "operational.lock_wallet",
+    "operational.locked_anchored",
+    "operational.locked_payment_hidden",
+    "operational.locking",
+    "operational.mine_block",
+    "operational.mine_notice",
+    "operational.mining",
+    "operational.network_policy",
+    "operational.network_policy_subtitle",
+    "operational.network_unavailable",
+    "operational.network_unverified",
+    "operational.network_verified",
+    "operational.no_active_review",
+    "operational.no_active_review_hint",
+    "operational.no_core_identity",
+    "operational.no_disclosure",
+    "operational.no_disclosure_short",
+    "operational.not_attested",
+    "operational.official_core",
+    "operational.operation_completed",
+    "operational.passphrase_length",
+    "operational.passphrase_length_title",
+    "operational.payment_details",
+    "operational.payment_details_subtitle",
+    "operational.platform_linux_x64",
+    "operational.platform_macos_arm64",
+    "operational.platform_qt",
+    "operational.platform_unsupported",
+    "operational.platform_windows_x64",
+    "operational.prepare_payment",
+    "operational.preparing_review",
+    "operational.reauth_body",
+    "operational.reauth_title",
+    "operational.recipient_accessible",
+    "operational.recipient_caption",
+    "operational.recipient_placeholder",
+    "operational.recover_backup",
+    "operational.recover_choice",
+    "operational.recovery_generations",
+    "operational.review_disclosure",
+    "operational.review_panel",
+    "operational.review_panel_subtitle",
+    "operational.review_ready_status",
+    "operational.save_backup",
+    "operational.saving_backup",
+    "operational.security_kicker",
+    "operational.security_subtitle",
+    "operational.security_title",
+    "operational.send_kicker",
+    "operational.send_title",
+    "operational.settings_kicker",
+    "operational.settings_subtitle",
+    "operational.shutdown_denied",
+    "operational.signed_retained",
+    "operational.signing_payment",
+    "operational.signing_warning",
+    "operational.sqlite_plaintext",
+    "operational.submitted_pending",
+    "operational.submitted_review",
+    "operational.submitting",
+    "operational.sync_chain",
+    "operational.sync_panel",
+    "operational.sync_panel_subtitle",
+    "operational.unlock",
+    "operational.unlock_prompt",
+    "operational.unlocked_test",
+    "operational.verified_recovery",
+    "operational.verified_recovery_subtitle",
+    "operational.verify_privacy",
+    "operational.verifying_disclosure",
+    "operational.verifying_passphrase",
+    "operational.verifying_privacy",
+    "operational.verifying_recovery",
+    "operational.warning",
+    "operational.window_title"
+  ],
+  "english": {
+    "managed.window_title": "WAM Fusion · Managed REGTEST",
+    "managed.warning": "REGTEST ONLY · MANAGED CORE · NO REAL FUNDS",
+    "managed.menu": "Managed Core",
+    "managed.verify_restart": "Verify and restart owned Core",
+    "managed.stop_quit": "Stop managed Core and quit",
+    "managed.ready": "Managed wallet ready · REGTEST",
+    "managed.core_restarted": "Owned Core restarted · wallet locked · unlock to verify",
+    "managed.recovery_completed": "Recovery completed · unlock to verify the live wallet",
+    "managed.locking": "Locking wallet safely · managed Core stays running",
+    "managed.finishing_shutdown": "Finishing wallet operation before explicit managed-Core shutdown",
+    "managed.restart_title": "Verify original managed Core",
+    "managed.restart_body": "Lock the wallet and explicitly restart only this owned REGTEST Core?\nThe original profile and datadir must verify. Unknown/orphan processes are refused; no transaction will be retried.",
+    "managed.recovery_complete_prompt": "Complete the authenticated pending recovery transaction?",
+    "managed.recovery_fresh_prompt": "Recover the current anchored wallet into a fresh container?\nExisting recovery data will be preserved.",
+    "managed.recovery_title": "Managed wallet recovery",
+    "managed.authenticate_checkpoint": "Authenticate the existing wallet checkpoint",
+    "managed.open_wallet": "Open REGTEST wallet",
+    "managed.passphrase_title": "Managed REGTEST wallet",
+    "managed.passphrase_prompt": "Wallet passphrase (12+ characters)",
+    "managed.passphrase_warning_title": "Wallet passphrase",
+    "managed.passphrase_warning": "Use a passphrase of 12–1024 bytes.",
+    "desktop.window_title": "WAM Privacy Wallet · Real REGTEST",
+    "desktop.brand_wam": "WAM",
+    "desktop.brand_version": "FUSION 2.0",
+    "desktop.workspace_kicker": "WALLET WORKSPACE",
+    "desktop.regtest_badge": "REGTEST",
+    "desktop.demo_warning": "PUBLIC DEMO ACCOUNT / NO REAL FUNDS / SEND & SIGN DISABLED",
+    "desktop.core_standards": "{display_name}\nBIP352 · WSP-1",
+    "desktop.privacy_wallet": "Privacy wallet",
+    "desktop.appearance_auto": "Auto · system",
+    "desktop.appearance_light": "Signature Light",
+    "desktop.appearance_dark": "Signature Dark",
+    "desktop.sync_live": "Sync live",
+    "desktop.not_synced": "Not synced · live Core verification required",
+    "desktop.verifying_core": "Verifying WAM Core REGTEST and WSP-1 SQLite…",
+    "desktop.unverified_scan": "Unverified · live scan required",
+    "desktop.core_verified": "Core verified · {height}",
+    "desktop.verified_disposable": "VERIFIED LIVE REGTEST · height {height} · tip {tip}… · DISPOSABLE TEST WALLET",
+    "desktop.verified_readonly": "VERIFIED LIVE REGTEST · height {height} · tip {tip}… · READ ONLY",
+    "desktop.waiting_shutdown": "Waiting for safe scanner shutdown before close",
+    "desktop.auto_platform": "Auto · {platform}",
+    "desktop.platform_windows": "Windows",
+    "desktop.platform_macos": "macOS",
+    "desktop.platform_linux": "Linux desktop",
+    "desktop.platform_system": "system",
+    "operational.window_title": "WAM Privacy Wallet · Disposable REGTEST",
+    "operational.warning": "REGTEST ONLY · DISPOSABLE TEST KEYS · NO REAL FUNDS",
+    "operational.send_title": "Send a silent payment",
+    "operational.send_subtitle": "Prepare an exact recipient, amount and fee. Signing and broadcast require separate approval.",
+    "operational.send_kicker": "TRANSACTIONS / SEND",
+    "operational.payment_details": "Payment details",
+    "operational.payment_details_subtitle": "BIP352 · disposable REGTEST funds only",
+    "operational.recipient_placeholder": "wamrtsp1… full silent-payment code",
+    "operational.recipient_accessible": "Silent payment recipient",
+    "operational.amount_accessible": "Payment amount in WAM",
+    "operational.fee_accessible": "Fee in WAM",
+    "operational.recipient_caption": "Recipient payment code",
+    "operational.amount_kicker": "AMOUNT / WAM",
+    "operational.fee_kicker": "FEE / WAM",
+    "operational.atom_arithmetic": "Exact atom arithmetic · fee limit 0.01 WAM. No market-price conversion.",
+    "operational.prepare_payment": "Prepare payment",
+    "operational.review_panel": "Review before approval",
+    "operational.review_panel_subtitle": "The recipient, amount, fee and change are bound to the prepared commitment.",
+    "operational.no_active_review_hint": "No active payment review. Prepare a payment to inspect its exact details.",
+    "operational.approve_sign": "Approve & Sign",
+    "operational.broadcast": "Broadcast",
+    "operational.cancel_draft": "Cancel unsigned draft",
+    "operational.signing_warning": "Signing retains irreversible input reservations. An uncertain broadcast result must be recovered, never silently retried.",
+    "operational.security_title": "Wallet security",
+    "operational.security_subtitle": "Understand the actual custody boundaries. No invented score or production guarantee.",
+    "operational.security_kicker": "CUSTODY / SECURITY",
+    "operational.encrypted_wallet": "Encrypted wallet",
+    "operational.encrypted_wallet_subtitle": "WSP-1 AES-GCM / scrypt · native private storage",
+    "operational.awaiting_state": "Awaiting wallet state",
+    "operational.sqlite_plaintext": "SQLite is plaintext in the private runtime while unlocked. Secret memory clearing is best effort.",
+    "operational.lock_wallet": "Lock wallet",
+    "operational.unlock": "Unlock",
+    "operational.checkpoint_anchor": "Checkpoint anchor",
+    "operational.not_attested": "Not attested",
+    "operational.anchor_guard": "Generation and ciphertext digest guard file rollback and stale writers. Loss, replacement or OS profile rollback require explicit recovery handling.",
+    "operational.encrypted_backup": "Encrypted backup",
+    "operational.encrypted_backup_subtitle": "Save the latest anchored generation after each payment.",
+    "operational.save_backup": "Save encrypted backup",
+    "operational.backup_contents": "Backup contains encrypted test keys and reservations. Preserve the passphrase separately.",
+    "operational.verified_recovery": "Verified recovery",
+    "operational.verified_recovery_subtitle": "Unlock only after live chain verification and rescan.",
+    "operational.recover_backup": "Recover latest backup",
+    "operational.recovery_generations": "Older generations are rejected. Original test keys and irreversible reservations are preserved.",
+    "operational.disclosure_panel": "Local selective disclosure",
+    "operational.disclosure_panel_subtitle": "Choose exact verified fields, then approve and re-authenticate. Nothing is sent to a network.",
+    "operational.disclosure_accessible": "Select local confirmed record",
+    "operational.field_txid": "Txid",
+    "operational.field_block_height": "Block Height",
+    "operational.field_credit_atoms": "Credit Atoms",
+    "operational.field_debit_atoms": "Debit Atoms",
+    "operational.review_disclosure": "Review disclosure scope",
+    "operational.no_disclosure": "No verified local disclosure. This is not an ownership proof.",
+    "operational.settings_subtitle": "Native appearance and the actual local REGTEST environment.",
+    "operational.settings_kicker": "PREFERENCES / SETTINGS",
+    "operational.appearance": "Appearance",
+    "operational.appearance_subtitle": "Signature Dark, Signature Light or native system Auto.",
+    "operational.appearance_auto_note": "Auto responds to native Qt operating-system appearance events without a restart.",
+    "operational.application": "Application",
+    "operational.application_subtitle": "Experimental REGTEST · WAM Fusion 2.0",
+    "operational.platform_qt": "{platform} / Qt {version}",
+    "operational.platform_macos_arm64": "macOS ARM64",
+    "operational.platform_windows_x64": "Windows x64",
+    "operational.platform_linux_x64": "Linux x86_64 experimental",
+    "operational.platform_unsupported": "Unsupported platform",
+    "operational.linux_experimental": "Linux experimental · PayJoin validation only. No production or real-fund operations.",
+    "operational.developer_core": "Developer WAM Core",
+    "operational.official_core": "Official WAM Core",
+    "operational.linux_core_subtitle": "Official signed {release} · reviewed loader and root witness",
+    "operational.core_subtitle": "{release} · independent binary identity checks",
+    "operational.no_core_identity": "No verified Core identity in this session",
+    "operational.network_policy": "Local network policy",
+    "operational.network_policy_subtitle": "Scan and broadcast use the same isolated local REGTEST node.",
+    "operational.verify_privacy": "Verify node privacy",
+    "operational.network_unavailable": "Remote/proxy routes and fallback are unavailable. Zero peers must be verified; there is no anonymity guarantee.",
+    "operational.sync_panel": "Synchronization & test blocks",
+    "operational.sync_panel_subtitle": "Background sync every 30 seconds. Manual sync re-verifies the live chain.",
+    "operational.sync_chain": "Sync verified chain",
+    "operational.mine_block": "Mine one REGTEST block",
+    "operational.mine_notice": "Mining confirms disposable test transactions only. The test chain is removed when this developer session closes.",
+    "operational.faulted_retained": "Faulted · reservations retained",
+    "operational.unlocked_test": "Unlocked test wallet",
+    "operational.anchor_checked": "Checked on latest wallet snapshot",
+    "operational.anchor_reverify": "Re-verify on next wallet operation",
+    "operational.preparing_review": "Preparing payment review",
+    "operational.signing_payment": "Signing approved payment",
+    "operational.submitting": "Submitting approved transaction",
+    "operational.canceling_draft": "Canceling unsigned draft",
+    "operational.locking": "Locking wallet",
+    "operational.verifying_passphrase": "Verifying passphrase and live chain",
+    "operational.saving_backup": "Saving latest encrypted backup",
+    "operational.verifying_recovery": "Verifying anchored recovery",
+    "operational.mining": "Mining one REGTEST block",
+    "operational.verifying_privacy": "Verifying local node privacy",
+    "operational.verifying_disclosure": "Verifying local disclosure consent",
+    "operational.payment_review": "{heading}\nRecipient: {code}\nAmount: {amount} WAM ({atoms} atoms)\nFee: {fee_amount} WAM ({fee_atoms} atoms)\nChange: {change_amount} WAM ({change_atoms} atoms)\nInputs: {inputs}",
+    "operational.heading_signed": "SIGNED — ready to broadcast",
+    "operational.heading_review": "REVIEW BEFORE SIGNING",
+    "operational.submitted_review": "SUBMITTED · confirmation not yet observed\nTransaction: {txid}",
+    "operational.no_active_review": "No active payment review",
+    "operational.network_verified": "VERIFIED LOCAL REGTEST · zero peers\nScan/broadcast share the private local node.\nNo remote routes, proxy or clearnet fallback; anonymity unqualified.",
+    "operational.locked_anchored": "LOCKED · encrypted snapshot anchored in {anchor}",
+    "operational.backup_saved": "BACKUP SAVED · latest anchored generation",
+    "operational.broadcast_submitted": "BROADCAST SUBMITTED · mine a block and sync to verify confirmation",
+    "operational.signed_retained": "SIGNED · reservations retained; Broadcast requires separate approval",
+    "operational.review_ready_status": "REVIEW READY · verify recipient, amount and fee before Sign",
+    "operational.operation_completed": "REGTEST operation completed · sync to refresh confirmed history",
+    "operational.confirmed_tx": "CONFIRMED · block {height}\nTransaction: {txid}",
+    "operational.submitted_pending": " · SUBMITTED: confirmation not yet observed; balance is confirmed only",
+    "operational.core_sha": "SHA-256 / {digest}",
+    "operational.core_identity_unverified": "Core identity not verified",
+    "operational.disclosure_item": "{prefix}… · block {height}",
+    "operational.no_disclosure_short": "No verified local disclosure",
+    "operational.locked_payment_hidden": "Wallet locked or faulted · verify recovery before payment details are displayed.",
+    "operational.disclosure_title": "Local disclosure approval",
+    "operational.disclosure_question": "Display only {fields} for the selected local record?\nNo ownership proof; nothing is sent to a network.",
+    "operational.disclosure_passphrase": "Wallet passphrase for selected local disclosure",
+    "operational.last_verified": "Last verified · {height}",
+    "operational.network_unverified": "UNVERIFIED · run local node privacy verification again",
+    "operational.disposable_title": "Disposable REGTEST wallet",
+    "operational.unlock_prompt": "Wallet passphrase (12+ characters)",
+    "operational.reauth_title": "Verify original REGTEST Core",
+    "operational.reauth_body": "Core authentication or identity previously failed. After the wallet passphrase and custody are verified, explicitly reauthenticate the SAME owned REGTEST process using its current private credentials?\nNo external node adoption, transaction retry, wallet replacement or custody reset.",
+    "operational.backup_parent": "Select parent for a new private encrypted backup folder",
+    "operational.backup_file": "Latest anchored REGTEST backup",
+    "operational.backup_filter": "Encrypted backups (*.enc)",
+    "operational.backup_passphrase": "Backup passphrase",
+    "operational.shutdown_denied": "DENIED · waiting for safe wallet shutdown",
+    "operational.fresh_chain": "Fresh test chain · no personal keys or real funds",
+    "operational.create_keys": "Create fresh test keys",
+    "operational.recover_choice": "Recover latest backup on this computer",
+    "operational.backup_passphrase_prompt": "Wallet backup passphrase (12+ characters).\nRecovery rescans a fresh test chain and creates a new test receive epoch.",
+    "operational.passphrase_length_title": "Passphrase length",
+    "operational.passphrase_length": "Use a longer passphrase (at least 12 characters)."
+  },
+  "modules": {
+    "managed_gui": {
+      "fingerprint": "16faf4d550a0836faebb7d1ae95080d2094bdc1acdfa2b7218a88ae670cb42d7",
+      "proven_blob": "13b422108a15f909d2c40727eba3fc12d15697c5",
+      "proven_source_sha256": "2740be04c76b5946e3b3772841774100350be1409b38ce739380a88fa487ee2c",
+      "moved": [
+        {
+          "keys": [
+            "managed.window_title"
+          ],
+          "original": "'WAM Fusion · Managed REGTEST'",
+          "replacement": "t('managed.window_title')"
+        },
+        {
+          "keys": [
+            "managed.warning"
+          ],
+          "original": "'REGTEST ONLY · MANAGED CORE · NO REAL FUNDS'",
+          "replacement": "t('managed.warning')"
+        },
+        {
+          "keys": [
+            "managed.menu"
+          ],
+          "original": "'Managed Core'",
+          "replacement": "t('managed.menu')"
+        },
+        {
+          "keys": [
+            "managed.verify_restart"
+          ],
+          "original": "'Verify and restart owned Core'",
+          "replacement": "t('managed.verify_restart')"
+        },
+        {
+          "keys": [
+            "managed.stop_quit"
+          ],
+          "original": "'Stop managed Core and quit'",
+          "replacement": "t('managed.stop_quit')"
+        },
+        {
+          "keys": [
+            "managed.ready"
+          ],
+          "original": "'Managed wallet ready · REGTEST'",
+          "replacement": "t('managed.ready')"
+        },
+        {
+          "keys": [
+            "managed.core_restarted"
+          ],
+          "original": "'Owned Core restarted · wallet locked · unlock to verify'",
+          "replacement": "t('managed.core_restarted')"
+        },
+        {
+          "keys": [
+            "managed.recovery_completed"
+          ],
+          "original": "'Recovery completed · unlock to verify the live wallet'",
+          "replacement": "t('managed.recovery_completed')"
+        },
+        {
+          "keys": [
+            "managed.locking"
+          ],
+          "original": "'Locking wallet safely · managed Core stays running'",
+          "replacement": "t('managed.locking')"
+        },
+        {
+          "keys": [
+            "managed.finishing_shutdown"
+          ],
+          "original": "'Finishing wallet operation before explicit managed-Core shutdown'",
+          "replacement": "t('managed.finishing_shutdown')"
+        },
+        {
+          "keys": [
+            "managed.restart_title"
+          ],
+          "original": "'Verify original managed Core'",
+          "replacement": "t('managed.restart_title')"
+        },
+        {
+          "keys": [
+            "managed.restart_body"
+          ],
+          "original": "'Lock the wallet and explicitly restart only this owned REGTEST Core?\\nThe original profile and datadir must verify. Unknown/orphan processes are refused; no transaction will be retried.'",
+          "replacement": "t('managed.restart_body')"
+        },
+        {
+          "keys": [
+            "managed.recovery_complete_prompt"
+          ],
+          "original": "'Complete the authenticated pending recovery transaction?'",
+          "replacement": "t('managed.recovery_complete_prompt')"
+        },
+        {
+          "keys": [
+            "managed.recovery_fresh_prompt"
+          ],
+          "original": "'Recover the current anchored wallet into a fresh container?\\nExisting recovery data will be preserved.'",
+          "replacement": "t('managed.recovery_fresh_prompt')"
+        },
+        {
+          "keys": [
+            "managed.recovery_title"
+          ],
+          "original": "'Managed wallet recovery'",
+          "replacement": "t('managed.recovery_title')"
+        },
+        {
+          "keys": [
+            "managed.authenticate_checkpoint"
+          ],
+          "original": "'Authenticate the existing wallet checkpoint'",
+          "replacement": "t('managed.authenticate_checkpoint')"
+        },
+        {
+          "keys": [
+            "managed.open_wallet"
+          ],
+          "original": "'Open REGTEST wallet'",
+          "replacement": "t('managed.open_wallet')"
+        },
+        {
+          "keys": [
+            "managed.stop_quit"
+          ],
+          "original": "'Stop managed Core and quit'",
+          "replacement": "t('managed.stop_quit')"
+        },
+        {
+          "keys": [
+            "managed.passphrase_title"
+          ],
+          "original": "'Managed REGTEST wallet'",
+          "replacement": "t('managed.passphrase_title')"
+        },
+        {
+          "keys": [
+            "managed.passphrase_prompt"
+          ],
+          "original": "'Wallet passphrase (12+ characters)'",
+          "replacement": "t('managed.passphrase_prompt')"
+        },
+        {
+          "keys": [
+            "managed.passphrase_warning_title"
+          ],
+          "original": "'Wallet passphrase'",
+          "replacement": "t('managed.passphrase_warning_title')"
+        },
+        {
+          "keys": [
+            "managed.passphrase_warning"
+          ],
+          "original": "'Use a passphrase of 12–1024 bytes.'",
+          "replacement": "t('managed.passphrase_warning')"
+        }
+      ]
+    },
+    "operational_gui": {
+      "fingerprint": "48e050258f79fef771b0ad8e5c7cff74bea83e024890d29b94c847b35d7bf94b",
+      "proven_blob": "e5c39bcb674bb49d2da55807117bc1213de65a2f",
+      "proven_source_sha256": "6dfa6ef0cc1ce832284801cfcc4d5194d1264286d445f08e068becd2122d7025",
+      "moved": [
+        {
+          "keys": [
+            "operational.window_title"
+          ],
+          "original": "'WAM Privacy Wallet · Disposable REGTEST'",
+          "replacement": "t('operational.window_title')"
+        },
+        {
+          "keys": [
+            "operational.warning"
+          ],
+          "original": "'REGTEST ONLY · DISPOSABLE TEST KEYS · NO REAL FUNDS'",
+          "replacement": "t('operational.warning')"
+        },
+        {
+          "keys": [
+            "fusion.send"
+          ],
+          "original": "'Send'",
+          "replacement": "t('fusion.send')"
+        },
+        {
+          "keys": [
+            "fusion.security"
+          ],
+          "original": "'Security'",
+          "replacement": "t('fusion.security')"
+        },
+        {
+          "keys": [
+            "fusion.settings"
+          ],
+          "original": "'Settings'",
+          "replacement": "t('fusion.settings')"
+        },
+        {
+          "keys": [
+            "operational.send_title"
+          ],
+          "original": "'Send a silent payment'",
+          "replacement": "t('operational.send_title')"
+        },
+        {
+          "keys": [
+            "operational.send_subtitle"
+          ],
+          "original": "'Prepare an exact recipient, amount and fee. Signing and broadcast require separate approval.'",
+          "replacement": "t('operational.send_subtitle')"
+        },
+        {
+          "keys": [
+            "operational.send_kicker"
+          ],
+          "original": "'TRANSACTIONS / SEND'",
+          "replacement": "t('operational.send_kicker')"
+        },
+        {
+          "keys": [
+            "operational.payment_details"
+          ],
+          "original": "'Payment details'",
+          "replacement": "t('operational.payment_details')"
+        },
+        {
+          "keys": [
+            "operational.payment_details_subtitle"
+          ],
+          "original": "'BIP352 · disposable REGTEST funds only'",
+          "replacement": "t('operational.payment_details_subtitle')"
+        },
+        {
+          "keys": [
+            "operational.recipient_placeholder"
+          ],
+          "original": "'wamrtsp1… full silent-payment code'",
+          "replacement": "t('operational.recipient_placeholder')"
+        },
+        {
+          "keys": [
+            "operational.recipient_accessible"
+          ],
+          "original": "'Silent payment recipient'",
+          "replacement": "t('operational.recipient_accessible')"
+        },
+        {
+          "keys": [
+            "operational.amount_accessible"
+          ],
+          "original": "'Payment amount in WAM'",
+          "replacement": "t('operational.amount_accessible')"
+        },
+        {
+          "keys": [
+            "operational.fee_accessible"
+          ],
+          "original": "'Fee in WAM'",
+          "replacement": "t('operational.fee_accessible')"
+        },
+        {
+          "keys": [
+            "operational.recipient_caption"
+          ],
+          "original": "'Recipient payment code'",
+          "replacement": "t('operational.recipient_caption')"
+        },
+        {
+          "keys": [
+            "operational.amount_kicker"
+          ],
+          "original": "'AMOUNT / WAM'",
+          "replacement": "t('operational.amount_kicker')"
+        },
+        {
+          "keys": [
+            "operational.fee_kicker"
+          ],
+          "original": "'FEE / WAM'",
+          "replacement": "t('operational.fee_kicker')"
+        },
+        {
+          "keys": [
+            "operational.atom_arithmetic"
+          ],
+          "original": "'Exact atom arithmetic · fee limit 0.01 WAM. No market-price conversion.'",
+          "replacement": "t('operational.atom_arithmetic')"
+        },
+        {
+          "keys": [
+            "operational.prepare_payment"
+          ],
+          "original": "'Prepare payment'",
+          "replacement": "t('operational.prepare_payment')"
+        },
+        {
+          "keys": [
+            "operational.review_panel"
+          ],
+          "original": "'Review before approval'",
+          "replacement": "t('operational.review_panel')"
+        },
+        {
+          "keys": [
+            "operational.review_panel_subtitle"
+          ],
+          "original": "'The recipient, amount, fee and change are bound to the prepared commitment.'",
+          "replacement": "t('operational.review_panel_subtitle')"
+        },
+        {
+          "keys": [
+            "operational.no_active_review_hint"
+          ],
+          "original": "'No active payment review. Prepare a payment to inspect its exact details.'",
+          "replacement": "t('operational.no_active_review_hint')"
+        },
+        {
+          "keys": [
+            "operational.approve_sign"
+          ],
+          "original": "'Approve & Sign'",
+          "replacement": "t('operational.approve_sign')"
+        },
+        {
+          "keys": [
+            "operational.broadcast"
+          ],
+          "original": "'Broadcast'",
+          "replacement": "t('operational.broadcast')"
+        },
+        {
+          "keys": [
+            "operational.cancel_draft"
+          ],
+          "original": "'Cancel unsigned draft'",
+          "replacement": "t('operational.cancel_draft')"
+        },
+        {
+          "keys": [
+            "operational.signing_warning"
+          ],
+          "original": "'Signing retains irreversible input reservations. An uncertain broadcast result must be recovered, never silently retried.'",
+          "replacement": "t('operational.signing_warning')"
+        },
+        {
+          "keys": [
+            "operational.security_title"
+          ],
+          "original": "'Wallet security'",
+          "replacement": "t('operational.security_title')"
+        },
+        {
+          "keys": [
+            "operational.security_subtitle"
+          ],
+          "original": "'Understand the actual custody boundaries. No invented score or production guarantee.'",
+          "replacement": "t('operational.security_subtitle')"
+        },
+        {
+          "keys": [
+            "operational.security_kicker"
+          ],
+          "original": "'CUSTODY / SECURITY'",
+          "replacement": "t('operational.security_kicker')"
+        },
+        {
+          "keys": [
+            "operational.encrypted_wallet"
+          ],
+          "original": "'Encrypted wallet'",
+          "replacement": "t('operational.encrypted_wallet')"
+        },
+        {
+          "keys": [
+            "operational.encrypted_wallet_subtitle"
+          ],
+          "original": "'WSP-1 AES-GCM / scrypt · native private storage'",
+          "replacement": "t('operational.encrypted_wallet_subtitle')"
+        },
+        {
+          "keys": [
+            "operational.awaiting_state"
+          ],
+          "original": "'Awaiting wallet state'",
+          "replacement": "t('operational.awaiting_state')"
+        },
+        {
+          "keys": [
+            "operational.sqlite_plaintext"
+          ],
+          "original": "'SQLite is plaintext in the private runtime while unlocked. Secret memory clearing is best effort.'",
+          "replacement": "t('operational.sqlite_plaintext')"
+        },
+        {
+          "keys": [
+            "operational.lock_wallet"
+          ],
+          "original": "'Lock wallet'",
+          "replacement": "t('operational.lock_wallet')"
+        },
+        {
+          "keys": [
+            "operational.unlock"
+          ],
+          "original": "'Unlock'",
+          "replacement": "t('operational.unlock')"
+        },
+        {
+          "keys": [
+            "operational.checkpoint_anchor"
+          ],
+          "original": "'Checkpoint anchor'",
+          "replacement": "t('operational.checkpoint_anchor')"
+        },
+        {
+          "keys": [
+            "operational.not_attested"
+          ],
+          "original": "'Not attested'",
+          "replacement": "t('operational.not_attested')"
+        },
+        {
+          "keys": [
+            "operational.anchor_guard"
+          ],
+          "original": "'Generation and ciphertext digest guard file rollback and stale writers. Loss, replacement or OS profile rollback require explicit recovery handling.'",
+          "replacement": "t('operational.anchor_guard')"
+        },
+        {
+          "keys": [
+            "operational.encrypted_backup"
+          ],
+          "original": "'Encrypted backup'",
+          "replacement": "t('operational.encrypted_backup')"
+        },
+        {
+          "keys": [
+            "operational.encrypted_backup_subtitle"
+          ],
+          "original": "'Save the latest anchored generation after each payment.'",
+          "replacement": "t('operational.encrypted_backup_subtitle')"
+        },
+        {
+          "keys": [
+            "operational.save_backup"
+          ],
+          "original": "'Save encrypted backup'",
+          "replacement": "t('operational.save_backup')"
+        },
+        {
+          "keys": [
+            "operational.backup_contents"
+          ],
+          "original": "'Backup contains encrypted test keys and reservations. Preserve the passphrase separately.'",
+          "replacement": "t('operational.backup_contents')"
+        },
+        {
+          "keys": [
+            "operational.verified_recovery"
+          ],
+          "original": "'Verified recovery'",
+          "replacement": "t('operational.verified_recovery')"
+        },
+        {
+          "keys": [
+            "operational.verified_recovery_subtitle"
+          ],
+          "original": "'Unlock only after live chain verification and rescan.'",
+          "replacement": "t('operational.verified_recovery_subtitle')"
+        },
+        {
+          "keys": [
+            "operational.recover_backup"
+          ],
+          "original": "'Recover latest backup'",
+          "replacement": "t('operational.recover_backup')"
+        },
+        {
+          "keys": [
+            "operational.recovery_generations"
+          ],
+          "original": "'Older generations are rejected. Original test keys and irreversible reservations are preserved.'",
+          "replacement": "t('operational.recovery_generations')"
+        },
+        {
+          "keys": [
+            "operational.disclosure_panel"
+          ],
+          "original": "'Local selective disclosure'",
+          "replacement": "t('operational.disclosure_panel')"
+        },
+        {
+          "keys": [
+            "operational.disclosure_panel_subtitle"
+          ],
+          "original": "'Choose exact verified fields, then approve and re-authenticate. Nothing is sent to a network.'",
+          "replacement": "t('operational.disclosure_panel_subtitle')"
+        },
+        {
+          "keys": [
+            "operational.disclosure_accessible"
+          ],
+          "original": "'Select local confirmed record'",
+          "replacement": "t('operational.disclosure_accessible')"
+        },
+        {
+          "keys": [
+            "operational.field_txid",
+            "operational.field_block_height",
+            "operational.field_credit_atoms",
+            "operational.field_debit_atoms"
+          ],
+          "original": "field.replace('_', ' ').title()",
+          "replacement": "t({'txid': 'operational.field_txid', 'block_height': 'operational.field_block_height', 'credit_atoms': 'operational.field_credit_atoms', 'debit_atoms': 'operational.field_debit_atoms'}[field])"
+        },
+        {
+          "keys": [
+            "operational.review_disclosure"
+          ],
+          "original": "'Review disclosure scope'",
+          "replacement": "t('operational.review_disclosure')"
+        },
+        {
+          "keys": [
+            "operational.no_disclosure"
+          ],
+          "original": "'No verified local disclosure. This is not an ownership proof.'",
+          "replacement": "t('operational.no_disclosure')"
+        },
+        {
+          "keys": [
+            "fusion.settings"
+          ],
+          "original": "'Settings'",
+          "replacement": "t('fusion.settings')"
+        },
+        {
+          "keys": [
+            "operational.settings_subtitle"
+          ],
+          "original": "'Native appearance and the actual local REGTEST environment.'",
+          "replacement": "t('operational.settings_subtitle')"
+        },
+        {
+          "keys": [
+            "operational.settings_kicker"
+          ],
+          "original": "'PREFERENCES / SETTINGS'",
+          "replacement": "t('operational.settings_kicker')"
+        },
+        {
+          "keys": [
+            "operational.appearance"
+          ],
+          "original": "'Appearance'",
+          "replacement": "t('operational.appearance')"
+        },
+        {
+          "keys": [
+            "operational.appearance_subtitle"
+          ],
+          "original": "'Signature Dark, Signature Light or native system Auto.'",
+          "replacement": "t('operational.appearance_subtitle')"
+        },
+        {
+          "keys": [
+            "desktop.appearance_auto"
+          ],
+          "original": "'Auto · system'",
+          "replacement": "t('desktop.appearance_auto')"
+        },
+        {
+          "keys": [
+            "desktop.appearance_light"
+          ],
+          "original": "'Signature Light'",
+          "replacement": "t('desktop.appearance_light')"
+        },
+        {
+          "keys": [
+            "desktop.appearance_dark"
+          ],
+          "original": "'Signature Dark'",
+          "replacement": "t('desktop.appearance_dark')"
+        },
+        {
+          "keys": [
+            "operational.appearance_auto_note"
+          ],
+          "original": "'Auto responds to native Qt operating-system appearance events without a restart.'",
+          "replacement": "t('operational.appearance_auto_note')"
+        },
+        {
+          "keys": [
+            "operational.application"
+          ],
+          "original": "'Application'",
+          "replacement": "t('operational.application')"
+        },
+        {
+          "keys": [
+            "operational.application_subtitle"
+          ],
+          "original": "'Experimental REGTEST · WAM Fusion 2.0'",
+          "replacement": "t('operational.application_subtitle')"
+        },
+        {
+          "keys": [
+            "operational.platform_qt",
+            "operational.platform_unsupported",
+            "operational.platform_macos_arm64",
+            "operational.platform_windows_x64",
+            "operational.platform_linux_x64"
+          ],
+          "original": "{'darwin': 'macOS ARM64', 'win32': 'Windows x64', 'linux': 'Linux x86_64 experimental'}.get(sys.platform, 'Unsupported platform') + ' / Qt ' + PySide6.__version__",
+          "replacement": "t('operational.platform_qt').format(platform={'darwin': t('operational.platform_macos_arm64'), 'win32': t('operational.platform_windows_x64'), 'linux': t('operational.platform_linux_x64')}.get(sys.platform, t('operational.platform_unsupported')), version=PySide6.__version__)"
+        },
+        {
+          "keys": [
+            "operational.linux_experimental"
+          ],
+          "original": "'Linux experimental · PayJoin validation only. No production or real-fund operations.'",
+          "replacement": "t('operational.linux_experimental')"
+        },
+        {
+          "keys": [
+            "operational.developer_core"
+          ],
+          "original": "'Developer WAM Core'",
+          "replacement": "t('operational.developer_core')"
+        },
+        {
+          "keys": [
+            "operational.official_core"
+          ],
+          "original": "'Official WAM Core'",
+          "replacement": "t('operational.official_core')"
+        },
+        {
+          "keys": [
+            "operational.linux_core_subtitle"
+          ],
+          "original": "'Official signed ' + core_compat.CORE_RELEASE + ' · reviewed loader and root witness'",
+          "replacement": "t('operational.linux_core_subtitle').format(release=core_compat.CORE_RELEASE)"
+        },
+        {
+          "keys": [
+            "operational.core_subtitle"
+          ],
+          "original": "core_compat.CORE_RELEASE + ' · independent binary identity checks'",
+          "replacement": "t('operational.core_subtitle').format(release=core_compat.CORE_RELEASE)"
+        },
+        {
+          "keys": [
+            "operational.no_core_identity"
+          ],
+          "original": "'No verified Core identity in this session'",
+          "replacement": "t('operational.no_core_identity')"
+        },
+        {
+          "keys": [
+            "operational.network_policy"
+          ],
+          "original": "'Local network policy'",
+          "replacement": "t('operational.network_policy')"
+        },
+        {
+          "keys": [
+            "operational.network_policy_subtitle"
+          ],
+          "original": "'Scan and broadcast use the same isolated local REGTEST node.'",
+          "replacement": "t('operational.network_policy_subtitle')"
+        },
+        {
+          "keys": [
+            "operational.verify_privacy"
+          ],
+          "original": "'Verify node privacy'",
+          "replacement": "t('operational.verify_privacy')"
+        },
+        {
+          "keys": [
+            "operational.network_unavailable"
+          ],
+          "original": "'Remote/proxy routes and fallback are unavailable. Zero peers must be verified; there is no anonymity guarantee.'",
+          "replacement": "t('operational.network_unavailable')"
+        },
+        {
+          "keys": [
+            "operational.sync_panel"
+          ],
+          "original": "'Synchronization & test blocks'",
+          "replacement": "t('operational.sync_panel')"
+        },
+        {
+          "keys": [
+            "operational.sync_panel_subtitle"
+          ],
+          "original": "'Background sync every 30 seconds. Manual sync re-verifies the live chain.'",
+          "replacement": "t('operational.sync_panel_subtitle')"
+        },
+        {
+          "keys": [
+            "operational.sync_chain"
+          ],
+          "original": "'Sync verified chain'",
+          "replacement": "t('operational.sync_chain')"
+        },
+        {
+          "keys": [
+            "operational.mine_block"
+          ],
+          "original": "'Mine one REGTEST block'",
+          "replacement": "t('operational.mine_block')"
+        },
+        {
+          "keys": [
+            "operational.mine_notice"
+          ],
+          "original": "'Mining confirms disposable test transactions only. The test chain is removed when this developer session closes.'",
+          "replacement": "t('operational.mine_notice')"
+        },
+        {
+          "keys": [
+            "desktop.auto_platform",
+            "desktop.platform_system",
+            "desktop.platform_windows",
+            "desktop.platform_macos",
+            "desktop.platform_linux"
+          ],
+          "original": "'Auto · ' + {'win32': 'Windows', 'darwin': 'macOS', 'linux': 'Linux desktop'}.get(sys.platform, 'system')",
+          "replacement": "t('desktop.auto_platform').format(platform={'win32': t('desktop.platform_windows'), 'darwin': t('desktop.platform_macos'), 'linux': t('desktop.platform_linux')}.get(sys.platform, t('desktop.platform_system')))"
+        },
+        {
+          "keys": [
+            "fusion.locked"
+          ],
+          "original": "'Locked'",
+          "replacement": "t('fusion.locked')"
+        },
+        {
+          "keys": [
+            "operational.faulted_retained"
+          ],
+          "original": "'Faulted · reservations retained'",
+          "replacement": "t('operational.faulted_retained')"
+        },
+        {
+          "keys": [
+            "operational.unlocked_test"
+          ],
+          "original": "'Unlocked test wallet'",
+          "replacement": "t('operational.unlocked_test')"
+        },
+        {
+          "keys": [
+            "operational.anchor_checked"
+          ],
+          "original": "'Checked on latest wallet snapshot'",
+          "replacement": "t('operational.anchor_checked')"
+        },
+        {
+          "keys": [
+            "operational.anchor_reverify"
+          ],
+          "original": "'Re-verify on next wallet operation'",
+          "replacement": "t('operational.anchor_reverify')"
+        },
+        {
+          "keys": [
+            "operational.preparing_review"
+          ],
+          "original": "'Preparing payment review'",
+          "replacement": "t('operational.preparing_review')"
+        },
+        {
+          "keys": [
+            "operational.signing_payment"
+          ],
+          "original": "'Signing approved payment'",
+          "replacement": "t('operational.signing_payment')"
+        },
+        {
+          "keys": [
+            "operational.submitting"
+          ],
+          "original": "'Submitting approved transaction'",
+          "replacement": "t('operational.submitting')"
+        },
+        {
+          "keys": [
+            "operational.canceling_draft"
+          ],
+          "original": "'Canceling unsigned draft'",
+          "replacement": "t('operational.canceling_draft')"
+        },
+        {
+          "keys": [
+            "operational.locking"
+          ],
+          "original": "'Locking wallet'",
+          "replacement": "t('operational.locking')"
+        },
+        {
+          "keys": [
+            "operational.verifying_passphrase"
+          ],
+          "original": "'Verifying passphrase and live chain'",
+          "replacement": "t('operational.verifying_passphrase')"
+        },
+        {
+          "keys": [
+            "operational.saving_backup"
+          ],
+          "original": "'Saving latest encrypted backup'",
+          "replacement": "t('operational.saving_backup')"
+        },
+        {
+          "keys": [
+            "operational.verifying_recovery"
+          ],
+          "original": "'Verifying anchored recovery'",
+          "replacement": "t('operational.verifying_recovery')"
+        },
+        {
+          "keys": [
+            "operational.mining"
+          ],
+          "original": "'Mining one REGTEST block'",
+          "replacement": "t('operational.mining')"
+        },
+        {
+          "keys": [
+            "operational.verifying_privacy"
+          ],
+          "original": "'Verifying local node privacy'",
+          "replacement": "t('operational.verifying_privacy')"
+        },
+        {
+          "keys": [
+            "operational.verifying_disclosure"
+          ],
+          "original": "'Verifying local disclosure consent'",
+          "replacement": "t('operational.verifying_disclosure')"
+        },
+        {
+          "keys": [
+            "operational.payment_review",
+            "operational.heading_signed",
+            "operational.heading_review"
+          ],
+          "original": "f\"{('SIGNED — ready to broadcast' if self.signed else 'REVIEW BEFORE SIGNING')}\\nRecipient: {result.code}\\nAmount: {format_wam(result.atoms)} WAM ({result.atoms} atoms)\\nFee: {format_wam(result.fee)} WAM ({result.fee} atoms)\\nChange: {format_wam(result.change_atoms)} WAM ({result.change_atoms} atoms)\\nInputs: {result.input_count}\"",
+          "replacement": "t('operational.payment_review').format(heading=t('operational.heading_signed') if self.signed else t('operational.heading_review'), code=result.code, amount=format_wam(result.atoms), atoms=result.atoms, fee_amount=format_wam(result.fee), fee_atoms=result.fee, change_amount=format_wam(result.change_atoms), change_atoms=result.change_atoms, inputs=result.input_count)"
+        },
+        {
+          "keys": [
+            "operational.submitted_review"
+          ],
+          "original": "'SUBMITTED · confirmation not yet observed\\nTransaction: ' + result",
+          "replacement": "t('operational.submitted_review').format(txid=result)"
+        },
+        {
+          "keys": [
+            "operational.no_active_review"
+          ],
+          "original": "'No active payment review'",
+          "replacement": "t('operational.no_active_review')"
+        },
+        {
+          "keys": [
+            "operational.network_verified"
+          ],
+          "original": "'VERIFIED LOCAL REGTEST · zero peers\\nScan/broadcast share the private local node.\\nNo remote routes, proxy or clearnet fallback; anonymity unqualified.'",
+          "replacement": "t('operational.network_verified')"
+        },
+        {
+          "keys": [
+            "operational.locked_anchored"
+          ],
+          "original": "'LOCKED · encrypted snapshot anchored in ' + custody.anchor_label()",
+          "replacement": "t('operational.locked_anchored').format(anchor=custody.anchor_label())"
+        },
+        {
+          "keys": [
+            "operational.backup_saved"
+          ],
+          "original": "'BACKUP SAVED · latest anchored generation'",
+          "replacement": "t('operational.backup_saved')"
+        },
+        {
+          "keys": [
+            "operational.broadcast_submitted"
+          ],
+          "original": "'BROADCAST SUBMITTED · mine a block and sync to verify confirmation'",
+          "replacement": "t('operational.broadcast_submitted')"
+        },
+        {
+          "keys": [
+            "operational.signed_retained"
+          ],
+          "original": "'SIGNED · reservations retained; Broadcast requires separate approval'",
+          "replacement": "t('operational.signed_retained')"
+        },
+        {
+          "keys": [
+            "operational.review_ready_status"
+          ],
+          "original": "'REVIEW READY · verify recipient, amount and fee before Sign'",
+          "replacement": "t('operational.review_ready_status')"
+        },
+        {
+          "keys": [
+            "operational.operation_completed"
+          ],
+          "original": "'REGTEST operation completed · sync to refresh confirmed history'",
+          "replacement": "t('operational.operation_completed')"
+        },
+        {
+          "keys": [
+            "operational.confirmed_tx"
+          ],
+          "original": "'CONFIRMED · block ' + str(confirmed.block_height) + '\\nTransaction: ' + self._submitted_txid",
+          "replacement": "t('operational.confirmed_tx').format(height=str(confirmed.block_height), txid=self._submitted_txid)"
+        },
+        {
+          "keys": [
+            "operational.submitted_pending"
+          ],
+          "original": "' · SUBMITTED: confirmation not yet observed; balance is confirmed only'",
+          "replacement": "t('operational.submitted_pending')"
+        },
+        {
+          "keys": [
+            "operational.core_sha"
+          ],
+          "original": "'SHA-256 / ' + snap.core_sha256",
+          "replacement": "t('operational.core_sha').format(digest=snap.core_sha256)"
+        },
+        {
+          "keys": [
+            "operational.core_identity_unverified"
+          ],
+          "original": "'Core identity not verified'",
+          "replacement": "t('operational.core_identity_unverified')"
+        },
+        {
+          "keys": [
+            "operational.disclosure_item"
+          ],
+          "original": "row.txid[:16] + '… · block ' + str(row.block_height)",
+          "replacement": "t('operational.disclosure_item').format(prefix=row.txid[:16], height=str(row.block_height))"
+        },
+        {
+          "keys": [
+            "operational.no_disclosure_short"
+          ],
+          "original": "'No verified local disclosure'",
+          "replacement": "t('operational.no_disclosure_short')"
+        },
+        {
+          "keys": [
+            "operational.no_core_identity"
+          ],
+          "original": "'No verified Core identity in this session'",
+          "replacement": "t('operational.no_core_identity')"
+        },
+        {
+          "keys": [
+            "operational.locked_payment_hidden"
+          ],
+          "original": "'Wallet locked or faulted · verify recovery before payment details are displayed.'",
+          "replacement": "t('operational.locked_payment_hidden')"
+        },
+        {
+          "keys": [
+            "operational.disclosure_title"
+          ],
+          "original": "'Local disclosure approval'",
+          "replacement": "t('operational.disclosure_title')"
+        },
+        {
+          "keys": [
+            "operational.disclosure_question"
+          ],
+          "original": "'Display only ' + ', '.join(fields) + ' for the selected local record?\\nNo ownership proof; nothing is sent to a network.'",
+          "replacement": "t('operational.disclosure_question').format(fields=', '.join(fields))"
+        },
+        {
+          "keys": [
+            "operational.disclosure_passphrase"
+          ],
+          "original": "'Wallet passphrase for selected local disclosure'",
+          "replacement": "t('operational.disclosure_passphrase')"
+        },
+        {
+          "keys": [
+            "operational.last_verified"
+          ],
+          "original": "'Last verified · ' + str(self._snapshot.height)",
+          "replacement": "t('operational.last_verified').format(height=str(self._snapshot.height))"
+        },
+        {
+          "keys": [
+            "operational.network_unverified"
+          ],
+          "original": "'UNVERIFIED · run local node privacy verification again'",
+          "replacement": "t('operational.network_unverified')"
+        },
+        {
+          "keys": [
+            "operational.disposable_title"
+          ],
+          "original": "'Disposable REGTEST wallet'",
+          "replacement": "t('operational.disposable_title')"
+        },
+        {
+          "keys": [
+            "operational.unlock_prompt"
+          ],
+          "original": "'Wallet passphrase (12+ characters)'",
+          "replacement": "t('operational.unlock_prompt')"
+        },
+        {
+          "keys": [
+            "operational.reauth_title"
+          ],
+          "original": "'Verify original REGTEST Core'",
+          "replacement": "t('operational.reauth_title')"
+        },
+        {
+          "keys": [
+            "operational.reauth_body"
+          ],
+          "original": "'Core authentication or identity previously failed. After the wallet passphrase and custody are verified, explicitly reauthenticate the SAME owned REGTEST process using its current private credentials?\\nNo external node adoption, transaction retry, wallet replacement or custody reset.'",
+          "replacement": "t('operational.reauth_body')"
+        },
+        {
+          "keys": [
+            "operational.backup_parent"
+          ],
+          "original": "'Select parent for a new private encrypted backup folder'",
+          "replacement": "t('operational.backup_parent')"
+        },
+        {
+          "keys": [
+            "operational.backup_file"
+          ],
+          "original": "'Latest anchored REGTEST backup'",
+          "replacement": "t('operational.backup_file')"
+        },
+        {
+          "keys": [
+            "operational.backup_filter"
+          ],
+          "original": "'Encrypted backups (*.enc)'",
+          "replacement": "t('operational.backup_filter')"
+        },
+        {
+          "keys": [
+            "operational.backup_passphrase"
+          ],
+          "original": "'Backup passphrase'",
+          "replacement": "t('operational.backup_passphrase')"
+        },
+        {
+          "keys": [
+            "operational.shutdown_denied"
+          ],
+          "original": "'DENIED · waiting for safe wallet shutdown'",
+          "replacement": "t('operational.shutdown_denied')"
+        },
+        {
+          "keys": [
+            "operational.disposable_title"
+          ],
+          "original": "'Disposable REGTEST wallet'",
+          "replacement": "t('operational.disposable_title')"
+        },
+        {
+          "keys": [
+            "operational.fresh_chain"
+          ],
+          "original": "'Fresh test chain · no personal keys or real funds'",
+          "replacement": "t('operational.fresh_chain')"
+        },
+        {
+          "keys": [
+            "operational.create_keys"
+          ],
+          "original": "'Create fresh test keys'",
+          "replacement": "t('operational.create_keys')"
+        },
+        {
+          "keys": [
+            "operational.recover_choice"
+          ],
+          "original": "'Recover latest backup on this computer'",
+          "replacement": "t('operational.recover_choice')"
+        },
+        {
+          "keys": [
+            "operational.recover_choice"
+          ],
+          "original": "'Recover latest backup on this computer'",
+          "replacement": "t('operational.recover_choice')"
+        },
+        {
+          "keys": [
+            "operational.backup_file"
+          ],
+          "original": "'Latest anchored REGTEST backup'",
+          "replacement": "t('operational.backup_file')"
+        },
+        {
+          "keys": [
+            "operational.backup_filter"
+          ],
+          "original": "'Encrypted backups (*.enc)'",
+          "replacement": "t('operational.backup_filter')"
+        },
+        {
+          "keys": [
+            "operational.disposable_title"
+          ],
+          "original": "'Disposable REGTEST wallet'",
+          "replacement": "t('operational.disposable_title')"
+        },
+        {
+          "keys": [
+            "operational.backup_passphrase_prompt"
+          ],
+          "original": "'Wallet backup passphrase (12+ characters).\\nRecovery rescans a fresh test chain and creates a new test receive epoch.'",
+          "replacement": "t('operational.backup_passphrase_prompt')"
+        },
+        {
+          "keys": [
+            "operational.passphrase_length_title"
+          ],
+          "original": "'Passphrase length'",
+          "replacement": "t('operational.passphrase_length_title')"
+        },
+        {
+          "keys": [
+            "operational.passphrase_length"
+          ],
+          "original": "'Use a longer passphrase (at least 12 characters).'",
+          "replacement": "t('operational.passphrase_length')"
+        }
+      ]
+    },
+    "desktop": {
+      "fingerprint": "100c4c32e7bb3dcba45e43e2b4eaf1fc775f8aaf185c0f80987054285a854cde",
+      "proven_blob": "99b55a76ed359addb5fdcf5df7b6a1356794921f",
+      "proven_source_sha256": "3b0667cef56b4db7abb33d647487c1436815ef8dba9c35202a4ec7c8321ea641",
+      "moved": [
+        {
+          "keys": [
+            "desktop.window_title"
+          ],
+          "original": "'WAM Privacy Wallet · Real REGTEST'",
+          "replacement": "t('desktop.window_title')"
+        },
+        {
+          "keys": [
+            "desktop.brand_wam"
+          ],
+          "original": "'WAM'",
+          "replacement": "t('desktop.brand_wam')"
+        },
+        {
+          "keys": [
+            "desktop.brand_version"
+          ],
+          "original": "'FUSION 2.0'",
+          "replacement": "t('desktop.brand_version')"
+        },
+        {
+          "keys": [
+            "desktop.workspace_kicker"
+          ],
+          "original": "'WALLET WORKSPACE'",
+          "replacement": "t('desktop.workspace_kicker')"
+        },
+        {
+          "keys": [
+            "fusion.overview"
+          ],
+          "original": "'Overview'",
+          "replacement": "t('fusion.overview')"
+        },
+        {
+          "keys": [
+            "fusion.receive"
+          ],
+          "original": "'Receive'",
+          "replacement": "t('fusion.receive')"
+        },
+        {
+          "keys": [
+            "fusion.history"
+          ],
+          "original": "'History'",
+          "replacement": "t('fusion.history')"
+        },
+        {
+          "keys": [
+            "desktop.regtest_badge"
+          ],
+          "original": "'REGTEST'",
+          "replacement": "t('desktop.regtest_badge')"
+        },
+        {
+          "keys": [
+            "desktop.demo_warning"
+          ],
+          "original": "'PUBLIC DEMO ACCOUNT / NO REAL FUNDS / SEND & SIGN DISABLED'",
+          "replacement": "t('desktop.demo_warning')"
+        },
+        {
+          "keys": [
+            "desktop.core_standards"
+          ],
+          "original": "core_compat.DISPLAY_NAME + '\\nBIP352 · WSP-1'",
+          "replacement": "t('desktop.core_standards').format(display_name=core_compat.DISPLAY_NAME)"
+        },
+        {
+          "keys": [
+            "desktop.privacy_wallet"
+          ],
+          "original": "'Privacy wallet'",
+          "replacement": "t('desktop.privacy_wallet')"
+        },
+        {
+          "keys": [
+            "fusion.not_verified"
+          ],
+          "original": "'Not verified'",
+          "replacement": "t('fusion.not_verified')"
+        },
+        {
+          "keys": [
+            "desktop.appearance_auto"
+          ],
+          "original": "'Auto · system'",
+          "replacement": "t('desktop.appearance_auto')"
+        },
+        {
+          "keys": [
+            "desktop.appearance_light"
+          ],
+          "original": "'Signature Light'",
+          "replacement": "t('desktop.appearance_light')"
+        },
+        {
+          "keys": [
+            "desktop.appearance_dark"
+          ],
+          "original": "'Signature Dark'",
+          "replacement": "t('desktop.appearance_dark')"
+        },
+        {
+          "keys": [
+            "desktop.sync_live"
+          ],
+          "original": "'Sync live'",
+          "replacement": "t('desktop.sync_live')"
+        },
+        {
+          "keys": [
+            "desktop.not_synced"
+          ],
+          "original": "'Not synced · live Core verification required'",
+          "replacement": "t('desktop.not_synced')"
+        },
+        {
+          "keys": [
+            "fusion.overview"
+          ],
+          "original": "'Overview'",
+          "replacement": "t('fusion.overview')"
+        },
+        {
+          "keys": [
+            "fusion.receive"
+          ],
+          "original": "'Receive'",
+          "replacement": "t('fusion.receive')"
+        },
+        {
+          "keys": [
+            "fusion.history"
+          ],
+          "original": "'History'",
+          "replacement": "t('fusion.history')"
+        },
+        {
+          "keys": [
+            "fusion.send"
+          ],
+          "original": "'Send'",
+          "replacement": "t('fusion.send')"
+        },
+        {
+          "keys": [
+            "fusion.security"
+          ],
+          "original": "'Security'",
+          "replacement": "t('fusion.security')"
+        },
+        {
+          "keys": [
+            "fusion.settings"
+          ],
+          "original": "'Settings'",
+          "replacement": "t('fusion.settings')"
+        },
+        {
+          "keys": [
+            "desktop.privacy_wallet"
+          ],
+          "original": "'Privacy wallet'",
+          "replacement": "t('desktop.privacy_wallet')"
+        },
+        {
+          "keys": [
+            "desktop.verifying_core"
+          ],
+          "original": "'Verifying WAM Core REGTEST and WSP-1 SQLite…'",
+          "replacement": "t('desktop.verifying_core')"
+        },
+        {
+          "keys": [
+            "desktop.unverified_scan"
+          ],
+          "original": "'Unverified · live scan required'",
+          "replacement": "t('desktop.unverified_scan')"
+        },
+        {
+          "keys": [
+            "fusion.not_verified"
+          ],
+          "original": "'Not verified'",
+          "replacement": "t('fusion.not_verified')"
+        },
+        {
+          "keys": [
+            "desktop.core_verified"
+          ],
+          "original": "'Core verified · ' + str(snap.height)",
+          "replacement": "t('desktop.core_verified').format(height=str(snap.height))"
+        },
+        {
+          "keys": [
+            "desktop.verified_disposable",
+            "desktop.verified_readonly"
+          ],
+          "original": "f'VERIFIED LIVE REGTEST · height {snap.height} · tip {snap.tip[:14]}… · ' + ('DISPOSABLE TEST WALLET' if self.session is not None else 'READ ONLY')",
+          "replacement": "(t('desktop.verified_disposable') if self.session is not None else t('desktop.verified_readonly')).format(height=snap.height, tip=snap.tip[:14])"
+        },
+        {
+          "keys": [
+            "desktop.waiting_shutdown"
+          ],
+          "original": "'Waiting for safe scanner shutdown before close'",
+          "replacement": "t('desktop.waiting_shutdown')"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,154 @@
+"""Frozen operational Windows x64 REGTEST entry; no system Python or downloads."""
+from hashlib import sha256
+import io
+import json
+from pathlib import Path
+import platform
+import re
+import sys
+import tempfile
+
+from wam_regtest.external_core import ExternalAttachmentError
+from wam_regtest.q04_runner import run_q04_scenario
+from wam_regtest.windows_core_stage import _stage_original_core
+
+
+_PUBLIC_ERROR_TYPES=frozenset(('CoreSmokeError','WindowsCoreSmokeError','WalletProbeError',
+    'RealWspScanError','WindowsWspError','Q04RunnerError','Q02ProbeError',
+    'Q06PlatformQualificationError','ValueError'))
+_PUBLIC_KINDS=_PUBLIC_ERROR_TYPES|frozenset(('AssertionError','KeyError','AttributeError',
+    'TypeError','OSError','PermissionError','FileNotFoundError','TimeoutError','OTHER'))
+_PUBLIC_CAUSES=frozenset(('Q02_NODE_START_TIMEOUT','Q02_OWNED_NODE_EARLY_EXIT',
+    'Q02_BOOT_LOG_BOUNDS_DENIED','Q02_BOOT_LOG_CUSTODY_DENIED','Q02_BOOT_ORIGINAL_OWNER_REQUIRED',
+    'Q02_UNEXPECTED_FIXED_REFUSAL','Q02_REQUIRED_REFUSAL_MISSING',
+    'CORE_LOCAL_NETWORK_POLICY_DENIED','CORE_RPC_SCOPE_FAULTED',
+    'CORE_RPC_CREDENTIAL_CHANGED_OR_UNSAFE','CORE_RPC_PROCESS_IDENTITY_DENIED',
+    'CORE_RPC_AUTHENTICATION_DENIED','CORE_LOCAL_RPC_COMMAND_DENIED',
+    'CORE_RPC_DENIED','CORE_RPC_UNAVAILABLE','CORE_RPC_WARMUP',
+    'CORE_RPC_REPLY_DENIED','CORE_RPC_TIMEOUT_UNCERTAIN','CORE_RPC_OWNED_SCOPE_REQUIRED'))
+
+
+def public_failure_details(payload):
+    """Validate only fixed diagnostic enums, never copy arbitrary payload text."""
+    causes=payload.get('cause_codes',[]);kind=payload.get('exception_kind','OTHER')
+    return {'cause_codes':causes if type(causes) is list and len(causes)<=4
+            and all(type(c) is str and c in _PUBLIC_CAUSES for c in causes) else [],
+            'exception_kind':kind if type(kind) is str and kind in _PUBLIC_KINDS else 'OTHER'}
+
+
+def _public_denial(error):
+    name=type(error).__name__;args=error.args
+    reason=args[0] if name in _PUBLIC_ERROR_TYPES and len(args)==1 and type(args[0]) is str else ''
+    if (not re.fullmatch(r'(?:CORE|WIN|WALLET|WSP|Q02|Q04|Q06)_[A-Z0-9_]{4,105}',reason)
+            or len(reason)>110):reason='WIN_BUNDLE_UNCLASSIFIED'
+    causes=[];seen={id(error)};cause=error.__cause__ or error.__context__
+    for _ in range(4):
+        if cause is None or id(cause) in seen:break
+        seen.add(id(cause));args=cause.args
+        if (type(cause).__name__ in _PUBLIC_ERROR_TYPES and len(args)==1
+                and type(args[0]) is str and args[0] in _PUBLIC_CAUSES):causes.append(args[0])
+        cause=cause.__cause__ or cause.__context__
+    return {'status':'WIN_BUNDLE_DENIED','reason_code':reason,'mainnet_allowed':False,
+            **public_failure_details({'cause_codes':causes,'exception_kind':name})}
+
+
+def _resources():
+    if (sys.platform!='win32' or platform.machine().lower() not in ('amd64','x86_64')
+            or not getattr(sys,'frozen',False) or not hasattr(sys,'_MEIPASS')):
+        raise ValueError('WIN_BUNDLE_NATIVE_FROZEN_REQUIRED')
+    from wam_regtest.wsp_live import _pinned_source
+    from wam_regtest.branding import brand_image
+    root=Path(sys._MEIPASS).absolute()
+    source=root/'wsp-source';_pinned_source(source);brand_image()
+    from wam_sp.core import pub,hash160
+    from wam_sp.crypto import shared_point
+    if shared_point((1).to_bytes(32,'big'),pub(2))!=pub(2) or len(hash160(pub(31)))!=20:
+        raise ValueError('WIN_BUNDLE_NATIVE_CRYPTO_DENIED')
+    return root/'core',source
+
+
+def main():
+    # PyInstaller's native windowed bootloader has no console streams.
+    if sys.stdout is None:sys.stdout=io.StringIO()
+    if sys.stderr is None:sys.stderr=io.StringIO()
+    ci=sys.argv[1:]==['--ci-real-core-wallet']
+    q04_mode=sys.argv[1:]==['--ci-q04-external-miner']
+    q05_mode=sys.argv[1:2]==['--ci-q05-managed-wallet']
+    q06_mode=sys.argv[1:2]==['--ci-q06-owned-spend']
+    report_denied=ci or q04_mode or q05_mode or q06_mode
+    try:
+        if sys.argv[1:] and not (ci or q04_mode or q05_mode or q06_mode):raise ValueError('WIN_BUNDLE_ARGUMENT_DENIED')
+        core,source=_resources()
+        from wam_regtest.core import CoreSmokeError
+        from wam_regtest.qualification.real_core_smoke import smoke_real_core
+        if q04_mode:
+            with tempfile.TemporaryDirectory(prefix='wam-win-frozen-') as t:
+                stage=Path(t).absolute()/'core';_stage_original_core(core,stage)
+                try:
+                    evidence=run_q04_scenario(stage,report_path=Path('q04-frozen-evidence.json'),max_duration=180)
+                except ExternalAttachmentError as exc:
+                    raise CoreSmokeError('WIN_BUNDLE_Q04_EXTERNAL_MINER_' + str(exc)) from None
+                if evidence.get('status')!='Q04_MINER_COEXISTENCE_PASS':
+                    raise CoreSmokeError('WIN_BUNDLE_Q04_EXTERNAL_MINER_DENIED')
+                print('WIN64_PACKAGED_Q04_EXTERNAL_MINER_PASS')
+                return 0
+        if ci:
+            # Probe native Qt's OS-backed provider without making a connection.
+            # Packaging must not silently intake arbitrary PATH OpenSSL DLLs.
+            from wam_regtest.desktop import qt_application
+            from PySide6.QtNetwork import QSslSocket
+            qt_application()
+            if not QSslSocket.supportsSsl() or QSslSocket.activeBackend()!='schannel':
+                raise CoreSmokeError('WIN_BUNDLE_NATIVE_TLS_PROVIDER_DENIED')
+        with tempfile.TemporaryDirectory(prefix='wam-win-frozen-') as t:
+            stage=Path(t).absolute()/'core';_stage_original_core(core,stage)
+            if q05_mode:
+                from wam_regtest.q05_packaged import run
+                return run(stage,source,sys.argv[2:])
+            if q06_mode:
+                from wam_regtest.q06_platform_probe import run
+                return run(stage,source,sys.argv[2:])
+            if not ci:
+                from wam_regtest.managed_onboarding import launch
+                return launch(stage,source)
+            proof=smoke_real_core(stage,explicit_consent=True,wsp_source=source,
+                wsp_payment_e2e=True,security_e2e=ci,wallet_e2e=ci,q02_e2e=ci,
+                operational_demo=not ci,interactive_demo=not ci)
+            if ci:
+                proof['q01_qt_tls_backend']='schannel'
+                wallet=proof['wallet_live_core'];security=proof['security_live_core']
+                if (proof['platform']!='windows-x64' or proof['block_height']!=105
+                        or proof['mainnet_allowed'] is not False
+                        or wallet['status']!='WIN64_REAL_CORE_NATIVE_QT_SEND_SIGN_BROADCAST_SECURITY_E2E_PASS'
+                        or security['actual_core_reorg_depths']!=[1,12,100]
+                        or not all(wallet.get(k) is True for k in ('native_qt_prepare_sign_broadcast',
+                            'irreversible_anchor_before_native_crypto','sign_broadcast_os_lease_held',
+                            'real_core_lost_broadcast_reply_lock_retained','uncertain_reservation_survives_unlock'))
+                        or not all(wallet['cross_session_recovery_proof'].get(k) is True for k in
+                            ('same_test_keys_recovered','old_reservations_retained',
+                             'stale_before_native_signature_denied','stale_before_real_broadcast_denied'))):
+                    raise ValueError('WIN_BUNDLE_REAL_WALLET_E2E_DENIED')
+                with Path('windows-packaged-wallet-evidence.json').open('x',encoding='utf8') as out:
+                    json.dump(proof,out,sort_keys=True,indent=2);out.write('\n')
+            elif proof.get('interactive_demo_closed_cleanly') is not True:
+                raise ValueError('WIN_BUNDLE_SHUTDOWN_DENIED')
+        return 0
+    except Exception as error:
+        # Only public, bounded, explicitly typed status tokens. NEVER include
+        # exception arguments from OS/RPC/Qt, stack traces or secret values.
+        if report_denied:
+            with Path('windows-packaged-wallet-denied.json').open('x',encoding='utf8') as out:
+                json.dump(_public_denial(error),out,sort_keys=True)
+        else:
+            from PySide6.QtWidgets import QApplication,QMessageBox
+            app=QApplication.instance() or QApplication([])
+            QMessageBox.critical(None,'WAM Privacy Wallet REGTEST',
+                'The original Core, private custody or real REGTEST startup could not be verified.')
+        return 2
+    finally:
+        from wam_regtest.desktop import shutdown_qt
+        shutdown_qt()
+
+
+if __name__=='__main__':
+    raise SystemExit(main())

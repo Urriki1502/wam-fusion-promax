@@ -1,0 +1,146 @@
+# Review-only macOS ARM64 package.
+# verify_source requires GITHUB_SHA to equal git HEAD, and GitHub ignores
+# overrides of GITHUB_* variables. This job therefore builds the workflow
+# commit itself. That commit must differ from the frozen functional pin
+# only by this file. Wallet Python is not edited here.
+# It does not merge, release, or claim Q06 acceptance.
+name: WAM Fusion macOS ARM64 frozen RC
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/v1-net-shared-regtest-20261104
+    paths:
+      - .github/workflows/macos-arm64-frozen-rc.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-arm64-frozen-rc-official-v013
+  cancel-in-progress: false
+
+jobs:
+  macos-arm64-frozen-rc:
+    name: Build and qualify frozen macOS ARM64 app and DMG
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      WAM_SOURCE_HEAD: ${{ github.sha }}
+      FUNCTIONAL_PIN: c61e3c5be4b8519dc6c4d9eb56d124fce84cf02d
+      WSP_PIN: ac55f13423620252bdbf848c7e8a280c3b84721e
+    steps:
+      - name: Check out this review commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require Apple Silicon and a workflow-only diff from the pin
+        run: |
+          set -euo pipefail
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = arm64
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test "$(git rev-parse HEAD)" = "$WAM_SOURCE_HEAD"
+          git merge-base --is-ancestor "$FUNCTIONAL_PIN" HEAD
+          echo "MACOS_ARM64_RUNNER_PASS"
+          echo "FUNCTIONAL_PIN_IS_ANCESTOR $FUNCTIONAL_PIN"
+
+      - name: Check out pinned WSP source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: Urriki1502/wam-silent-payments
+          ref: ac55f13423620252bdbf848c7e8a280c3b84721e
+          path: wsp-upstream
+          persist-credentials: false
+
+      - name: Require the WSP pin
+        run: test "$(git -C wsp-upstream rev-parse HEAD)" = "$WSP_PIN"
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12.10"
+          architecture: arm64
+
+      - name: Install GnuPG for the official Core signature check
+        run: |
+          set -euo pipefail
+          if ! command -v gpg >/dev/null; then brew install gnupg; fi
+          command -v gpg
+          gpg --version
+
+      - name: Hash-locked GUI environment
+        run: python -I scripts/q01_environment.py --profile gui --environment "${{ runner.temp }}/q01-env" --receipt q01-install.json
+
+      - name: Fetch official signed WAM Core v0.1.13 and check identities
+        run: |
+          set -euo pipefail
+          python -I -m wam_regtest.release --platform macos-arm64 --destination "$PWD/core"
+          python -I - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          expected = {
+              "wamd": "fe04a61f17eb8047f1d2a537ebcb61b45cbde14c491bc332d2a2ab7ee18237ba",
+              "wam-cli": "2b19fdac692cbed5810b6fa9663ac89f25ab8f346da84c5fd13bf2b8535e3e19",
+          }
+          for name, digest in expected.items():
+              got = sha256((Path("core") / name).read_bytes()).hexdigest()
+              if got != digest:
+                  raise SystemExit("MACOS_OFFICIAL_CORE_SHA_DENIED")
+          print("MACOS_OFFICIAL_CORE_SHA256_PASS")
+          PY
+
+      - name: Fresh same-chain native profile restore before freezing
+        run: python scripts/qualify_q06_same_chain_restore.py --core-dir "$PWD/core" --wsp-source "$PWD/wsp-upstream" --report "$RUNNER_TEMP/q06-same-chain-native.json" --confirm-disposable-regtest
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: q06-same-chain-native-macos-${{ github.sha }}
+          path: ${{ runner.temp }}/q06-same-chain-native.json
+          if-no-files-found: warn
+      - name: Build allowlisted production app plus separate qualification-only app
+        env:
+          # Explicit split layout (macos_build_layout requires output under bundle-input/):
+          # production in bundle-input/macos-build/package-output,
+          # qualification-only (distinct name/bundle id) in bundle-input/macos-build/qualification-only.
+          WAM_MACOS_OUTPUT_ROOT: ${{ github.workspace }}/bundle-input/macos-build
+          WAM_MACOS_CORE_DIR: ${{ github.workspace }}/core
+        run: bash scripts/build_macos_bundle.sh
+
+      # Diagnosability only: the qualification-only build writes its frozen
+      # probe output (fixed public stage tokens, no secrets) to a log file that
+      # is otherwise lost when the build fails.
+      - name: Preserve frozen build logs on failure (diagnostic, not acceptance)
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: macos-frozen-build-logs-${{ github.sha }}
+          path: |
+            bundle-input/macos-build/*.log
+            bundle-input/macos-build/qualification-only/*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Bind both outputs to this commit and publish production payloads only
+        env:
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python -I scripts/verify_macos_ci_outputs.py \
+            --build-root "$GITHUB_WORKSPACE/bundle-input/macos-build" \
+            --expected-sha "$WORKFLOW_SHA" \
+            --publish "$GITHUB_WORKSPACE/macos-rc-publish"
+          echo "FUNCTIONAL_PIN_ANCESTOR $FUNCTIONAL_PIN"
+
+      - name: Upload production DMG/app zip/receipts and qualification-only JSON evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: WAM-Fusion-REGTEST-macos-arm64-${{ github.sha }}
+          path: macos-rc-publish/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 90

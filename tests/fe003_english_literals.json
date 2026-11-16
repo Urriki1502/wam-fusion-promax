@@ -1,0 +1,6 @@
+{
+  "english": {
+    "payment.replaceable_yes": "Replaceable: yes (fee can be increased later)",
+    "errors.RBF_SIGNALLING_MISSING": "This payment is missing explicit BIP125 replaceability. Nothing was signed."
+  }
+}

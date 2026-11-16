@@ -1,0 +1,112 @@
+"""Public build receipts after native E2E, never wallet/runtime authorization."""
+from hashlib import sha256
+import importlib.metadata
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import platform as host_platform
+
+RC_ID='WAM-Fusion-REGTEST-RC1'
+WSP_COMMIT='ac55f13423620252bdbf848c7e8a280c3b84721e'
+
+
+def write_candidate_manifest(output,platform,core_hashes,*,qualification_scope='full'):
+    """Called ONLY after each builder's final executable acceptance succeeds.
+
+    This inventory is not a signature/attestation or a replacement for the
+    independent Core pins and workflow logs. PR head and checkout stay distinct.
+    """
+    if qualification_scope not in ('full','v1-net-focused','ui-layout-focused'):
+        raise ValueError('RC_QUALIFICATION_SCOPE_DENIED')
+    if platform not in ('macos-arm64','windows-x64','linux-x86_64-headless','linux-x86_64-desktop'):
+        raise ValueError('RC_PLATFORM_DENIED')
+    checkout=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+    head=os.environ.get('WAM_SOURCE_HEAD',checkout)
+    if not all(re.fullmatch('[0-9a-f]{40}',v) for v in (head,checkout)):
+        raise ValueError('RC_SOURCE_IDENTITY_DENIED')
+    if os.environ.get('GITHUB_EVENT_NAME')=='workflow_dispatch' and head!=checkout:
+        raise ValueError('RC_DISPATCH_CHECKOUT_MISMATCH')
+    if (type(core_hashes) is not dict or len(core_hashes)!=2
+            or any(not re.fullmatch('[0-9a-f]{64}',v) for v in core_hashes.values())):
+        raise ValueError('RC_CORE_IDENTITY_DENIED')
+    # Public instructions only; never copy a wallet, keychain, config or runtime.
+    for name in ('OWNER_REGTEST_ACCEPTANCE.md','DEV_WAM_REVIEW_HANDOFF.md'):
+        shutil.copyfile(Path('docs')/name,output/name)
+    dependencies={}
+    for name in ('PyInstaller','pyinstaller-hooks-contrib','setuptools','packaging','altgraph','PySide6','PySide6_Essentials','PySide6_Addons','shiboken6','qrcode','Pillow','coincurve','cryptography','cffi','pycryptodome'):
+        try:dependencies[name]=importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:pass
+    files={}
+    for path in sorted(output.rglob('*')):
+        if path.is_symlink():raise ValueError('RC_OUTPUT_SYMLINK_DENIED')
+        if not path.is_file() or path.name in ('RELEASE_CANDIDATE_MANIFEST.json','SHA256SUMS.txt'):continue
+        if path.name=='wam.conf' or path.suffix in ('.sqlite','.db','.enc','.keychain-db'):
+            raise ValueError('RC_PRIVATE_OUTPUT_DENIED')
+        files[path.relative_to(output).as_posix()]=sha256(path.read_bytes()).hexdigest()
+    run=os.environ.get('GITHUB_RUN_ID')
+    record={'schema':'wam-regtest-release-candidate/v1','candidate_id':RC_ID,
+        'source_head_sha':head,'checkout_sha':checkout,'single_commit_build':head==checkout,
+        'platform':platform,'python_version':sys.version.split()[0],
+        'build_os':host_platform.platform(),'network':'regtest','core_sha256':core_hashes,
+        'core_provenance':'official-signed-v0.1.13',
+        'wsp_source_commit':WSP_COMMIT,'dependencies':dependencies,'files_sha256':files,
+        'native_final_executable_e2e_pass':qualification_scope!='ui-layout-focused',
+        'native_ui_layout_e2e_pass':qualification_scope=='ui-layout-focused','mainnet_allowed':False,
+        'qualification_scope':qualification_scope,
+        'full_exact_commit_Q01_Q06_qualified':qualification_scope=='full',
+        'physical_or_human_acceptance':'PENDING_OPERATOR','dev_wam_reviewed':False,
+        'production_qualified':False,'official_final_release':False,
+        'github_run_url':f'https://github.com/Urriki1502/wam-privacy-wallet-regtest/actions/runs/{run}' if run else None,
+        'github_event':os.environ.get('GITHUB_EVENT_NAME'),'artifact_retention_days':14}
+    with (output/'RELEASE_CANDIDATE_MANIFEST.json').open('x',encoding='utf8',newline='\n') as stream:
+        json.dump(record,stream,sort_keys=True,indent=2);stream.write('\n')
+    # Existing per-platform manifests remain intact. All public top-level
+    # payloads/inventories/instructions also get conventional portable hashes.
+    write_portable_sha256sums(output)
+    return record
+
+
+def write_portable_sha256sums(output):
+    """UTF-8 SHA256SUMS.txt with LF endings, whatever os.linesep is.
+
+    Written in binary so Windows cannot translate the newlines. The sums file
+    is not an entry. sha256sum -c accepts this format under Git Bash and WSL.
+    """
+    lines=[]
+    for path in sorted(p for p in Path(output).iterdir() if p.is_file() and not p.is_symlink()):
+        if path.name=='SHA256SUMS.txt':
+            continue
+        if '\n' in path.name or '\r' in path.name:
+            raise ValueError('RC_CHECKSUM_NAME_DENIED')
+        lines.append(sha256(path.read_bytes()).hexdigest()+'  '+path.name+'\n')
+    payload=''.join(lines).encode('ascii')
+    if b'\r' in payload or (payload and not payload.endswith(b'\n')):
+        raise ValueError('RC_CHECKSUM_CR_DENIED')
+    with (Path(output)/'SHA256SUMS.txt').open('wb') as stream:
+        stream.write(payload)
+    verify_portable_sha256sums(output)
+
+
+def verify_portable_sha256sums(output):
+    directory=Path(output)
+    raw=(directory/'SHA256SUMS.txt').read_bytes()
+    if b'\r' in raw or not raw.endswith(b'\n'):
+        raise ValueError('RC_CHECKSUM_LINE_ENDING_DENIED')
+    seen=set()
+    for line in raw.decode('ascii').split('\n'):
+        if line=='':
+            continue
+        digest,sep,name=line.partition('  ')
+        if (sep!='  ' or not re.fullmatch('[0-9a-f]{64}',digest) or name in ('','SHA256SUMS.txt')
+                or name in seen or '/' in name or '\\' in name):
+            raise ValueError('RC_CHECKSUM_ENTRY_DENIED')
+        seen.add(name)
+        if sha256((directory/name).read_bytes()).hexdigest()!=digest:
+            raise ValueError('RC_CHECKSUM_MISMATCH')
+    if not seen:
+        raise ValueError('RC_CHECKSUM_EMPTY')
+    return seen

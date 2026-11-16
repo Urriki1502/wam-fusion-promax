@@ -1,0 +1,374 @@
+"""Governance contracts only; no Core or external acceptance inferred."""
+import copy
+import json
+from pathlib import Path
+import unittest
+from wam_regtest.q_gate import validate
+
+
+class SequentialQGateContracts(unittest.TestCase):
+    def setUp(self):
+        self.ledger=json.loads((Path(__file__).resolve().parent/'acceptance/issue45.json').read_text())
+
+    def test_committed_ledger_has_one_active_q_and_explicit_cases(self):
+        result=validate(self.ledger)
+        self.assertEqual(result['active_q'],'Q06')
+        self.assertEqual(sum(result['case_results'].values()),result['coverage_identified'])
+        self.assertFalse(result['q_accepted'])
+        self.assertEqual(result['prior_engineering_handoffs'],['Q01','Q02','Q03','Q04','Q05'])
+
+    def test_q04_exact_main_postmerge_evidence_is_preserved_at_handoff(self):
+        q04=self.ledger['questions'][3];p=q04['postmerge_qualification']
+        baseline='c316671ac0e483640736e1b3c599a8b2541a839a'
+        self.assertEqual(p['status'],'PASS')
+        self.assertEqual(p['qualified_main_sha'],baseline)
+        self.assertEqual(q04['candidate_head_sha'],p['premerge_head_sha'])
+        self.assertEqual(q04['post_merge_main_sha'],p['merged_main_sha'])
+        self.assertEqual(q04['owner_merge_authorization'],
+            'https://github.com/Urriki1502/wam-privacy-wallet-regtest/pull/133')
+        self.assertEqual({r['run_id'] for r in p['exact_main_runs']},
+            {40453663770,40453663835,40490271229,40490290000,40490308482})
+        self.assertTrue(all(r['head_sha']==baseline and r['checkout_sha']==baseline
+            and r['conclusion']=='success' for r in p['exact_main_runs']))
+        jobs=[j for r in p['exact_main_runs'] for j in r['jobs']]
+        self.assertEqual(len(jobs),17)
+        self.assertTrue(all(j['head_sha']==baseline and j['checkout_sha']==baseline
+            and j['conclusion']=='success' for j in jobs))
+        self.assertEqual(p['pending_exact_main_runs'],[])
+        self.assertFalse(p['postmerge_exception_applied'])
+        self.assertFalse(p['waiver_applied'])
+        self.assertTrue(p['artifact_provenance_verified'])
+        history=q04['postmerge_qualification_history'][-1]['qualification']
+        self.assertEqual(history['status'],'PARTIAL_PASS')
+        self.assertEqual(len(history['pending_exact_main_runs']),3)
+        self.assertTrue(all(r['status']=='PENDING' for r in history['pending_exact_main_runs']))
+        for case in q04['cases']:
+            if case['status']=='PASS':
+                self.assertTrue(all(e['source_sha']==baseline and e['checkout_sha']==baseline
+                    for e in case['acceptance_evidence']))
+                for evidence in case['acceptance_evidence']:
+                    if evidence['platform']=='linux-x86_64':
+                        self.assertEqual(evidence['core_trust'],'reviewed-developer-source-build')
+            else:self.assertEqual(case['status'],'BLOCKED')
+        preparation=q04['engineering_handoff_preparation']
+        self.assertTrue(preparation['owner_authorized_handoff'])
+        self.assertEqual(preparation['owner_decision_url'],
+            'https://github.com/Urriki1502/wam-privacy-wallet-regtest/issues/45#issuecomment-6443330102')
+        self.assertTrue(p['handoff_to_q05_authorized'])
+        self.assertFalse(q04['accepted'])
+        self.assertEqual(q04['engineering_handoff']['owner_decision_url'],
+            'https://github.com/Urriki1502/wam-privacy-wallet-regtest/issues/45#issuecomment-6443330102')
+        self.assertEqual(q04['engineering_handoff']['next_q'],'Q05')
+        self.assertEqual(q04['engineering_handoff']['postmerge_status'],'PASS')
+        self.assertEqual(q04['engineering_handoff']['unresolved_case_ids'],
+            ['Q04-INDEPENDENT','Q04-PHYSICAL-SOLO-MINER'])
+        self.assertEqual(self.ledger['active_q'],'Q06')
+        self.assertEqual(q04['processing'],'ENGINEERING_DONE')
+        self.assertEqual(self.ledger['questions'][4]['processing'],'ENGINEERING_DONE')
+        self.assertEqual(self.ledger['questions'][5]['processing'],'ACTIVE')
+        self.assertEqual({k:q04['gates'][k]['status'] for k in ('G6','G7')},
+            {'G6':'BLOCKED','G7':'BLOCKED'})
+
+    def test_q05_activation_requires_no_waiver_and_real_owner_handoff(self):
+        result=validate(self.ledger)
+        self.assertEqual(result['active_q'],'Q06')
+        q04=self.ledger['questions'][3]
+        self.assertFalse(q04['accepted'])
+        self.assertEqual(q04['postmerge_qualification']['status'],'PASS')
+        self.assertEqual(q04['postmerge_qualification']['pending_exact_main_runs'],[])
+        self.assertFalse(q04['postmerge_qualification']['waiver_applied'])
+        self.assertFalse(q04['postmerge_qualification']['postmerge_exception_applied'])
+        self.assertEqual(q04['gates']['G6']['status'],'BLOCKED')
+        self.assertEqual(q04['gates']['G7']['status'],'BLOCKED')
+        for change in ('no-handoff','no-owner','bad-owner-url','bad-merge-sha',
+                       'tech-stale','missing-blocker','gate-fail'):
+            data=copy.deepcopy(self.ledger)
+            q=data['questions'][3];handoff=q['engineering_handoff']
+            if change=='no-handoff':q.pop('engineering_handoff')
+            elif change=='no-owner':handoff['owner_authorized_handoff']=False
+            elif change=='bad-owner-url':handoff['owner_decision_url']='owner said yes'
+            elif change=='bad-merge-sha':handoff['merged_main_sha']='missing'
+            elif change=='tech-stale':q['cases'][0]['status']='STALE'
+            elif change=='missing-blocker':handoff['unresolved_case_ids'].pop()
+            elif change=='gate-fail':q['gates']['G3']['status']='FAIL'
+            with self.subTest(change=change),self.assertRaises(ValueError):validate(data)
+
+    def test_q05_qualified_case_receipts_preserve_failure_history_and_external_blockers(self):
+        q05=self.ledger['questions'][4]
+        self.assertEqual(q05['processing'],'ENGINEERING_DONE')
+        self.assertEqual(q05['candidate_pr'],138)
+        self.assertEqual(q05['coverage_total'],37)
+        self.assertEqual(len(q05['cases']),37)
+        self.assertEqual(sum(c['status']=='PASS' for c in q05['cases']),32)
+        self.assertEqual(sum(c['status']=='BLOCKED' for c in q05['cases']),5)
+        self.assertEqual(sum(c['status']=='PENDING' for c in q05['cases']),0)
+        self.assertEqual(q05['status'],'BLOCKED')
+        self.assertFalse(q05['accepted'])
+        self.assertEqual(q05['owner_merge_authorization'],
+            'https://github.com/Urriki1502/wam-privacy-wallet-regtest/pull/138')
+        self.assertEqual(q05['post_merge_main_sha'],
+            'a0ec5799de3e59e93689c744672168b76bf571be')
+        self.assertEqual(q05['postmerge_qualification']['status'],'PENDING')
+        self.assertEqual(q05['postmerge_qualification']['exact_main_runs'],[])
+        self.assertFalse(q05['postmerge_qualification']['waiver_applied'])
+        self.assertTrue(q05['postmerge_qualification']['postmerge_exception_applied'])
+        self.assertEqual(q05['engineering_handoff']['next_q'],'Q06')
+        self.assertEqual(q05['engineering_handoff']['postmerge_status'],'PENDING')
+        failed=next(c for c in q05['cases'] if c['id']=='Q05-MANAGED-START-MACOS')
+        self.assertEqual(failed['failure_history'][0]['source_sha'],
+            'a89848b22cae85d766310687fe968157f35657e8')
+        self.assertEqual(failed['local_requalification']['status'],'PASS')
+        self.assertTrue(failed['acceptance_evidence'])
+        self.assertTrue(all(c['mandatory'] and c['acceptance_evidence']
+            for c in q05['cases'] if c['status']=='PASS'))
+        self.assertTrue(all(c['layer'] in ('PHYSICAL','DEV_REVIEWED','MAIN')
+            for c in q05['cases'] if c['status']=='BLOCKED'))
+        self.assertEqual(next(c['status'] for c in q05['cases'] if
+            c['id']=='Q05-MERGE-AUTH'),'BLOCKED')
+        self.assertTrue(any('125%' in str(e) for e in q05['historical_evidence']))
+        self.assertFalse(self.ledger['production_qualified'])
+
+    def _reset_to_q02_active(self):
+        """Fixture: revert committed Q03 activation to exercise Q01->Q02 handoff."""
+        self.ledger['active_q']='Q02'
+        self.ledger['questions'][0]['processing']='ENGINEERING_DONE'
+        q02=self.ledger['questions'][1]
+        q02['processing']='ACTIVE'
+        q02['coverage_identified']=True
+        q02['coverage_total']=1
+        q02['engineering_handoff_blocker']={
+            'actor':'REPOSITORY_OWNER','missing_evidence':'fixture','next_action':'fixture'}
+        q02.pop('engineering_handoff',None)
+        q02['cases']=[{'id':'Q02-SOURCE-SCOPE-TODO','requirement':'enumerate all genuine Q02 cases',
+            'requirement_refs':['https://github.com/Urriki1502/wam-privacy-wallet-regtest/issues/45'],
+            'platform':'shared','layer':'SOURCE','gates':['G0'],'mandatory':True,
+            'status':'PENDING','acceptance_evidence':[],'blocker':None}]
+        q03=self.ledger['questions'][2]
+        q03['processing']='QUEUED'
+        q03['coverage_identified']=False
+        q03['coverage_total']=None
+        q03['cases']=[]
+        q03.pop('engineering_handoff',None)
+        q04=self.ledger['questions'][3]
+        q04['processing']='QUEUED'
+        q04['coverage_identified']=False
+        q04['coverage_total']=None
+        q04['cases']=[]
+        q04.pop('engineering_handoff',None)
+        q05=self.ledger['questions'][4]
+        q05['processing']='QUEUED'
+        q05['coverage_identified']=False
+        q05['coverage_total']=None
+        q05['cases']=[]
+        q05.pop('engineering_handoff',None)
+        q06=self.ledger['questions'][5]
+        q06['processing']='QUEUED'
+        q06['coverage_identified']=False
+        q06['coverage_total']=None
+        q06['cases']=[]
+
+    def test_owner_authorized_engineering_handoff_does_not_accept_predecessor(self):
+        self._reset_to_q02_active()
+        result=validate(self.ledger)
+        self.assertEqual(result['engineering_active_q'],'Q02')
+        self.assertEqual(result['prior_engineering_handoffs'],['Q01'])
+        self.assertFalse(self.ledger['questions'][0]['accepted'])
+        self.assertFalse(result['q_accepted'])
+
+    def test_q02_without_authorized_complete_engineering_handoff_denied(self):
+        self._reset_to_q02_active()
+        for change in ('no-handoff','no-owner','missing-merge','technical-fail',
+                       'technical-stale','unlisted-blocker','gate-fail'):
+            data=copy.deepcopy(self.ledger)
+            q01=data['questions'][0]
+            handoff=q01['engineering_handoff']
+            if change=='no-handoff':q01.pop('engineering_handoff')
+            elif change=='no-owner':handoff['owner_authorized_handoff']=False
+            elif change=='missing-merge':handoff['merged_main_sha']='not-a-commit'
+            elif change=='technical-fail':q01['cases'][0]['status']='FAIL';q01['status']='FAIL'
+            elif change=='technical-stale':q01['cases'][0]['status']='STALE'
+            elif change=='unlisted-blocker':handoff['unresolved_case_ids'].pop()
+            elif change=='gate-fail':q01['gates']['G2']['status']='FAIL'
+            with self.subTest(change=change),self.assertRaises(ValueError):validate(data)
+
+    def test_owner_merge_authorization_not_fabricated_from_ci_receipt(self):
+        for change in ('owner-decision','merge-receipt','full-q'):
+            data=copy.deepcopy(self.ledger)
+            if change=='owner-decision':data['questions'][0]['owner_merge_authorization']=None
+            elif change=='merge-receipt':
+                data['questions'][0]['cases'][next(i for i,c in enumerate(data['questions'][0]['cases'])
+                    if c['id']=='Q01-MERGE-AUTH')]['acceptance_evidence'][0]['merged_main_sha']='missing'
+            else:data['questions'][0]['accepted']=True
+            with self.subTest(change=change),self.assertRaises(ValueError):validate(data)
+
+    def test_handoff_owner_comment_requires_real_numeric_github_url_shape(self):
+        # URL shape cannot authenticate a human decision; live GitHub review
+        # remains mandatory. Reject nonnumeric placeholders.
+        prefix='https://github.com/Urriki1502/wam-privacy-wallet-regtest/issues/45#issuecomment-'
+        for suffix in ('Q02_OWNER_DECISION_20261025','','0','6379544993/extra',
+                       '6379544993?approved=true','6379544993\n'):
+            data=copy.deepcopy(self.ledger)
+            # Target the Q02 handoff now present in the committed ledger.
+            data['questions'][1]['engineering_handoff']['owner_decision_url']=prefix+suffix
+            with self.subTest(suffix=suffix),self.assertRaises(ValueError):validate(data)
+
+    def test_q05_to_q06_owner_handoff_is_authoritative_and_not_full_acceptance(self):
+        q05=self.ledger['questions'][4]
+        q06=self.ledger['questions'][5]
+        h=q05['engineering_handoff']
+        self.assertEqual(h['owner_decision_url'],
+            'https://github.com/Urriki1502/wam-privacy-wallet-regtest/issues/45#issuecomment-6539050755')
+        self.assertEqual(h['merged_main_sha'],'a0ec5799de3e59e93689c744672168b76bf571be')
+        self.assertEqual(h['qualified_runtime_source_sha'],
+            '4f7d4ed42e5fdeb5ea91712dea70ea4653bce0f5')
+        self.assertEqual(h['unresolved_case_ids'],sorted(c['id'] for c in q05['cases'] if c['status']!='PASS'))
+        self.assertEqual(len(h['unresolved_case_ids']),5)
+        self.assertFalse(q05['accepted'])
+        self.assertEqual(q05['gates']['G6']['status'],'BLOCKED')
+        self.assertEqual(q05['gates']['G7']['status'],'BLOCKED')
+        self.assertEqual(q06['processing'],'ACTIVE')
+        self.assertEqual(q06['coverage_total'],24)
+        self.assertEqual(len(q06['cases']),24)
+        counts={state:sum(c['status']==state for c in q06['cases'])
+                for state in ('PASS','PENDING','BLOCKED','STALE')}
+        self.assertEqual(counts,{'PASS':0,'PENDING':4,'BLOCKED':5,'STALE':15})
+        self.assertFalse(q06['accepted'])
+        self.assertEqual(q06['engineering_status'],'ACTIVE_TECHNICAL_GAPS')
+        self.assertEqual({q06['gates'][g]['status'] for g in ('G6','G7')},{'BLOCKED'})
+        self.assertEqual(q06['gates']['G4']['status'],'STALE')
+        self.assertEqual(q06['core_migration']['target_version'],'v0.1.13')
+        self.assertEqual(q06['candidate_pr'],141)
+        for c in q06['cases']:
+            if c['status']=='STALE':
+                self.assertIn('v0.1.13',c['stale_reason'])
+                self.assertTrue(c['acceptance_evidence'])
+                self.assertTrue(all(e['source_sha']=='336834198ce6fc648011218ffdea3a32512dcafb'
+                    and e['checkout_sha']=='336834198ce6fc648011218ffdea3a32512dcafb'
+                    for e in c['acceptance_evidence']))
+            elif c['status']=='BLOCKED':
+                self.assertTrue(all(c['blocker'].get(k) for k in
+                    ('actor','missing_evidence','next_action')))
+        self.assertEqual({c['id'] for c in q06['cases'] if c['status']=='PENDING'}, {
+            'Q06-ONBOARDING-GUI','Q06-MACOS-RESTORE-E2E',
+            'Q06-WINDOWS-RESTORE-E2E','Q06-LINUX-RESTORE-E2E'})
+        self.assertEqual([q['task_name'] for q in self.ledger['questions'][:7]],[
+            'Reproducible Build & Release Provenance',
+            'Authenticated WAM Core & Chain Identity',
+            'Managed RPC & Credential Lifecycle',
+            'Node/Miner Coexistence & Safe Reconnection',
+            'Owned Core Persistence & Native Wallet Custody',
+            'BIP39 12-Word Wallet & BIP352 Silent Payments',
+            'BIP39 24-Word Wallet'])
+        gate=self.ledger['pre_v1_feature_gate']
+        self.assertEqual(gate['id'],'V1-NET')
+        self.assertEqual(gate['implementation_pr_count'],1)
+        self.assertTrue(gate['not_a_q07_rename'])
+        self.assertFalse(gate['accepted'])
+
+        self.assertEqual(set(q06['gates']),{f'G{i}' for i in range(8)})
+        self.assertFalse(self.ledger['mainnet_allowed'])
+        self.assertFalse(self.ledger['production_qualified'])
+
+    def test_missing_q05_handoff_or_falsified_postmerge_proof_is_not_accepted(self):
+        for mode in ('no_handoff','no_owner','invalid_url','bad_main_sha',
+                     'missing_block','unqualified_technical','gate_failure'):
+            trial=copy.deepcopy(self.ledger)
+            q=trial['questions'][4];h=q.get('engineering_handoff')
+            if mode=='no_handoff':q.pop('engineering_handoff')
+            elif mode=='no_owner':h['owner_authorized_handoff']=False
+            elif mode=='invalid_url':h['owner_decision_url']='undocumented approval'
+            elif mode=='bad_main_sha':h['merged_main_sha']='invalid'
+            elif mode=='missing_block':h['unresolved_case_ids'].pop()
+            elif mode=='unqualified_technical':q['cases'][0]['status']='PENDING'
+            elif mode=='gate_failure':q['gates']['G2']['status']='FAIL'
+            with self.subTest(mode=mode),self.assertRaises(ValueError):
+                validate(trial)
+
+    def test_q03_handoff_preserves_release_and_next_q_boundaries(self):
+        q03=self.ledger['questions'][2]
+        q04=self.ledger['questions'][3]
+        self.assertEqual(self.ledger['active_q'],'Q06')
+        self.assertEqual(sum(c['status']=='PASS' for c in q03['cases']),24)
+        self.assertFalse(q03['accepted'])
+        self.assertIn('engineering_handoff',q03)
+        self.assertEqual(q03['engineering_handoff']['next_q'],'Q04')
+        self.assertEqual(q04['processing'],'ENGINEERING_DONE')
+        self.assertEqual({c['id'] for c in q03['cases'] if c['status']=='BLOCKED'},
+            {'Q03-INDEPENDENT','Q03-WINDOWS-NO-FLICKER'})
+        for case in q03['cases']:
+            if case['status']=='PASS' and case['platform']=='linux-x86_64':
+                for evidence in case['acceptance_evidence']:
+                    if 'core_trust' in evidence:
+                        self.assertEqual(evidence['core_trust'],'reviewed-developer-source-build')
+
+    def test_false_acceptance_or_green_ci_without_evidence_is_denied(self):
+        for change in ('case-pass','accepted','auto-merge','second-active'):
+            data=copy.deepcopy(self.ledger)
+            if change=='case-pass':
+                # This case may already have valid evidence after a ledger
+                # update. Deliberately remove it to exercise the same refusal.
+                data['questions'][0]['cases'][0]['status']='PASS'
+                data['questions'][0]['cases'][0]['acceptance_evidence']=[]
+            elif change=='accepted':data['questions'][0]['accepted']=True
+            elif change=='auto-merge':data['automatic_merge_allowed']=True
+            else:data['questions'][3]['processing']='ACTIVE'  # second active while Q06 active
+            with self.subTest(change=change),self.assertRaises(ValueError):validate(data)
+
+    def test_unexplained_external_block_and_missing_case_are_denied(self):
+        data=copy.deepcopy(self.ledger);case=next(c for c in data['questions'][0]['cases'] if c['status']=='BLOCKED');case['blocker']=None
+        with self.assertRaises(ValueError):validate(data)
+        data=copy.deepcopy(self.ledger);data['questions'][0]['cases'].pop()
+        with self.assertRaises(ValueError):validate(data)
+
+    def test_q03_cannot_follow_unqualified_q02(self):
+        data=copy.deepcopy(self.ledger)
+        # Remove the authentic Q02 handoff; Q03 active must then fail validation.
+        data['questions'][1].pop('engineering_handoff',None)
+        data['questions'][1]['processing']='ENGINEERING_DONE'
+        data['questions'][2]['processing']='ACTIVE'
+        with self.assertRaises(ValueError):validate(data)
+
+    def test_negative_injection_cannot_bypass_native_provenance_requirements(self):
+        data=copy.deepcopy(self.ledger)
+        case=next(c for c in data['questions'][1]['cases'] if c['layer']=='NEGATIVE_INJECTION')
+        case['status']='PASS'
+        case['acceptance_evidence']=[{'source_sha':'a'*40,'checkout_sha':'b'*40,
+            'timestamp_utc':'2026-10-24T14:00:00Z','platform':case['platform'],
+            'reference':'https://github.com/Urriki1502/wam-privacy-wallet-regtest/pull/129'}]
+        # Source metadata alone must not qualify an OS/Core-backed fault case.
+        with self.assertRaises(ValueError):validate(data)
+
+
+if __name__=='__main__':
+    unittest.main()
+
+
+class OfficialV013EvidencePolicy(unittest.TestCase):
+    """Metadata fixtures only; never an actual Core/acceptance receipt."""
+    def evidence(self, platform='windows-x64'):
+        from wam_regtest.official_core_v013 import MEMBERS, ARCHIVES
+        from wam_regtest.release import FINGERPRINT
+        from wam_regtest.linux_official_core import MANIFEST_SHA256
+        return {'core_version':'v0.1.13','platform':platform,
+            'core_sha256':copy.deepcopy(MEMBERS[platform]),
+            'archive_sha256':ARCHIVES[platform][2],'signed_archive_verified':True,
+            'publisher_fingerprint':FINGERPRINT,'core_trust':'official-signed-v0.1.13',
+            'candidate_pr_url':'https://github.com/Urriki1502/wam-privacy-wallet-regtest/pull/141',
+            'approved_core_manifest_sha256':MANIFEST_SHA256,'native_root_witness':True}
+
+    def test_v013_is_scoped_to_q06_with_exact_archive_signer_and_members(self):
+        from wam_regtest.q_gate import _core_evidence_version
+        good=self.evidence()
+        self.assertTrue(_core_evidence_version({'id':'Q06'},good))
+        self.assertFalse(_core_evidence_version({'id':'Q05'},good))
+        for field in ('core_sha256','archive_sha256','publisher_fingerprint','signed_archive_verified','candidate_pr_url','core_trust','core_version'):
+            bad=copy.deepcopy(good);bad[field]='untrusted'
+            self.assertFalse(_core_evidence_version({'id':'Q06'},bad),field)
+
+    def test_linux_signed_core_still_requires_the_reviewed_loader_and_root_witness(self):
+        from wam_regtest.q_gate import _core_evidence_version
+        good=self.evidence('linux-x86_64')
+        self.assertTrue(_core_evidence_version({'id':'Q06'},good))
+        for field in ('approved_core_manifest_sha256','native_root_witness'):
+            bad=copy.deepcopy(good);bad.pop(field)
+            self.assertFalse(_core_evidence_version({'id':'Q06'},bad))
