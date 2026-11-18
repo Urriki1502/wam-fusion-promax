@@ -299,5 +299,52 @@ class RestoreFusionGui(unittest.TestCase):
         self.assertEqual(self.window.restore_scope_notice.text(), ENGLISH["wallet.restore_scope_notice"])
 
 
+@unittest.skipIf(importlib.util.find_spec("PySide6") is None, "Qt widgets required")
+class RestoreScopeNoticeLayout(unittest.TestCase):
+    """PM-079 round 3: RestoreScopeNotice must not be vertically clipped on
+    the Security page at 1100x720 in any locale (TEXT_CLIPPED_V)."""
+
+    def test_restore_scope_notice_not_clipped_at_1100x720_in_all_six_locales(self):
+        from wam_regtest import bip39_locale
+        from wam_regtest.qualification.ui_gallery import _label_text_size
+
+        for language in SUPPORTED_LANGUAGES:
+            with self.subTest(language=language), \
+                    patch.object(bip39_locale, "_lang", return_value=language):
+                app, window = _make_window()
+                try:
+                    window._poll.stop()
+                    window.reduce_motion.setChecked(True)
+                    window.resize(1100, 720)
+                    window.show()
+                    window.navigation.setCurrentRow(4)  # Security page
+                    for _ in range(4):
+                        app.processEvents()
+                    notice = window.restore_scope_notice
+                    self.assertEqual(
+                        notice.text(), CATALOG[language]["wallet.restore_scope_notice"])
+                    self.assertTrue(notice.isVisible(), f"{language}: notice not visible")
+                    self.assertTrue(notice.wordWrap(), f"{language}: notice not wrapping")
+                    self.assertGreater(notice.width(), 0, f"{language}: notice has no width")
+                    needed = notice.heightForWidth(notice.width())
+                    self.assertGreaterEqual(
+                        notice.height(), needed,
+                        f"{language}: height {notice.height()} < heightForWidth {needed}")
+                    rect = notice.contentsRect()
+                    _need_w, need_h = _label_text_size(notice, rect.width())
+                    self.assertLessEqual(
+                        need_h, rect.height() + 1,
+                        f"{language}: text clipped (need {need_h}, have {rect.height()})")
+                finally:
+                    window._poll.stop()
+                    worker = window._worker
+                    if worker is not None:
+                        worker.wait(2000)
+                    app.processEvents()
+                    window.hide()
+                    window.deleteLater()
+                    app.processEvents()
+
+
 if __name__ == "__main__":
     unittest.main()

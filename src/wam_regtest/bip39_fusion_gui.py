@@ -7,7 +7,7 @@ not a painted mockup or a separate demo account.
 """
 import os
 import re
-from PySide6.QtCore import Qt, QSize, QTimer
+from PySide6.QtCore import Qt, QSize, QTimer, QEvent
 from PySide6.QtGui import QFontDatabase, QIcon, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QFrame, QLabel, QLineEdit,
@@ -101,6 +101,43 @@ class _WrappingStatusLabel(QLabel):
         select_all.triggered.connect(self._select_all)
         menu.popup(event.globalPos())
         event.accept()
+
+
+class _HeightForWidthLabel(QLabel):
+    """Wrapped label whose minimum height follows heightForWidth(width).
+
+    grow_with_wrapped_text() marks the label itself height-for-width, but
+    the recovery panel and the ResponsiveRow grid between it and the page
+    layout do not propagate that, so the page could allocate the height
+    the text needed at a wider width and clip it at the applied width.
+    Keeping the minimum at the applied width's heightForWidth lets the
+    panel, row and scroll page grow (and scroll) instead of squeezing it.
+    """
+
+    def _sync_minimum_height(self):
+        width = self.width()
+        if width <= 0:
+            return
+        # Clear an earlier minimum first: it was measured at a possibly
+        # narrower width and must not floor this width's measurement.
+        if self.minimumHeight() != 0:
+            self.setMinimumHeight(0)
+        needed = self.heightForWidth(width)
+        if needed > 0 and self.minimumHeight() != needed:
+            self.setMinimumHeight(needed)
+
+    def setText(self, text):
+        super().setText(text)
+        self._sync_minimum_height()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._sync_minimum_height()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            self._sync_minimum_height()
 
 
 class _AdvancedControlsToggle(QToolButton):
@@ -334,8 +371,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
         )
         # F-GAP-1: always visible directly under the recovery subtitle, so the
         # restore scope stays discoverable in every session and after restart.
-        self.restore_scope_notice = label(t('wallet.restore_scope_notice'))
+        self.restore_scope_notice = grow_with_wrapped_text(
+            _HeightForWidthLabel(t('wallet.restore_scope_notice')))
         self.restore_scope_notice.setObjectName('RestoreScopeNotice')
+        self.restore_scope_notice.setWordWrap(True)
+        self.restore_scope_notice.setMinimumWidth(0)
         rl.addWidget(self.restore_scope_notice)
         rl.addWidget(self.recovery)
         rl.addWidget(label(
@@ -348,7 +388,25 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.backup_review.setAccessibleName(t('wallet.review_backup'))
         self.backup_review.clicked.connect(self._quick_backup)
         bl.addWidget(self.backup_review)
-        security_layout.addWidget(ResponsiveRow(wallet_card, recovery_card))
+        # Propagate height-for-width past the panels and the row: without
+        # this the page layout sizes the row from a wider-width sizeHint
+        # and squeezes the wrapped notice below its applied-width height.
+        for card in (wallet_card, recovery_card):
+            card_policy = card.sizePolicy()
+            card_policy.setHeightForWidth(True)
+            card_policy.setVerticalPolicy(QSizePolicy.Policy.Minimum)
+            card.setSizePolicy(card_policy)
+        security_row = ResponsiveRow(wallet_card, recovery_card)
+        row_policy = security_row.sizePolicy()
+        row_policy.setHeightForWidth(True)
+        row_policy.setVerticalPolicy(QSizePolicy.Policy.Minimum)
+        security_row.setSizePolicy(row_policy)
+        security_root = security_page.widget()
+        if security_root is not None:
+            root_policy = security_root.sizePolicy()
+            root_policy.setHeightForWidth(True)
+            security_root.setSizePolicy(root_policy)
+        security_layout.addWidget(security_row)
         security_layout.addWidget(backup_card)
         security_layout.addStretch()
         self.stack.addWidget(security_page)
