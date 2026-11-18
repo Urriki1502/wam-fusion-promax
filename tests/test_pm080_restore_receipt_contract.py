@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -305,6 +306,47 @@ class RestoreProbePredicateTests(unittest.TestCase):
                 before_intents=[],
                 after_intents=[],
             )
+
+    def test_rows_to_reservation_map_accepts_sqlite_row_factory(self):
+        before_map, signed_outpoints, signed_token, intents = self._sample_maps()
+        conn = sqlite3.connect(":memory:")
+        try:
+            conn.row_factory = sqlite3.Row
+            conn.execute(
+                "CREATE TABLE reservations("
+                "txid TEXT, vout INTEGER, token TEXT, state TEXT, created INTEGER, "
+                "PRIMARY KEY(txid, vout))"
+            )
+            for (txid, vout), (token, state, created) in before_map.items():
+                conn.execute(
+                    "INSERT INTO reservations VALUES(?,?,?,?,?)",
+                    (txid, vout, token, state, created),
+                )
+            rows = conn.execute(
+                "SELECT txid,vout,token,state,created FROM reservations ORDER BY txid,vout"
+            ).fetchall()
+            self.assertEqual(len(rows), 2)
+            self.assertIs(type(rows[0]), sqlite3.Row)
+            parsed = restore_probe._rows_to_reservation_map(rows)
+            self.assertEqual(parsed, before_map)
+            restore_probe.verify_restore_reservation_contract(
+                before_original_map=parsed,
+                after_original_map=restore_probe._rows_to_reservation_map(rows),
+                restored_map=restore_probe._rows_to_reservation_map([]),
+                signed_outpoints=signed_outpoints,
+                signed_token=signed_token,
+                before_intents=intents,
+                after_intents=list(intents),
+            )
+            short_rows = conn.execute(
+                "SELECT txid,vout,token,state FROM reservations ORDER BY txid,vout"
+            ).fetchall()
+            with self.assertRaisesRegex(ValueError, "^Q06_SAME_CHAIN_RESTORE_RESERVATION_DENIED$"):
+                restore_probe._rows_to_reservation_map(short_rows)
+        finally:
+            conn.close()
+        with self.assertRaisesRegex(ValueError, "^Q06_SAME_CHAIN_RESTORE_RESERVATION_DENIED$"):
+            restore_probe._rows_to_reservation_map([{"txid": "aa" * 32}])
 
 
 class FakeRestoreProbeFlowTests(unittest.TestCase):

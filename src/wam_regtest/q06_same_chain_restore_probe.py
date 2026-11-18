@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import sqlite3
 import stat
 import sys
 import time
@@ -31,9 +32,9 @@ UNCERTAIN_FIXTURE_STATUS = (
 def _rows_to_reservation_map(rows):
     mapping = {}
     for row in rows:
-        if type(row) not in (tuple, list) or len(row) != 5:
+        if type(row) not in (tuple, list, sqlite3.Row) or len(row) != 5:
             raise ValueError(RESERVATION_DENIED_CODE)
-        txid, vout, token, state, created = row
+        txid, vout, token, state, created = tuple(row)
         coin = (txid, vout)
         if coin in mapping:
             raise ValueError(RESERVATION_DENIED_CODE)
