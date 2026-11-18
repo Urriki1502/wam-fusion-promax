@@ -16,12 +16,32 @@ ENGLISH_GUI_ERRORS = {'FEE_ABSOLUTE_LIMIT': 'The fee exceeds 0.01 WAM. Nothing w
  'FEE_POLICY_UNVERIFIED': 'The network fee could not be verified. Nothing was prepared or signed.',
  'FEE_QUOTE_STALE': 'The network fee changed after this review. Nothing was signed and the fee was not changed. Cancel the unsigned draft and prepare the payment again.',
  'FEE_STRUCTURE_UNSTABLE': 'The fee for this payment could not be settled. Nothing was saved or signed. Unsigned drafts from this attempt were released.',
+ 'MANAGED_DEAD_OWNER_RECOVERY_REQUIRED': 'The original owned Core process exited unexpectedly. No foreign '
+                                          'process will be adopted or terminated. Use the explicit '
+                                          'recover-and-restart action for this original owner before '
+                                          'continuing or quitting.',
+ 'MANAGED_LIVE_OWNER_CLOSE_DENIED': 'Core is still running, so the wallet cannot close yet. Stop Core '
+                                    'cleanly before exiting.',
+ 'MANAGED_SHUTDOWN_UNCERTAIN': 'Core stop outcome is uncertain and the original process may still '
+                               'be running. Ownership is retained and no termination signal will '
+                               'be sent; wait and check Core before retrying Quit.',
+ 'MANAGED_STOP_NOT_DELIVERED': 'Core stop could not be delivered and the original process may still '
+                               'be running. Ownership is retained and no termination signal will '
+                               'be sent; check Core status before retrying Quit.',
+ 'NOTICE_PERSIST_FAILED': 'The wallet could not record the shutdown fault notice on disk. '
+                          'Ownership is retained and the window stays open; retry recording or, if '
+                          'Core is stopped, confirm exit without recording.',
  'Q06_RECONCILIATION_NOT_NEEDED': 'The active custody session is healthy. Refresh the chain before '
                                   'requesting recovery.',
  'Q06_SHARED_RECONCILIATION_DENIED': 'Shared-chain reconciliation was refused. Native checkpoints, '
                                      'signed evidence and reservations are preserved. Verify the '
                                      'original profile, password and chain; do not remove runtime '
                                      'files.',
+ 'QUIT_ACK_UNRECORDED_NOT_PENDING': 'No unrecorded quit notice is pending.',
+ 'QUIT_NOTICE_RETRY_NOT_PENDING': 'No failed quit notice is awaiting retry.',
+ 'QUIT_NOTICE_REVIEW_REQUIRED': 'An unresolved shutdown or fault notice requires review before '
+                                'spending or reopening. Review and acknowledge the notice first; '
+                                'preserved runtime and evidence files remain untouched.',
  'RBF_SIGNALLING_MISSING': 'This payment is missing explicit BIP125 replaceability. Nothing was signed.',
  'SHARED_CONFIRMED_PEER_REQUIRED': 'The configured Core peer is disconnected or not yet verified. '
                                    'Reconnect and verify the shared chain; signed and pending '
