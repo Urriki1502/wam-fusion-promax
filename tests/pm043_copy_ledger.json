@@ -23,7 +23,7 @@
     "owner.rescanning": "Checking recovery history on this REGTEST chain…",
     "owner.recovery_result": "Recovery check complete on this REGTEST chain: {history_count} confirmed history records; {confirmed_atoms:,} atoms. Spending access was not restored. Recovery on another device or chain remains unverified.",
     "owner.restore_title": "Restore 12 words to a new REGTEST wallet",
-    "owner.restore_prompt": "Enter exactly 12 disposable REGTEST recovery words. Never enter mainnet words. A new empty chain does not recreate earlier transactions."
+    "owner.restore_prompt": "Enter exactly 12 disposable REGTEST recovery words. Never enter mainnet words. Restoring recovers this wallet's keys and its confirmed history on this chain. Payments that were signed, pending or uncertain on the original profile are not copied: keep the original profile and check them there."
   },
   "review": {
     "backup_subtitle": "S",
