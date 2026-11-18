@@ -64,7 +64,7 @@ RUNTIME_SNAPSHOT = frozenset({
     'q05_platforms', 'regtest_funding', 'release', 'rpc_contention',
     'rpc_credentials', 'rpc_scope', 'shared_regtest', 'shared_regtest_gui',
     'supervisor_client', 'supervisor_identity', 'supervisor_journal',
-    'supervisor_protocol', 'supervisor_store', 'telemetry', 'vault',
+    'supervisor_protocol', 'supervisor_store', 'telemetry', 'tx_observation', 'vault',
     'wallet_executor', 'wallet_read', 'wallet_recovery', 'wallet_session',
     # PM-003: first layered subpackage module (dotted names).
     'foundation', 'foundation.diagnostics',
@@ -96,13 +96,6 @@ LINUX_EXTRA_SNAPSHOT = frozenset({'linux_production_entry'})
 #   * win32 windows_core_regtest_smoke helpers reached from core /
 #     core_process / core_supervisor / rpc_scope / windows_core_transport
 RUNTIME_FUNCTION_IMPORTS = frozenset({
-    # PM-081 OBS-01a: lazy read-only observation imports. These three
-    # edges are visible only until 'tx_observation' ships: adding it to
-    # scripts/production_packaging.py RUNTIME and to RUNTIME_SNAPSHOT
-    # above, and removing these three entries, must land together.
-    ('bip39_spend_session', 'Q06OwnedSpendSession._intent_status_unlocked', 'tx_observation'),
-    ('bip39_spend_session', 'Q06OwnedSpendSession._recover_pending_broadcast', 'tx_observation'),
-    ('bip39_spend_session', 'Q06OwnedSpendSession.inspect_confirmed', 'tx_observation'),
     ('core', '_write_private_config', 'windows_core_regtest_smoke'),
     ('core_process', '_windows_socket', 'windows_core_regtest_smoke'),
     ('core_supervisor', 'CoreSupervisor.start', 'windows_core_regtest_smoke'),
