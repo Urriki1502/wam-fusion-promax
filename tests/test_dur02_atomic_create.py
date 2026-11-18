@@ -10,7 +10,7 @@ import ctypes
 import errno
 import os
 from pathlib import Path
-import pwd
+import runpy
 import signal
 import stat
 import subprocess
@@ -38,6 +38,7 @@ class Cut(BaseException):
 
 
 def _user():
+    import pwd
     return pwd.getpwuid(os.geteuid()).pw_name
 
 
@@ -418,6 +419,85 @@ class DarwinPublication(unittest.TestCase):
         self.race_at_stage_fsync(swap)
         self.assertEqual(len(list((self.root.parent / "old-stage").iterdir())), 1)
 
+    def race_before_actual_rename(self, action):
+        real_loader = store._renameatx_np
+
+        def intercepted_loader():
+            real_fn = real_loader()
+
+            def call(stage_fd, source, root_fd, target, flags):
+                action(source.decode("ascii"))
+                return real_fn(stage_fd, source, root_fd, target, flags)
+
+            return call
+
+        return patch.object(store, "_renameatx_np", intercepted_loader)
+
+    def test_stage_directory_replacement_between_verify_and_rename_raises_unverified(self):
+        old_stage = self.root.parent / "old-stage-postverify"
+
+        def swap_dir(_source_name):
+            os.rename(self.stage, old_stage)
+            self.stage.mkdir(mode=0o700)
+
+        with self.race_before_actual_rename(swap_dir):
+            with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_PUBLISH_UNVERIFIED"):
+                create_once(self.root, NAME, DATA)
+        self.assertEqual(read_exact(self.root, NAME, length=32), DATA)
+        self.assertTrue(old_stage.is_dir())
+        self.assertEqual(list(old_stage.iterdir()), [])
+        self.assertTrue(self.stage.is_dir())
+        self.assertEqual(self.residue(), [])
+        with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_CREATE_DENIED"):
+            create_once(self.root, NAME, DATA)
+
+        # Metadata tamper (0755 or ACL) in the same window also fails unverified without repair.
+        for label, name, tamper in (
+            ("chmod", "supervisor.profile", lambda _src: os.chmod(self.stage, 0o755)),
+            ("acl", "supervisor.wallet", lambda _src: _add_acl(self.stage)),
+        ):
+            with self.subTest(tamper=label):
+                with self.race_before_actual_rename(tamper):
+                    with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_PUBLISH_UNVERIFIED"):
+                        create_once(self.root, name, DATA)
+                self.assertEqual(read_exact(self.root, name, length=32), DATA)
+                if label == "chmod":
+                    self.assertEqual(stat.S_IMODE(os.stat(self.stage).st_mode), 0o755)
+                    os.chmod(self.stage, 0o700)
+                else:
+                    with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_STAGE_UNTRUSTED"):
+                        stage_namespace(self.root)
+                    subprocess.run(["/bin/chmod", "-N", str(self.stage)], check=True, capture_output=True)
+
+    def test_source_entry_replacement_between_verify_and_rename_raises_unverified(self):
+        def replace_regular(source_name):
+            path = self.stage / source_name
+            os.rename(path, self.stage / "moved-regular")
+            path.write_bytes(b"a" * len(DATA))
+            os.chmod(path, 0o600)
+
+        with self.race_before_actual_rename(replace_regular):
+            with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_PUBLISH_UNVERIFIED"):
+                create_once(self.root, NAME, DATA)
+        self.assertEqual((self.root / NAME).read_bytes(), b"a" * len(DATA))
+        self.assertEqual((self.stage / "moved-regular").read_bytes(), DATA)
+        with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_CREATE_DENIED"):
+            create_once(self.root, NAME, DATA)
+
+        def replace_symlink(source_name):
+            path = self.stage / source_name
+            target = self.stage / "moved-symlink-target"
+            os.rename(path, target)
+            os.symlink("moved-symlink-target", path)
+
+        with self.race_before_actual_rename(replace_symlink):
+            with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_PUBLISH_UNVERIFIED"):
+                create_once(self.root, "supervisor.profile", DATA)
+        self.assertTrue(os.path.islink(self.root / "supervisor.profile"))
+        self.assertEqual((self.stage / "moved-symlink-target").read_bytes(), DATA)
+        with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_CREATE_DENIED"):
+            create_once(self.root, "supervisor.profile", DATA)
+
     def test_post_rename_identity_mismatch_raises_and_deletes_nothing(self):
         real = store._rename_exclusive
 
@@ -616,6 +696,31 @@ class OtherPlatformsUnchanged(unittest.TestCase):
         with patch.object(store.sys, "platform", "linux"):
             with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_NATIVE_STORE_REQUIRED"):
                 store._renameatx_np()
+
+    def test_module_imports_without_pwd(self):
+        self.stack.close()
+        with patch.dict(sys.modules, {"pwd": None}):
+            loaded = runpy.run_path(str(Path(__file__).resolve()), run_name="windows_import_probe")
+        self.assertIn("DarwinPublication", loaded)
+        self.assertIn("OtherPlatformsUnchanged", loaded)
+
+    def test_posix_dir_exception_precedence_is_darwin_only(self):
+        self.stack.close()
+        from wam_regtest import linux_private_storage, private_directory
+
+        with patch.object(store.sys, "platform", "darwin"), \
+                patch.object(private_directory, "open_macos_private_directory", return_value=10), \
+                patch.object(store.os, "close", side_effect=OSError(errno.EIO, "close-failure")):
+            with self.assertRaisesRegex(SupervisorStorageError, "PRIMARY_FAILURE"):
+                with store._posix_dir(self.root):
+                    raise SupervisorStorageError("PRIMARY_FAILURE")
+
+        with patch.object(store.sys, "platform", "linux"), \
+                patch.object(linux_private_storage, "open_linux_private_directory", return_value=10), \
+                patch.object(store.os, "close", side_effect=OSError(errno.EIO, "close-failure")):
+            with self.assertRaisesRegex(OSError, "close-failure"):
+                with store._posix_dir(self.root):
+                    raise SupervisorStorageError("PRIMARY_FAILURE")
 
 
 @unittest.skipUnless(DARWIN, "R1 initialization tolerance is Darwin-only")

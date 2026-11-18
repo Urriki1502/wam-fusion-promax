@@ -48,7 +48,11 @@ def _posix_dir(root):
     try:fd=private(root)
     except (OSError,ValueError):
         raise SupervisorStorageError("SUPERVISOR_STORAGE_ROOT_UNTRUSTED") from None
-    with _owned(fd):yield fd
+    if sys.platform=="darwin":
+        with _owned(fd):yield fd
+    else:
+        try:yield fd
+        finally:os.close(fd)
 
 
 def _posix_file(fd,name,*,create=False,nonblocking=True):
@@ -182,6 +186,26 @@ def _rename_exclusive(stage_directory,stage,root_directory,final):
     raise SupervisorStorageError("SUPERVISOR_STORAGE_RENAME_DENIED")
 
 
+def _verify_stage_directory(root_directory,stage_directory,error_code):
+    """Validate held stage_directory metadata and its no-follow root binding."""
+    from .private_directory import validate_macos_private_directory
+    try:
+        validate_macos_private_directory(stage_directory)
+        stage_info=os.fstat(stage_directory)
+        root_info=os.fstat(root_directory)
+        linked=os.stat(STAGE_DIRECTORY,dir_fd=root_directory,follow_symlinks=False)
+        if (stage_info.st_dev!=root_info.st_dev
+                or (linked.st_dev,linked.st_ino)!=(stage_info.st_dev,stage_info.st_ino)
+                or not stat.S_ISDIR(linked.st_mode)
+                or linked.st_uid!=os.geteuid()
+                or stat.S_IMODE(linked.st_mode)!=0o700):
+            raise SupervisorStorageError(error_code)
+    except SupervisorStorageError:raise
+    except (OSError,ValueError):
+        raise SupervisorStorageError(error_code) from None
+    return stage_info
+
+
 def _open_stage_directory(root_directory,*,create):
     """root/.wam-stage opened no-follow through the held root descriptor (N2).
 
@@ -189,7 +213,6 @@ def _open_stage_directory(root_directory,*,create):
     the root and the name still bound to the opened inode. Pre-existing
     metadata is never repaired. Returns None only when absent and create=False.
     """
-    from .private_directory import validate_macos_private_directory
     flags=os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC
     try:
         try:directory=os.open(STAGE_DIRECTORY,flags,dir_fd=root_directory)
@@ -201,18 +224,11 @@ def _open_stage_directory(root_directory,*,create):
     except OSError:
         raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_UNTRUSTED") from None
     try:
-        validate_macos_private_directory(directory)
-        held=os.fstat(directory)
-        linked=os.stat(STAGE_DIRECTORY,dir_fd=root_directory,follow_symlinks=False)
-        if (held.st_dev!=os.fstat(root_directory).st_dev
-                or (linked.st_dev,linked.st_ino)!=(held.st_dev,held.st_ino)):
-            raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_UNTRUSTED")
-    except BaseException as error:
+        _verify_stage_directory(root_directory,directory,"SUPERVISOR_STORAGE_STAGE_UNTRUSTED")
+    except BaseException:
         try:os.close(directory)
         except OSError:pass
-        if isinstance(error,SupervisorStorageError) or not isinstance(error,(OSError,ValueError)):
-            raise
-        raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_UNTRUSTED") from None
+        raise
     return directory
 
 
@@ -230,10 +246,10 @@ def _verify_stage(root_directory,stage_directory,stage,handle,size):
     """Bind the source name to the held, complete, flushed staged inode (N2).
 
     This narrows, but cannot remove, a same-UID race: renameatx_np renames
-    whatever the source name denotes at call time. The published final is
-    therefore re-verified against this identity after the rename.
+    whatever the source name denotes at call time. The published final and
+    stage-directory binding are therefore re-verified after the rename.
     """
-    from .private_directory import _require_absent_acl, validate_macos_private_directory
+    from .private_directory import _require_absent_acl
     try:
         entry=os.stat(stage,dir_fd=stage_directory,follow_symlinks=False)
         _require_absent_acl(handle)
@@ -246,12 +262,9 @@ def _verify_stage(root_directory,stage_directory,stage,handle,size):
                 or entry.st_size!=size
                 or (entry.st_dev,entry.st_ino)!=(held.st_dev,held.st_ino)):
             raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_CHANGED")
-        validate_macos_private_directory(stage_directory)
-        directory=os.fstat(stage_directory)
-        root_info=os.fstat(root_directory)
-        linked=os.stat(STAGE_DIRECTORY,dir_fd=root_directory,follow_symlinks=False)
-        if (directory.st_dev!=root_info.st_dev or directory.st_dev!=held.st_dev
-                or (linked.st_dev,linked.st_ino)!=(directory.st_dev,directory.st_ino)):
+        stage_info=_verify_stage_directory(
+            root_directory,stage_directory,"SUPERVISOR_STORAGE_STAGE_CHANGED")
+        if stage_info.st_dev!=held.st_dev:
             raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_CHANGED")
     except SupervisorStorageError:raise
     except (OSError,ValueError):
@@ -303,6 +316,10 @@ def _create_darwin(root,name,data):
                         or published.st_nlink!=1
                         or stat.S_IMODE(published.st_mode)!=0o600
                         or published.st_size!=len(data)):
+                    raise SupervisorStorageError("SUPERVISOR_STORAGE_PUBLISH_UNVERIFIED")
+                stage_info=_verify_stage_directory(
+                    directory,stage_directory,"SUPERVISOR_STORAGE_PUBLISH_UNVERIFIED")
+                if stage_info.st_dev!=staged[0]:
                     raise SupervisorStorageError("SUPERVISOR_STORAGE_PUBLISH_UNVERIFIED")
         os.fsync(directory)
 
