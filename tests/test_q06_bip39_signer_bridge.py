@@ -481,12 +481,19 @@ class Q06Bip39SignerBridgeContracts(unittest.TestCase):
         db.execute("CREATE TABLE history(txid TEXT, height INTEGER)")
         old="b"*64
         db.execute("INSERT INTO history(txid,height) VALUES (?,?)",(old,103))
-        store=SimpleNamespace(db=db,transaction=lambda:nullcontext())
+        # OBS-01a: the authorizer-compatible store also carries blocks, and
+        # the scanner double reports a verified tip equal to the store tip.
+        db.execute("CREATE TABLE blocks(height INTEGER PRIMARY KEY, hash TEXT, previous TEXT)")
+        db.execute("INSERT INTO blocks VALUES (?,?,?)",(103,"d"*64,"c"*64))
+        db.execute("INSERT INTO blocks VALUES (?,?,?)",(108,"a"*64,"d"*64))
+        import threading as _threading
+        store=SimpleNamespace(db=db,transaction=lambda:nullcontext(),
+                              lock=_threading.RLock(),tip=lambda:(108,"a"*64))
         session=object.__new__(Q06OwnedSpendSession)
         session._lock=RLock()
         session._q06_uncertain=False
         session.faulted=False
-        session.scanner=SimpleNamespace(store=store)
+        session.scanner=SimpleNamespace(store=store,ready=True,verified_tip=(108,"a"*64))
         session.snapshot=lambda:SimpleNamespace(height=108,tip="a"*64)
         methods=[]
         mempool=[]
@@ -494,9 +501,15 @@ class Q06Bip39SignerBridgeContracts(unittest.TestCase):
             methods.append(('call',method))
             if method=="getbestblockhash":
                 return "a"*64
+            if method=="getblockcount":
+                return 108
+            if method=="getblockhash":
+                return {103:"d"*64,108:"a"*64}[params[0]]
             raise AssertionError(method)
         def rpc_raw(method,args):
             methods.append(('_call',method,tuple(args)))
+            if method=="getblockchaininfo" and list(args)==[]:
+                return {"blocks":108,"headers":108,"initialblockdownload":False}
             if method=="getrawmempool" and list(args)==[]:
                 return list(mempool)
             raise AssertionError(method)
@@ -504,21 +517,36 @@ class Q06Bip39SignerBridgeContracts(unittest.TestCase):
         count=db.total_changes
         found=session.inspect_confirmed(old)
         self.assertEqual(found["status"],"Q06_CONFIRMED_IN_VERIFIED_HISTORY")
+        self.assertEqual(found["tx_height"],103)
+        self.assertEqual(found["tx_block_hash"],"d"*64)
         self.assertFalse(found["in_mempool"])
         self.assertTrue(found["complete_anchored_history"])
         self.assertFalse(found["write_attempted"])
         missing=session.inspect_confirmed("c"*64)
         self.assertEqual(missing["status"],"Q06_TX_NOT_IN_CONFIRMED_HISTORY")
+        self.assertIsNone(missing["tx_height"])
+        self.assertIsNone(missing["tx_block_hash"])
         self.assertFalse(missing["in_mempool"])
         mempool.append("c"*64)
         pending=session.inspect_confirmed("c"*64)
         self.assertEqual(pending["status"],"Q06_TX_NOT_IN_CONFIRMED_HISTORY")
         self.assertTrue(pending["in_mempool"])
         self.assertEqual(db.total_changes,count)
+        # OBS-01a: each inspection is one bracketed acquisition (chain info,
+        # tip, mempool endpoints, bracket; getblockhash only when confirmed).
         self.assertEqual(methods,[
-            ("call","getbestblockhash"),("_call","getrawmempool",()),
-            ("call","getbestblockhash"),("_call","getrawmempool",()),
-            ("call","getbestblockhash"),("_call","getrawmempool",())])
+            ("_call","getblockchaininfo",()),("call","getbestblockhash"),
+            ("_call","getrawmempool",()),("call","getblockhash"),
+            ("_call","getrawmempool",()),("call","getbestblockhash"),
+            ("call","getblockcount"),
+            ("_call","getblockchaininfo",()),("call","getbestblockhash"),
+            ("_call","getrawmempool",()),
+            ("_call","getrawmempool",()),("call","getbestblockhash"),
+            ("call","getblockcount"),
+            ("_call","getblockchaininfo",()),("call","getbestblockhash"),
+            ("_call","getrawmempool",()),
+            ("_call","getrawmempool",()),("call","getbestblockhash"),
+            ("call","getblockcount")])
         with self.assertRaises(Q06SpendSessionError):
             session.inspect_confirmed("mainnet")
         session._q06_uncertain=True

@@ -82,6 +82,9 @@ class _Core:
     def _call(self, method, params):
         if method == 'getrawmempool':
             return sorted(self.mempool)
+        if method == 'getblockchaininfo':
+            # OBS-01a: whole-acquisition prerequisite 1 (equal heights).
+            return {'blocks': 1, 'headers': 1, 'initialblockdownload': False}
         if method == 'generatetoaddress':
             self.mine_attempts += 1
             if self.mine_error is not None:
@@ -95,8 +98,10 @@ class _Core:
             return self.test.tip
         if method == 'getblockcount':
             return self.height
+        if method == 'getblockhash':
+            return GENESIS if params[0] == 0 else self.test.tip
         if method == 'gettxout':
-            return {'value': 0.001,
+            return {'bestblock': self.test.tip, 'value': 0.001,
                     'scriptPubKey': {'hex': '5120' + self.test.coin['public_key']}}
         if method == 'testmempoolaccept':
             return accepted_reply(self.test.signed)
@@ -472,21 +477,53 @@ def _fake_recovery_session(rows, evidence, mempool):
     db = sqlite3.connect(':memory:')
     db.execute('CREATE TABLE reservations(txid TEXT, vout INT, token TEXT, state TEXT)')
     db.execute('CREATE TABLE history(txid TEXT, height INT)')
+    # OBS-01a: the authorizer-compatible store also carries blocks/coins,
+    # and the scanner double reports a verified tip equal to the store tip.
+    db.execute('CREATE TABLE blocks(height INTEGER PRIMARY KEY, hash TEXT, previous TEXT)')
+    db.execute('CREATE TABLE coins(txid TEXT, vout INTEGER, atoms INTEGER,'
+               ' public_key TEXT, spent INTEGER)')
+    tip = (5, 'e' * 64)
+    db.execute('INSERT INTO blocks VALUES (?,?,?)', (tip[0], tip[1], 'd' * 64))
     db.executemany('INSERT INTO reservations VALUES (?,?,?,?)', rows)
+    for txid, vout, _token, _state in rows:
+        db.execute('INSERT INTO coins VALUES (?,?,?,?,NULL)',
+                   (txid, vout, 100_000, 'ab' * 32))
     states = [row[3] for row in rows]
 
     @contextmanager
     def transaction():
         yield
 
+    store = SimpleNamespace(db=db, transaction=transaction,
+                            lock=threading.RLock(), tip=lambda: tip)
     session = object.__new__(Q06OwnedSpendSession)
     session._lock = threading.RLock()
     session._q06_uncertain = False
     session.faulted = False
     session._q06_pending_confirm = None
-    session.scanner = SimpleNamespace(store=SimpleNamespace(db=db, transaction=transaction))
+    session.scanner = SimpleNamespace(store=store, ready=True, verified_tip=tip)
+
+    def _call(method, params):
+        if method == 'getblockchaininfo':
+            return {'blocks': tip[0], 'headers': tip[0], 'initialblockdownload': False}
+        if method == 'getrawmempool':
+            return list(mempool)
+        raise AssertionError(method)
+
+    def _rpc_call(method, params=None):
+        if method == 'getbestblockhash':
+            return tip[1]
+        if method == 'getblockcount':
+            return tip[0]
+        if method == 'getblockhash':
+            return tip[1]
+        if method == 'gettxout':
+            return {'bestblock': tip[1], 'value': 0.001,
+                    'scriptPubKey': {'hex': '5120' + 'ab' * 32}}
+        raise AssertionError(method)
+
     session._read_payment_evidence = lambda token, stage: evidence.get(token)
-    session._rpc = lambda: SimpleNamespace(_call=lambda method, params: list(mempool))
+    session._rpc = lambda: SimpleNamespace(_call=_call, call=_rpc_call)
     session._states = lambda: tuple(
         row[0] for row in db.execute('SELECT state FROM reservations ORDER BY token'))
     session._initial_states = tuple(states)

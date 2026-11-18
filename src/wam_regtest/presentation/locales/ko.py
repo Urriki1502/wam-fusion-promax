@@ -296,6 +296,7 @@ KO = {
     "errors.WALLET_LOCKED_OR_FAULTED": "지갑이 잠겼거나 장애 상태입니다. 잔액은 숨겨지고 민감한 작업을 사용할 수 없습니다. 예약은 보호된 채로 남습니다.",
     "errors.WALLET_SYNC_UNVERIFIED": "실행 중인 REGTEST 동기화를 검증할 수 없습니다. 잔액은 숨겨집니다. 로컬 노드를 검증하고 다시 동기화하십시오. 보관을 초기화하지 마십시오.",
     "errors.WALLET_OPERATION_DENIED_STATE_RETAINED": "작업을 안전하게 마치지 못했습니다. 지갑 상태와 예약은 유지됩니다. 실행 중인 체인과 최신 체크포인트를 검증하십시오. 보관을 초기화하지 마십시오.",
+    "errors.OPERATOR_REVIEW_OBSERVATION_CONTRADICTION": "관측 결과가 로컬 지갑 기록과 모순됩니다. 예약은 보존됩니다. 다시 시도하거나, 서명하거나, 해제하지 마십시오. 원본 Core 와 체인을 검증한 뒤 수동으로 검토하십시오.",
     "fusion.faulted": "장애",
     "settings.language": "언어",
     "settings.language_system": "시스템 기본값",

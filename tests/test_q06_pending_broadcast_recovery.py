@@ -26,25 +26,58 @@ def _session(rows, history=(), evidence=None, mempool=(TX_A,), uncertain=False, 
     db = sqlite3.connect(":memory:")
     db.execute("CREATE TABLE reservations(txid TEXT, vout INT, token TEXT, state TEXT)")
     db.execute("CREATE TABLE history(txid TEXT, height INT)")
+    # OBS-01a: the authorizer-compatible store also carries blocks/coins,
+    # and the scanner double reports a verified tip equal to the store tip.
+    db.execute("CREATE TABLE blocks(height INTEGER PRIMARY KEY, hash TEXT, previous TEXT)")
+    db.execute("CREATE TABLE coins(txid TEXT, vout INTEGER, atoms INTEGER,"
+               " public_key TEXT, spent INTEGER)")
+    tip = (5, "e" * 64)
+    db.execute("INSERT INTO blocks VALUES (?,?,?)", (tip[0], tip[1], "d" * 64))
     db.executemany("INSERT INTO reservations VALUES (?,?,?,?)", rows)
     db.executemany("INSERT INTO history VALUES (?,?)", history)
+    for txid, vout, _token, _state in rows:
+        db.execute("INSERT INTO coins VALUES (?,?,?,?,NULL)",
+                   (txid, vout, 100_000, "ab" * 32))
 
     @contextmanager
     def transaction():
         yield
 
+    store = SimpleNamespace(db=db, transaction=transaction,
+                            lock=threading.RLock(), tip=lambda: tip)
     session = object.__new__(Q06OwnedSpendSession)
     session._lock = threading.RLock()
     session._q06_uncertain = uncertain
     session.faulted = faulted
     session._q06_pending_confirm = None
-    session.scanner = SimpleNamespace(store=SimpleNamespace(db=db, transaction=transaction))
+    session.scanner = SimpleNamespace(store=store, ready=True, verified_tip=tip)
     calls = []
     session._read_payment_evidence = lambda token, stage: (
         calls.append((token, stage)) or (evidence or {}).get(token))
     rpc_calls = []
-    session._rpc = lambda: SimpleNamespace(
-        _call=lambda method, params: rpc_calls.append(method) or list(mempool))
+
+    def _call(method, params):
+        rpc_calls.append(method)
+        if method == "getblockchaininfo":
+            return {"blocks": tip[0], "headers": tip[0], "initialblockdownload": False}
+        if method == "getrawmempool":
+            return list(mempool)
+        raise AssertionError(method)
+
+    def _rpc_call(method, params=None):
+        rpc_calls.append(method)
+        if method == "getbestblockhash":
+            return tip[1]
+        if method == "getblockcount":
+            return tip[0]
+        if method == "getblockhash":
+            return tip[1]
+        if method == "gettxout":
+            return {"bestblock": tip[1], "value": 0.001,
+                    "scriptPubKey": {"hex": "5120" + "ab" * 32}}
+        raise AssertionError(method)
+
+    session._rpc = lambda: SimpleNamespace(_call=_call, call=_rpc_call)
     session._calls, session._rpc_calls = calls, rpc_calls
     return session
 
@@ -72,7 +105,11 @@ class PendingBroadcastRecovery(unittest.TestCase):
         self.assertEqual(self.recover(s), TX_A)
         self.assertEqual(s._q06_pending_confirm, TX_A)
         self.assertEqual(s._calls, [("t1", "broadcast")])  # only the broadcast evidence is read
-        self.assertEqual(s._rpc_calls, ["getrawmempool"])  # read-only Core call only
+        # OBS-01a: one bracketed read-only acquisition replaces the single
+        # getrawmempool read (chain info, tip, mempool endpoints, bracket).
+        self.assertEqual(s._rpc_calls, ["getblockchaininfo", "getbestblockhash",
+                                        "getrawmempool", "getrawmempool",
+                                        "getbestblockhash", "getblockcount"])
 
     def test_multi_input_broadcast_matches_all_reserved_inputs(self):
         s = _session([(IN_1[0], IN_1[1], "t1", "broadcast"), (IN_2[0], IN_2[1], "t1", "broadcast")],

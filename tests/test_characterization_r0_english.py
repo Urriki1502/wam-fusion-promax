@@ -122,7 +122,12 @@ ENGLISH_GUI_ERRORS = {'FEE_ABSOLUTE_LIMIT': 'The fee exceeds 0.01 WAM. Nothing w
                            'custody.',
  'WALLET_UNLOCK_REFUSED': 'Could not unlock: passphrase, encrypted snapshot or custody '
                           'verification failed. The wallet remains locked. Check the passphrase '
-                          'and latest backup; do not reset custody.'}
+                          'and latest backup; do not reset custody.',
+ # PM-081 OBS-01a: the one new operator-review classification.
+ 'OPERATOR_REVIEW_OBSERVATION_CONTRADICTION': 'Observation contradicts local wallet records. '
+                                              'Reservations are preserved; do not retry, sign '
+                                              'or release anything. Verify the original Core '
+                                              'and chain, then review manually.'}
 
 ENGLISH_LOCALE = {'app_name': 'WAM Fusion',
  'back_up_later': 'Back up later',

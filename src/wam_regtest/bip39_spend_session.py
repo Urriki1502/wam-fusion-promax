@@ -193,7 +193,6 @@ class Q06OwnedSpendSession(WalletSession):
             account_id=lambda: self.ring.public_metadata()['account_id'])
 
     def _intent_status_unlocked(self):
-        import re
         from wam_sp.psbt import PSBT
         snapshot = self.snapshot()  # Original owner, native generation, live tip.
         rpc = self._rpc()
@@ -201,25 +200,23 @@ class Q06OwnedSpendSession(WalletSession):
             rows = self.scanner.store.db.execute(
                 "SELECT txid,vout,token,state FROM reservations "
                 "WHERE state IN ('signed','uncertain') ORDER BY token,txid,vout").fetchall()
-            confirmed = {r[0] for r in self.scanner.store.db.execute(
-                'SELECT txid FROM history WHERE height>0')}
-        mempool = rpc._call('getrawmempool', [])
-        if (type(mempool) is not list or any(
-                type(i) is not str or re.fullmatch('[0-9a-f]{64}', i) is None for i in mempool)):
-            raise Q06SpendSessionError('Q06_INTENT_STATUS_UNVERIFIED')
         groups = {}
         for txid, vout, token, state in rows:
             groups.setdefault(token, []).append(((txid, vout), state))
         items = []
+        eligible = {}
         for token, members in groups.items():
             states = {state for _, state in members}
             outpoints = {coin for coin, _ in members}
             item = {'token': token, 'state': states.pop() if len(states) == 1 else 'mixed',
-                    'input_count': len(outpoints), 'txid': None, 'evidence': 'missing'}
+                    'input_count': len(outpoints), 'txid': None, 'evidence': 'missing',
+                    'observation': None}
             try:
                 body = self._read_payment_evidence(token, 'signed')
             except Exception:
                 body, item['evidence'] = None, 'invalid'
+            # The per-item branches run FIRST and unchanged; tokens decided
+            # here never reach observation (OBS-01a Contract I scope).
             if item['state'] == 'mixed':
                 item['classification'] = 'OPERATOR_REVIEW_MIXED_STATE'
             elif body is None:
@@ -232,18 +229,42 @@ class Q06OwnedSpendSession(WalletSession):
                 item.update(recipient=body['recipient'], atoms=body['atoms'], fee=body['fee'])
                 if set(PSBT.decode(bytes.fromhex(body['signed_psbt'])).tx.inputs) != outpoints:
                     item['classification'] = 'OPERATOR_REVIEW_EVIDENCE_INPUT_MISMATCH'
-                elif body['txid'] in confirmed:
+                else:
+                    eligible[token] = (body['txid'], outpoints, item)
+            items.append(item)
+        if eligible:
+            # One read-only observation for every remaining token. A
+            # whole-acquisition UNKNOWN refuses the status call; transport
+            # exceptions from the RPC propagate unchanged.
+            from .tx_observation import ObservationRefused, observe_intents
+            try:
+                observations = observe_intents(
+                    self.scanner, rpc,
+                    {txid: outpoints for txid, outpoints, _item in eligible.values()})
+            except ObservationRefused:
+                raise Q06SpendSessionError('Q06_INTENT_STATUS_UNVERIFIED') from None
+            for token, (txid, _outpoints, item) in eligible.items():
+                observed = observations[txid]
+                item['observation'] = {
+                    'state': observed['state'], 'h': observed['height'],
+                    'height': observed['height'],
+                    'block_hash': observed['block_hash'],
+                    'conflict_heights': observed['conflict_heights'],
+                    'depth': observed['depth'], 'core_ibd': observed['core_ibd']}
+                state = observed['state']
+                if state == 'CONFIRMED':
                     item['classification'] = 'CONFIRMED_IN_VERIFIED_HISTORY'
-                elif body['txid'] in mempool:
+                elif state == 'IN_MEMPOOL':
                     item['classification'] = 'IN_MEMPOOL_AWAITING_CONFIRMATION'
-                elif any(rpc.call('gettxout', [t, v, True]) is None for t, v in sorted(outpoints)):
+                elif state in ('BLOCK_CONFLICTED', 'INPUT_UNAVAILABLE'):
                     # Spent by another (or a reorged) transaction: never resumable.
                     item['classification'] = 'OPERATOR_REVIEW_INPUT_SPENT_OR_CONFLICTED'
-                elif item['state'] == 'signed':
-                    item['classification'] = 'SIGNED_NOT_SUBMITTED_RESUMABLE'
-                else:
-                    item['classification'] = 'UNCERTAIN_NOT_OBSERVED_RESUMABLE'
-            items.append(item)
+                elif state == 'NOT_SEEN_LOCALLY':
+                    item['classification'] = (
+                        'SIGNED_NOT_SUBMITTED_RESUMABLE' if item['state'] == 'signed'
+                        else 'UNCERTAIN_NOT_OBSERVED_RESUMABLE')
+                else:  # UNKNOWN: CONTRADICTION or INPUTS_UNVERIFIED
+                    item['classification'] = 'OPERATOR_REVIEW_OBSERVATION_CONTRADICTION'
         return {'status': 'Q06_SIGNED_INTENT_STATUS', 'height': snapshot.height,
                 'tip': snapshot.tip, 'intents': items, 'write_attempted': False,
                 'automatic_resume': False, 'abandon_available': False,
@@ -387,18 +408,25 @@ class Q06OwnedSpendSession(WalletSession):
                 if body is None or inputs != outpoints:
                     return None
                 if body['txid'] not in confirmed:
-                    pending.append(body['txid'])
+                    pending.append((body['txid'], outpoints))
             if len(pending) != 1:
                 return None
-            mempool = self._rpc()._call('getrawmempool', [])
-            if (type(mempool) is not list or any(
-                    type(i) is not str or re.fullmatch('[0-9a-f]{64}', i) is None
-                    for i in mempool)):
-                raise Q06SpendSessionError('Q06_PENDING_BROADCAST_UNVERIFIED')
-            if pending[0] not in mempool:
+            # Contract I for the one candidate. A whole-acquisition UNKNOWN
+            # raises (inside open_owned_spend_session this runs before
+            # transferred=True, so the open's cleanup runs); transport
+            # exceptions propagate unchanged. Any other state is the
+            # existing absent-from-the-mempool None path.
+            from .tx_observation import ObservationRefused, observe_intents
+            try:
+                observed = observe_intents(
+                    self.scanner, self._rpc(), {pending[0][0]: pending[0][1]})
+            except ObservationRefused:
+                raise Q06SpendSessionError(
+                    'Q06_PENDING_BROADCAST_UNVERIFIED') from None
+            if observed[pending[0][0]]['state'] != 'IN_MEMPOOL':
                 return None
-            self._q06_pending_confirm = pending[0]
-            return pending[0]
+            self._q06_pending_confirm = pending[0][0]
+            return pending[0][0]
 
     def _before_broadcast_submission(self):
         # Called only after the read-only preflight accepted, and BEFORE the
@@ -500,28 +528,23 @@ class Q06OwnedSpendSession(WalletSession):
                     or self._q06_uncertain or self.faulted):
                 raise Q06SpendSessionError("Q06_INSPECT_EXACT_TXID_REQUIRED")
             snapshot = self.snapshot()  # Full history integrity and Core tip.
-            with self.scanner.store.transaction():
-                rows = self.scanner.store.db.execute(
-                    "SELECT height FROM history WHERE txid=?", (txid,)).fetchall()
-            if (len(rows) > 1 or
-                    any(type(row[0]) is not int or row[0] < 0
-                        or row[0] > snapshot.height for row in rows)
-                    or self._rpc().call("getbestblockhash") != snapshot.tip):
-                raise Q06SpendSessionError("Q06_INSPECT_HISTORY_UNVERIFIED")
-            found = len(rows) == 1 and rows[0][0] > 0
-            rpc = self._rpc()
-            # Scanner-facing call() keeps getrawmempool denied. Owned CLI
-            # _call is the existing bounded mempool-id read used by probes.
-            mempool = rpc._call("getrawmempool", [])
-            if (type(mempool) is not list
-                    or any(type(item) is not str or re.fullmatch(r"[0-9a-f]{64}", item) is None
-                           for item in mempool)):
-                raise Q06SpendSessionError("Q06_INSPECT_HISTORY_UNVERIFIED")
+            # Contract G via the one observation policy. A whole-acquisition
+            # UNKNOWN (including a contradictory history row) refuses the
+            # inspection; transport exceptions propagate unchanged.
+            from .tx_observation import ObservationRefused, observe_generic
+            try:
+                observed = observe_generic(self.scanner, self._rpc(), txid)
+            except ObservationRefused:
+                raise Q06SpendSessionError(
+                    "Q06_INSPECT_HISTORY_UNVERIFIED") from None
+            found = observed['state'] == 'CONFIRMED'
             return {
                 "status": ("Q06_CONFIRMED_IN_VERIFIED_HISTORY" if found
                            else "Q06_TX_NOT_IN_CONFIRMED_HISTORY"),
                 "txid": txid, "height": snapshot.height,
-                "in_mempool": txid in mempool,
+                "tx_height": observed['height'] if found else None,
+                "tx_block_hash": observed['block_hash'] if found else None,
+                "in_mempool": observed['state'] == 'IN_MEMPOOL',
                 "complete_anchored_history": True,
                 "write_attempted": False,
                 "signer_allowed": False, "broadcast_allowed": False,

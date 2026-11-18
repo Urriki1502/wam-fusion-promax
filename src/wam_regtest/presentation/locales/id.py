@@ -296,6 +296,7 @@ ID = {
     "errors.WALLET_LOCKED_OR_FAULTED": "Dompet terkunci atau terganggu. Saldo disembunyikan dan operasi sensitif tidak tersedia; reservasi tetap terlindungi.",
     "errors.WALLET_SYNC_UNVERIFIED": "Sinkronisasi REGTEST yang hidup tidak dapat diverifikasi. Saldo disembunyikan. Verifikasi node lokal dan pakai Sinkronkan lagi; jangan atur ulang kustodi.",
     "errors.WALLET_OPERATION_DENIED_STATE_RETAINED": "Operasi tidak dapat selesai dengan aman. Keadaan dompet dan reservasi dipertahankan. Verifikasi rantai yang hidup dan checkpoint terbaru; jangan atur ulang kustodi.",
+    "errors.OPERATOR_REVIEW_OBSERVATION_CONTRADICTION": "Observasi bertentangan dengan catatan dompet lokal. Reservasi dipertahankan; jangan mencoba ulang, menandatangani, atau melepas apa pun. Verifikasi Core dan rantai asli, lalu tinjau secara manual.",
     "fusion.faulted": "Terganggu",
     "settings.language": "Bahasa",
     "settings.language_system": "Bawaan sistem",

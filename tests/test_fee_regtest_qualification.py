@@ -1644,7 +1644,10 @@ class RecoveryRefusalExecution(unittest.TestCase):
             with self.assertRaisesRegex(Q06SpendSessionError, "Q06_RESUME_NOT_ELIGIBLE"):
                 session.resume_signed_intent(token, txid, approved=True)
             self.assertEqual(db.execute("SELECT * FROM reservations").fetchall(), before)
-        self.assertEqual(set(calls), {"getrawmempool"})
+        # OBS-01a deliberate change: missing/corrupt evidence is decided by
+        # the per-item branches first, so no token reaches observation and
+        # no RPC read happens at all (previously one getrawmempool call).
+        self.assertEqual(calls, [])
 
     def test_real_recovered_cancel_replay_refuses_after_one_exact_release(self):
         from contextlib import nullcontext

@@ -70,15 +70,23 @@ class _Core:
     def _call(self, method, params):
         if method == "getrawmempool":
             return sorted(self.mempool)
+        if method == "getblockchaininfo":
+            # OBS-01a: whole-acquisition prerequisite 1 (equal heights).
+            return {"blocks": 1, "headers": 1, "initialblockdownload": False}
         raise ValueError("TX03_RPC_DENIED")
 
     def call(self, method, params=None):
         if method == "getbestblockhash":
             return self.test.tip
+        if method == "getblockcount":
+            return 1
+        if method == "getblockhash":
+            return GENESIS if params[0] == 0 else self.test.tip
         if method == "gettxout":
             if (params[0], params[1]) in self.spent:
                 return None
-            return {"value": 0.001, "scriptPubKey": {"hex": "5120" + self.test.coin["public_key"]}}
+            return {"bestblock": self.test.tip, "value": 0.001,
+                    "scriptPubKey": {"hex": "5120" + self.test.coin["public_key"]}}
         self.calls.append(method)
         if method == "testmempoolaccept":
             if isinstance(self.accept, BaseException):

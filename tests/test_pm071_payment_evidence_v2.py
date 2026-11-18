@@ -130,6 +130,9 @@ class _Core:
     def _call(self, method, params):
         if method == 'getrawmempool':
             return sorted(self.mempool)
+        if method == 'getblockchaininfo':
+            # OBS-01a: whole-acquisition prerequisite 1 (equal heights).
+            return {'blocks': 1, 'headers': 1, 'initialblockdownload': False}
         raise ValueError('PM071_RPC_DENIED')
 
     def call(self, method, params=None):
@@ -138,6 +141,8 @@ class _Core:
             return self.test.tip
         if method == 'getblockcount':
             return 1
+        if method == 'getblockhash':
+            return GENESIS if params[0] == 0 else self.test.tip
         if method == 'getnetworkinfo':
             return dict(POLICY['getnetworkinfo'])
         if method == 'getmempoolinfo':
@@ -149,7 +154,8 @@ class _Core:
         if method == 'estimaterawfee':
             return POLICY['estimaterawfee_%d' % params[0]]
         if method == 'gettxout':
-            return {'value': 0.001, 'scriptPubKey': {'hex': '5120' + self.test.coin['public_key']}}
+            return {'bestblock': self.test.tip, 'value': 0.001,
+                    'scriptPubKey': {'hex': '5120' + self.test.coin['public_key']}}
         if method == 'testmempoolaccept':
             return accepted_reply(self.test.signed, fee=self.test.review.fee)
         if method == 'sendrawtransaction':

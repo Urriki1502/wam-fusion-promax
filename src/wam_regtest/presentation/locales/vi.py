@@ -296,6 +296,7 @@ VI = {
     "errors.WALLET_LOCKED_OR_FAULTED": "Ví đang khóa hoặc lỗi. Số dư bị ẩn và các thao tác nhạy cảm không dùng được; các khoản giữ chỗ vẫn được bảo vệ.",
     "errors.WALLET_SYNC_UNVERIFIED": "Không xác minh được đồng bộ REGTEST đang sống. Số dư bị ẩn. Hãy xác minh nút cục bộ và đồng bộ lại; đừng đặt lại lưu ký.",
     "errors.WALLET_OPERATION_DENIED_STATE_RETAINED": "Thao tác không hoàn tất an toàn. Trạng thái ví và các khoản giữ chỗ được giữ. Hãy xác minh chuỗi đang sống và điểm kiểm mới nhất; đừng đặt lại lưu ký.",
+    "errors.OPERATOR_REVIEW_OBSERVATION_CONTRADICTION": "Quan sát mâu thuẫn với hồ sơ ví cục bộ. Các khoản giữ chỗ được giữ nguyên; đừng thử lại, ký hoặc giải phóng bất cứ điều gì. Hãy xác minh Core và chuỗi gốc, rồi xem xét thủ công.",
     "fusion.faulted": "Lỗi",
     "settings.language": "Ngôn ngữ",
     "settings.language_system": "Theo hệ thống",

@@ -296,6 +296,7 @@ JA = {
     "errors.WALLET_LOCKED_OR_FAULTED": "ウォレットはロック中または障害状態です。残高は隠され、機密操作は利用できません。予約は保護されたままです。",
     "errors.WALLET_SYNC_UNVERIFIED": "稼働中の REGTEST 同期を検証できませんでした。残高は隠されています。ローカルノードを検証し、もう一度同期してください。保管はリセットしないでください。",
     "errors.WALLET_OPERATION_DENIED_STATE_RETAINED": "操作を安全に完了できませんでした。ウォレット状態と予約は保持されます。稼働中のチェーンと最新のチェックポイントを検証してください。保管はリセットしないでください。",
+    "errors.OPERATOR_REVIEW_OBSERVATION_CONTRADICTION": "観測結果がローカルのウォレット記録と矛盾しています。予約は保持されます。再試行、署名、解除はしないでください。元の Core とチェーンを検証してから、手動で確認してください。",
     "fusion.faulted": "障害",
     "settings.language": "言語",
     "settings.language_system": "システムのデフォルト",

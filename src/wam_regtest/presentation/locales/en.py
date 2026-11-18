@@ -294,6 +294,7 @@ EN = {
     "errors.WALLET_LOCKED_OR_FAULTED": "Wallet is locked or faulted. Balances are hidden and sensitive operations are unavailable; reservations remain protected.",
     "errors.WALLET_SYNC_UNVERIFIED": "Live REGTEST synchronization could not be verified. Balances are hidden. Verify the local node and use Sync again; do not reset custody.",
     "errors.WALLET_OPERATION_DENIED_STATE_RETAINED": "Operation could not complete safely. Wallet state and reservations are retained. Verify the live chain and latest checkpoint; do not reset custody.",
+    "errors.OPERATOR_REVIEW_OBSERVATION_CONTRADICTION": "Observation contradicts local wallet records. Reservations are preserved; do not retry, sign or release anything. Verify the original Core and chain, then review manually.",
     "fusion.faulted": "Faulted",
     "settings.language": "Language",
     "settings.language_system": "System default",

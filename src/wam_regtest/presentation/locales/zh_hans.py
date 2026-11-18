@@ -296,6 +296,7 @@ ZH_HANS = {
     "errors.WALLET_LOCKED_OR_FAULTED": "钱包已锁定或发生故障。余额已隐藏，敏感操作不可用；预留仍然受保护。",
     "errors.WALLET_SYNC_UNVERIFIED": "无法验证正在进行的 REGTEST 同步。余额已隐藏。请验证本地节点并再次同步；不要重置托管。",
     "errors.WALLET_OPERATION_DENIED_STATE_RETAINED": "操作未能安全完成。钱包状态和预留予以保留。请验证当前链和最新检查点；不要重置托管。",
+    "errors.OPERATOR_REVIEW_OBSERVATION_CONTRADICTION": "观察结果与本地钱包记录矛盾。预留予以保留；请不要重试、签名或释放任何内容。请验证原始 Core 和链，然后手动审核。",
     "fusion.faulted": "故障",
     "settings.language": "语言",
     "settings.language_system": "跟随系统",
