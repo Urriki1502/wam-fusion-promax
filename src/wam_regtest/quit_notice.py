@@ -22,6 +22,7 @@ from .supervisor_store import (
     _posix_dir,
     _posix_file,
     _root,
+    held_lease,
 )
 
 NOTICE_SCHEMA = 'wam.fusion.quit-notice.v1'
@@ -149,12 +150,25 @@ def _check_acl(fd):
 
 
 def _lease_held(root):
-    """Return True iff another descriptor currently holds exclusive_lease(root)."""
+    """Return True iff THIS process holds exclusive_lease(root) on the same lock file."""
     root = _root(root)
     if sys.platform == 'win32':
         raise QuitNoticeError('QUIT_NOTICE_POSIX_REQUIRED')
+    record = held_lease(root)
+    if record is None:
+        return False
     import fcntl
     with _posix_dir(root) as directory:
+        dir_info = os.fstat(directory)
+        if dir_info.st_dev != record['dir_dev'] or dir_info.st_ino != record['dir_ino']:
+            raise QuitNoticeError('QUIT_NOTICE_LEASE_INVALID')
+        try:
+            held_info = os.fstat(record['fd'])
+        except OSError:
+            return False
+        if (not stat.S_ISREG(held_info.st_mode) or held_info.st_size != 0
+                or held_info.st_dev != record['dev'] or held_info.st_ino != record['ino']):
+            raise QuitNoticeError('QUIT_NOTICE_LEASE_INVALID')
         try:
             handle = _posix_file(directory, 'supervisor.lock', create=False)
         except FileNotFoundError:
@@ -163,13 +177,14 @@ def _lease_held(root):
             raise QuitNoticeError('QUIT_NOTICE_LEASE_INVALID') from None
         try:
             info = os.fstat(handle)
-            if info.st_size != 0:
+            if (info.st_size != 0 or info.st_dev != record['dev']
+                    or info.st_ino != record['ino']):
                 raise QuitNoticeError('QUIT_NOTICE_LEASE_INVALID')
             try:
                 fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 after = os.stat('supervisor.lock', dir_fd=directory, follow_symlinks=False)
-                if after.st_ino != info.st_ino or after.st_dev != info.st_dev:
+                if after.st_ino != record['ino'] or after.st_dev != record['dev']:
                     raise QuitNoticeError('QUIT_NOTICE_LEASE_INVALID')
                 return True
             try:
@@ -181,7 +196,7 @@ def _lease_held(root):
 
 
 def assert_exclusive_lease(root):
-    """Refuse unless exclusive_lease(root) is already held; never acquire it."""
+    """Refuse unless THIS process holds exclusive_lease(root); never acquire it."""
     try:
         held = _lease_held(root)
     except SupervisorStorageError:
@@ -353,6 +368,12 @@ def _durable_publish(root, *, candidate_seq, max_seq, final_fmt, build_payload):
                 os.unlink(stage, dir_fd=dfd)
                 seq += 1
                 continue
+            # I3-N3: once os.link succeeds, the notice file exists on disk
+            # (with st_nlink==2 until stage unlink). If either _fullfsync or
+            # os.unlink fails below, publication intentionally still fails
+            # closed (raising QUIT_NOTICE_PUBLISH_DENIED -> NOTICE_PERSIST_FAILED)
+            # so the owner/lease is retained; a later lease-holding reader
+            # accepts the linked notice and completes the stage unlink.
             _fullfsync(dfd)
             os.unlink(stage, dir_fd=dfd)
             _fullfsync(dfd)
@@ -623,9 +644,9 @@ def read_store(root, *, expected_profile_id=None, complete_staged=None):
     """Read notices, acks, unreadable artifacts, and supervisor.failure.
 
     complete_staged:
-      - None (default): complete st_nlink==2 staged publications iff the caller
-        already holds exclusive_lease(root).
-      - True: assert exclusive_lease(root) is held and complete staged items.
+      - None (default): complete st_nlink==2 staged publications iff this process
+        holds exclusive_lease(root) on the resolved lock file.
+      - True: assert this process holds exclusive_lease(root) and complete staged items.
       - False: never unlink stages.
     """
     root = _root(root)
@@ -728,13 +749,27 @@ def read_store(root, *, expected_profile_id=None, complete_staged=None):
                 unreadable.append(
                     _unreadable_from_bytes(name, raw, st, exc.args[0])
                 )
+                if matched_stage is not None:
+                    # Same inode as the final file: one unreadable artifact,
+                    # not a second orphan stage. Preserve the stage name
+                    # until the unreadable item is acknowledged.
+                    paired_stages.add(matched_stage)
                 continue
 
             if matched_stage is not None:
                 paired_stages.add(matched_stage)
                 if do_complete:
-                    os.unlink(matched_stage, dir_fd=dfd)
-                    completed_dir = True
+                    try:
+                        stage_now = os.stat(
+                            matched_stage, dir_fd=dfd, follow_symlinks=False
+                        )
+                    except OSError:
+                        stage_now = None
+                    if (stage_now is not None
+                            and (stage_now.st_dev, stage_now.st_ino)
+                            == (st.st_dev, st.st_ino)):
+                        os.unlink(matched_stage, dir_fd=dfd)
+                        completed_dir = True
 
         if completed_dir:
             _fullfsync(dfd)

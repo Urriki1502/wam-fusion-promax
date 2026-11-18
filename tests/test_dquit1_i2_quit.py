@@ -209,6 +209,34 @@ class QuitRoutingContracts(unittest.TestCase):
         spend.lock.assert_not_called()
         self.assertFalse(backend._quit_cleanup_uncertain)
 
+    def test_q05_control_non_status_survives_lock_failure_and_keeps_sticky_outcome(self):
+        backend, session, owner = self._q05_backend(
+            WalletSessionError('WALLET_MANAGED_RUNTIME_PRESERVED'))
+        owner.control_operation.return_value = {'state': 'stopped'}
+        result = backend.execute('control', ('shutdown',), {})
+        self.assertEqual(result, {'state': 'stopped'})
+        owner.control_operation.assert_called_once_with('shutdown')
+        self.assertTrue(backend._quit_cleanup_uncertain)
+        self.assertEqual(
+            backend._quit_cleanup_codes, {'WALLET_MANAGED_RUNTIME_PRESERVED'})
+        # Subsequent quit inherits the sticky outcome with the same _quit_result fields.
+        session.lock.side_effect = None
+        with patch('wam_regtest.rpc_scope.identity',
+                   return_value=SimpleNamespace(faulted=False)):
+            quit_result = backend.execute('quit', (), {})
+        self.assertEqual(set(quit_result), {'runtime_preserved', 'codes'})
+        self.assertIs(quit_result['runtime_preserved'], True)
+        self.assertEqual(
+            quit_result['codes'], ('WALLET_MANAGED_RUNTIME_PRESERVED',))
+
+    def test_q05_control_status_never_locks(self):
+        backend, session, owner = self._q05_backend(
+            WalletSessionError('WALLET_MANAGED_RUNTIME_PRESERVED'))
+        owner.control_operation.return_value = {'state': 'stopped'}
+        backend.execute('control', ('status',), {})
+        session.lock.assert_not_called()
+        self.assertFalse(backend._quit_cleanup_uncertain)
+
 
 class StopSeparationContracts(unittest.TestCase):
     setUp = fixture.SupervisorLifecycleUnit.setUp

@@ -26,16 +26,15 @@ def _read_unresolved_quit_notices(owner):
     from .core_supervisor import CoreSupervisor
     from .quit_notice import unacknowledged
     root = getattr(owner, "root", None)
+    # Owner-bound: only a genuine supervisor root may expose notices. A
+    # foreign or non-supervisor root is not a notice store; unacknowledged()
+    # would reject it instead of returning an owner-bound result.
     if type(owner) is CoreSupervisor or (
             type(root) is type(Path())
             and re.fullmatch(r"wam-fusion-core-[0-9a-f]{16}", root.name)):
         profile = getattr(owner, "profile", None)
         profile_id = profile.get("profile_id") if isinstance(profile, dict) else None
         return unacknowledged(root, expected_profile_id=profile_id)
-    if type(root) is type(Path()) and root.exists():
-        if any(p.name.startswith("supervisor.notice") or p.name == "supervisor.failure"
-               for p in root.iterdir()):
-            return unacknowledged(root)
     return ()
 
 

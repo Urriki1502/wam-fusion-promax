@@ -10,6 +10,7 @@ import re
 import secrets
 import stat
 import sys
+import threading
 
 MAX_CONTROL_FILE=4096
 CONTROL_NAMES=frozenset({"supervisor.token","supervisor.profile","supervisor.lock",
@@ -415,6 +416,20 @@ def read_exact(root,name,*,length=None):
         raise SupervisorStorageError("SUPERVISOR_STORAGE_READ_UNVERIFIED") from None
 
 
+_LEASE_LOCK = threading.Lock()
+_OWNED_LEASES = {}
+
+
+def held_lease(root):
+    """Return a copy of the in-process exclusive_lease record for root, or None."""
+    root=_root(root)
+    with _LEASE_LOCK:
+        record=_OWNED_LEASES.get(root)
+        if record is None or record.get("pid")!=os.getpid():
+            return None
+        return dict(record)
+
+
 @contextmanager
 def exclusive_lease(root):
     """One native descriptor-held lock; never remove or steal stale lock paths."""
@@ -430,11 +445,19 @@ def exclusive_lease(root):
             try:
                 info=native._metadata(handle);native.verify_security(handle)
                 if info[3]!=0:raise SupervisorStorageError("SUPERVISOR_STORAGE_LEASE_INVALID")
-                yield
+                lease_record={"pid":os.getpid(),"platform":"win32"}
+                with _LEASE_LOCK:
+                    _OWNED_LEASES[root]=lease_record
+                try:yield
+                finally:
+                    with _LEASE_LOCK:
+                        if _OWNED_LEASES.get(root) is lease_record:
+                            del _OWNED_LEASES[root]
             finally:native.close(handle)
     else:
         import fcntl
         with _posix_dir(root) as directory:
+            dir_info=os.fstat(directory)
             try:handle=_posix_file(directory,"supervisor.lock",create=True)
             except FileExistsError:handle=_posix_file(directory,"supervisor.lock")
             try:
@@ -446,8 +469,21 @@ def exclusive_lease(root):
                 after=os.stat("supervisor.lock",dir_fd=directory,follow_symlinks=False)
                 if after.st_ino!=info.st_ino or after.st_dev!=info.st_dev:
                     raise SupervisorStorageError("SUPERVISOR_STORAGE_LEASE_CHANGED")
+                lease_record={
+                    "pid":os.getpid(),
+                    "dir_dev":dir_info.st_dev,
+                    "dir_ino":dir_info.st_ino,
+                    "dev":info.st_dev,
+                    "ino":info.st_ino,
+                    "fd":handle,
+                }
+                with _LEASE_LOCK:
+                    _OWNED_LEASES[root]=lease_record
                 try:yield
                 finally:
+                    with _LEASE_LOCK:
+                        if _OWNED_LEASES.get(root) is lease_record:
+                            del _OWNED_LEASES[root]
                     after=os.stat("supervisor.lock",dir_fd=directory,follow_symlinks=False)
                     try:
                         if after.st_ino!=info.st_ino or after.st_dev!=info.st_dev:

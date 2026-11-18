@@ -129,16 +129,18 @@ class FundingContracts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             directory=Path(temp).resolve()
             owner=object.__new__(CoreSupervisor);owner._faulted=False
-            owner.directory=directory;owner.cli=directory/'fixture-cli'
-            original=owner.process=Mock();owner.binding=Mock();owner.journal=Mock()
+            owner.root=directory;owner.directory=directory;owner.cli=directory/'fixture-cli'
+            original=owner.process=Mock();original.poll.return_value=None
+            owner.binding=Mock();owner.journal=Mock()
             owner._check_profile=Mock()
             context=SimpleNamespace(lock=threading.RLock(),faulted=True)
             with patch.dict(rpc_scope._contexts,{str(directory):context}), \
                     patch('wam_regtest.network_policy.local_rpc_port',return_value=12345), \
                     patch('wam_regtest.rpc_scope.execute') as cli:
-                with self.assertRaisesRegex(ManagedCoreError,'^MANAGED_SHUTDOWN_UNCERTAIN$'):
+                with self.assertRaisesRegex(ManagedCoreError,'^MANAGED_STOP_NOT_DELIVERED$'):
                     owner.shutdown()
                 cli.assert_not_called()
+            original.wait.assert_not_called()
             self.assertTrue(owner._faulted);self.assertIs(owner.process,original)
             original.kill.assert_not_called();original.terminate.assert_not_called()
 

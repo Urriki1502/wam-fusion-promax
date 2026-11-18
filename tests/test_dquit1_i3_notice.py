@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import threading
@@ -26,6 +27,7 @@ from wam_regtest import quit_notice as module
 from wam_regtest.bip39_12 import Bip39Regtest12Keys
 from wam_regtest.bip39_owner_backend import Bip39ReadOnlyBackend, Q06ReadOnlyError
 from wam_regtest.core_supervisor import CoreSupervisor, DIAGNOSTIC_CODES
+from wam_regtest.foundation import diagnostics
 from wam_regtest.quit_notice import (
     MAX_NOTICES,
     NOTICE_CODE_ALLOWLIST,
@@ -239,6 +241,86 @@ class QuitNoticeStoreContracts(unittest.TestCase):
         with self.assertRaisesRegex(QuitNoticeError, 'QUIT_NOTICE_LEASE_REQUIRED'):
             acknowledge_unresolved(self.root)
 
+    def test_child_process_lease_refuses_parent_publish_ack_and_stage_completion(self):
+        # Create a staged (st_nlink==2) notice under parent's lease, then release.
+        with exclusive_lease(self.root):
+            with patch.object(module.os, 'unlink', side_effect=OSError('simulated-crash-after-link')):
+                with self.assertRaises(QuitNoticeError):
+                    publish_notice(
+                        self.root,
+                        profile_id=PROFILE_ID,
+                        session_kind='Q05',
+                        wallet_outcome='RUNTIME_PRESERVED',
+                        core_stop='CLEAN',
+                        codes=('WALLET_MANAGED_RUNTIME_PRESERVED',),
+                        journal_seq=1,
+                    )
+        final_path = self.root / 'supervisor.notice.000001'
+        stages = [p for p in self.root.iterdir() if p.name.startswith('supervisor.notice.stage-')]
+        self.assertTrue(final_path.exists())
+        self.assertEqual(len(stages), 1)
+        self.assertEqual(final_path.lstat().st_nlink, 2)
+
+        repo_src = str(Path(__file__).resolve().parents[1] / 'src')
+        child_code = (
+            'import sys\n'
+            'from pathlib import Path\n'
+            'from wam_regtest.supervisor_store import exclusive_lease\n'
+            'with exclusive_lease(Path(sys.argv[1])):\n'
+            '    print("LEASE_HELD", flush=True)\n'
+            '    sys.stdin.read()\n'
+        )
+        env = dict(os.environ, PYTHONPATH=repo_src)
+        with subprocess.Popen(
+            [sys.executable, '-c', child_code, str(self.root)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+        ) as child:
+            try:
+                ready = child.stdout.readline().strip()
+                if ready != 'LEASE_HELD':
+                    child.stdin.close()
+                    child.wait(timeout=10)
+                    self.fail(child.stderr.read())
+                self.assertEqual(ready, 'LEASE_HELD')
+                with self.assertRaisesRegex(QuitNoticeError, 'QUIT_NOTICE_LEASE_REQUIRED'):
+                    publish_notice(
+                        self.root,
+                        profile_id=PROFILE_ID,
+                        session_kind='Q05',
+                        wallet_outcome='RUNTIME_PRESERVED',
+                        core_stop='CLEAN',
+                        codes=('WALLET_MANAGED_RUNTIME_PRESERVED',),
+                        journal_seq=2,
+                    )
+                with self.assertRaisesRegex(QuitNoticeError, 'QUIT_NOTICE_LEASE_REQUIRED'):
+                    publish_ack(self.root, {'kind': 'notice', 'seq': 1, 'body_sha256': '0' * 64})
+                with self.assertRaisesRegex(QuitNoticeError, 'QUIT_NOTICE_LEASE_REQUIRED'):
+                    acknowledge_unresolved(self.root, expected_profile_id=PROFILE_ID)
+                with self.assertRaisesRegex(QuitNoticeError, 'QUIT_NOTICE_LEASE_REQUIRED'):
+                    read_store(self.root, expected_profile_id=PROFILE_ID, complete_staged=True)
+
+                # Default complete_staged=None also refuses stage completion when a child holds the lock.
+                store = read_store(self.root, expected_profile_id=PROFILE_ID)
+                self.assertEqual(len(store['notices']), 1)
+                self.assertTrue(stages[0].exists())
+                self.assertEqual(final_path.lstat().st_nlink, 2)
+            finally:
+                if child.stdin is not None and not child.stdin.closed:
+                    child.stdin.close()
+                child.wait(timeout=10)
+            self.assertEqual(child.returncode, 0, child.stderr.read())
+
+        # Once the parent itself holds exclusive_lease, stage completion succeeds.
+        with exclusive_lease(self.root):
+            completed = read_store(self.root, expected_profile_id=PROFILE_ID)
+        self.assertEqual(len(completed['notices']), 1)
+        self.assertFalse(stages[0].exists())
+        self.assertEqual(final_path.lstat().st_nlink, 1)
+
     def test_rn1_stage_without_link_is_unreadable_ackable_and_never_collides(self):
         def crash_before_link(*args, **kwargs):
             raise OSError('simulated-crash-before-link')
@@ -356,6 +438,28 @@ class QuitNoticeStoreContracts(unittest.TestCase):
         self.assertEqual({item['kind'] for item in items}, {'unreadable'})
         self.assertTrue(final_path.exists())
         self.assertTrue(extra_link.exists())
+
+    def test_staged_corrupt_notice_is_one_unreadable_not_an_extra_orphan(self):
+        final_path = self.root / 'supervisor.notice.000001'
+        final_path.write_bytes(b'{not-valid-json')
+        final_path.chmod(0o600)
+        stage_path = self.root / ('supervisor.notice.stage-' + '1' * 16)
+        os.link(final_path, stage_path)
+        items = unacknowledged(self.root, expected_profile_id=PROFILE_ID)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['kind'], 'unreadable')
+        self.assertEqual(items[0]['name'], final_path.name)
+        self.assertTrue(stage_path.exists())
+
+    def test_bip39_unresolved_reader_ignores_non_supervisor_root(self):
+        from types import SimpleNamespace as _NS
+
+        from wam_regtest.bip39_owner_backend import _read_unresolved_quit_notices
+        foreign = self.root.parent / 'not-a-supervisor-root'
+        foreign.mkdir(mode=0o700)
+        (foreign / 'supervisor.notice.000001').write_bytes(b'preserve')
+        owner = _NS(root=foreign, directory=foreign)
+        self.assertEqual(_read_unresolved_quit_notices(owner), ())
 
     def test_corrupt_and_unknown_schema_notices_are_unreadable_and_preserved(self):
         corrupt = self.root / 'supervisor.notice.000001'
@@ -619,13 +723,15 @@ class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
         self.assertEqual(items[0]['notice']['core_stop'], 'UNCERTAIN')
         self.assertEqual(items[0]['notice']['codes'], ['MANAGED_SHUTDOWN_UNCERTAIN'])
 
-        # Double fault: Core alive + notice publish failure -> refused, BLOCKED, owner kept.
+        # Double fault: Core alive + notice publish failure -> refused, BLOCKED, owner kept,
+        # and BOTH the stop failure code and NOTICE_PERSIST_FAILED are preserved in diagnostics.
         backend2 = ManagedWalletBackend(self.root, self.core, self.core)
         owner2 = _live_mock_owner(self.root)
         owner2._faulted = True
         owner2.recover_stop.side_effect = ValueError('CORE_RPC_PROCESS_IDENTITY_DENIED')
         backend2.owner = owner2
         executor2 = self._executor(backend2)
+        before_diag = len(diagnostics.records())
         with exclusive_lease(self.root), \
                 patch('wam_regtest.rpc_scope.identity', return_value=SimpleNamespace(faulted=False)), \
                 patch('wam_regtest.quit_notice.publish_notice', side_effect=OSError('EIO')):
@@ -635,6 +741,126 @@ class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
         self.assertTrue(executor2.state.core_alive)
         owner2.release.assert_not_called()
         owner2.close.assert_not_called()
+        self.assertEqual(backend2._quit_stop_failure_code, 'CORE_RPC_PROCESS_IDENTITY_DENIED')
+        recent = diagnostics.records()[before_diag:]
+        self.assertIn(('QUIT_STOP_FAILURE', 'CORE_RPC_PROCESS_IDENTITY_DENIED'),
+                      [(r.stage, r.category) for r in recent])
+        self.assertIn(('QUIT_NOTICE_PERSIST_FAILED', 'NOTICE_PERSIST_FAILED'),
+                      [(r.stage, r.category) for r in recent])
+
+    def test_post_link_unlink_or_dir_flush_failure_fails_closed_while_notice_exists(self):
+        # I3-N3: failing stage unlink or post-link/post-unlink dir flush still raises
+        # NOTICE_PERSIST_FAILED and retains owner, even though the notice file exists on disk.
+        real_fullfsync = module._fullfsync
+        for idx, mode in enumerate(('unlink', 'dir_flush_after_unlink')):
+            with self.subTest(mode=mode):
+                parent = self.root.parent / f'n3_{idx}'
+                parent.mkdir(mode=0o700, exist_ok=True)
+                sub_root = _private_core_root(parent)
+                backend = ManagedWalletBackend(sub_root, self.core, self.core)
+                owner = _live_mock_owner(sub_root)
+                backend.owner = owner
+                session = Mock(locked=False, faulted=True, _core_reauthentication_required=False)
+                session.lock.side_effect = WalletSessionError('WALLET_MANAGED_RUNTIME_PRESERVED')
+                backend.session = session
+                executor = self._executor(backend)
+
+                sync_calls = [0]
+
+                def fail_third_sync(fd):
+                    sync_calls[0] += 1
+                    if sync_calls[0] == 3:
+                        raise OSError('simulated-dir-flush-failure')
+                    return real_fullfsync(fd)
+
+                with exclusive_lease(sub_root), \
+                        patch('wam_regtest.rpc_scope.identity', return_value=SimpleNamespace(faulted=False)):
+                    cm = (
+                        patch.object(module.os, 'unlink', side_effect=OSError('simulated-unlink-failure'))
+                        if mode == 'unlink'
+                        else patch.object(module, '_fullfsync', side_effect=fail_third_sync)
+                    )
+                    with cm:
+                        with self.assertRaisesRegex(WalletExecutorError, '^NOTICE_PERSIST_FAILED$'):
+                            executor.request('quit', timeout=5)
+                self.assertTrue(backend._notice_persist_failed)
+                self.assertFalse(executor.closed)
+                owner.release.assert_not_called()
+                owner.close.assert_not_called()
+                self.assertTrue((sub_root / 'supervisor.notice.000001').exists())
+                items = unacknowledged(sub_root, expected_profile_id=PROFILE_ID, complete_staged=False)
+                self.assertEqual(len(items), 1)
+                self.assertEqual(items[0]['kind'], 'notice')
+                self.assertEqual(items[0]['notice']['codes'], ['WALLET_MANAGED_RUNTIME_PRESERVED'])
+
+    def test_quit_publish_uses_zero_journal_seq_for_non_list_journal(self):
+        backend = ManagedWalletBackend(self.root, self.core, self.core)
+        owner = _live_mock_owner(self.root)
+        owner.journal = Mock()
+        backend.owner = owner
+        session = Mock(locked=False, faulted=True, _core_reauthentication_required=False)
+        session.lock.side_effect = WalletSessionError('WALLET_MANAGED_RUNTIME_PRESERVED')
+        backend.session = session
+        executor = self._executor(backend)
+        with exclusive_lease(self.root), \
+                patch('wam_regtest.rpc_scope.identity', return_value=SimpleNamespace(faulted=False)):
+            result = executor.request('quit', timeout=5)
+        self.assertIs(result['runtime_preserved'], True)
+        self.assertTrue(executor.closed)
+        items = unacknowledged(self.root, expected_profile_id=PROFILE_ID)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['notice']['journal_seq'], 0)
+
+    def test_no_owner_quit_under_foreign_lease_fails_closed_and_clean_no_owner_succeeds(self):
+        # Clean no-owner quit needs no lease and closes cleanly.
+        clean_backend = ManagedWalletBackend(self.root, self.core, self.core)
+        clean_exec = self._executor(clean_backend)
+        clean_res = clean_exec.request('quit', timeout=5)
+        self.assertEqual(dict(clean_res), {'runtime_preserved': False, 'codes': ()})
+        self.assertTrue(clean_exec.closed)
+
+        # Uncertain no-owner quit must fail closed with NOTICE_PERSIST_FAILED even if
+        # a different process holds supervisor.lock on this root.
+        sub_parent = self.root.parent / 'no_owner_foreign'
+        sub_parent.mkdir(mode=0o700, exist_ok=True)
+        sub_root = _private_core_root(sub_parent)
+        repo_src = str(Path(__file__).resolve().parents[1] / 'src')
+        child_code = (
+            'import sys\n'
+            'from pathlib import Path\n'
+            'from wam_regtest.supervisor_store import exclusive_lease\n'
+            'with exclusive_lease(Path(sys.argv[1])):\n'
+            '    print("LEASE_HELD", flush=True)\n'
+            '    sys.stdin.read()\n'
+        )
+        with subprocess.Popen(
+            [sys.executable, '-c', child_code, str(sub_root)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=dict(os.environ, PYTHONPATH=repo_src),
+        ) as child:
+            try:
+                ready = child.stdout.readline().strip()
+                if ready != 'LEASE_HELD':
+                    child.stdin.close()
+                    child.wait(timeout=10)
+                    self.fail(child.stderr.read())
+                self.assertEqual(ready, 'LEASE_HELD')
+                backend = ManagedWalletBackend(sub_root, self.core, self.core)
+                backend._quit_cleanup_uncertain = True
+                backend._quit_cleanup_codes.add('WALLET_MANAGED_RUNTIME_PRESERVED')
+                executor = self._executor(backend)
+                with self.assertRaisesRegex(WalletExecutorError, '^NOTICE_PERSIST_FAILED$'):
+                    executor.request('quit', timeout=5)
+                self.assertTrue(backend._notice_persist_failed)
+                self.assertFalse(executor.closed)
+                self.assertEqual([p.name for p in sub_root.iterdir()], ['supervisor.lock'])
+            finally:
+                if child.stdin is not None and not child.stdin.closed:
+                    child.stdin.close()
+                child.wait(timeout=10)
 
     def test_q05_open_refused_with_unresolved_notice_and_allowed_after_ack(self):
         owner = self.owner()
