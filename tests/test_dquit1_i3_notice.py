@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
@@ -43,7 +44,7 @@ from wam_regtest.quit_notice import (
     validate_notice_record,
 )
 from wam_regtest.supervisor_client import control
-from wam_regtest.supervisor_store import create_once, exclusive_lease, read_exact
+from wam_regtest.supervisor_store import SupervisorStorageError, create_once, exclusive_lease, read_exact
 from wam_regtest.wallet_executor import (
     FrozenDict,
     ManagedWalletBackend,
@@ -568,6 +569,277 @@ class QuitNoticeStoreContracts(unittest.TestCase):
             self.assertEqual(acks[0]['name'], 'supervisor.notice-corrupt')
         self.assertEqual(unacknowledged(self.root, expected_profile_id=PROFILE_ID), ())
         self.assertTrue(bad_hyphen.exists())
+
+    def _spawn_publish_and_sigkill_at_boundary(
+        self,
+        root,
+        *,
+        boundary,
+        profile_id=PROFILE_ID,
+        session_kind='Q06',
+        code='Q06_SPEND_RUNTIME_PRESERVED',
+        journal_seq=1,
+        ack_payload=None,
+    ):
+        """Spawn a child running real quit_notice publication and SIGKILL at a deterministic pipe barrier."""
+        repo_root = Path(__file__).resolve().parents[1]
+        pythonpath = os.pathsep.join((
+            str(repo_root / 'src'),
+            str(repo_root / 'wsp-upstream' / 'src'),
+        ))
+        child_code = (
+            'import json, os, sys\n'
+            'from pathlib import Path\n'
+            'from wam_regtest import quit_notice as qn\n'
+            'from wam_regtest.supervisor_store import exclusive_lease\n'
+            'root = Path(sys.argv[1])\n'
+            'profile_id, session_kind, boundary, code = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]\n'
+            'journal_seq = int(sys.argv[6])\n'
+            'ack_json = sys.argv[7]\n'
+            'orig_link, orig_unlink = os.link, os.unlink\n'
+            'def _is_stage(name):\n'
+            '    return isinstance(name, str) and name.startswith("supervisor.notice.stage-")\n'
+            'def _barrier(stage_name):\n'
+            '    print(f"BOUNDARY_READY {stage_name}", flush=True)\n'
+            '    while os.read(0, 1):\n'
+            '        pass\n'
+            '    os._exit(99)\n'
+            'def _wrapped_link(src, dst, *args, **kwargs):\n'
+            '    if boundary == "before_link" and _is_stage(src):\n'
+            '        _barrier(src)\n'
+            '    return orig_link(src, dst, *args, **kwargs)\n'
+            'def _wrapped_unlink(path, *args, **kwargs):\n'
+            '    if boundary == "before_unlink" and _is_stage(path):\n'
+            '        _barrier(path)\n'
+            '    return orig_unlink(path, *args, **kwargs)\n'
+            'qn.os.link = _wrapped_link\n'
+            'qn.os.unlink = _wrapped_unlink\n'
+            'with exclusive_lease(root):\n'
+            '    if ack_json:\n'
+            '        qn.publish_ack(root, json.loads(ack_json))\n'
+            '    else:\n'
+            '        qn.publish_notice(\n'
+            '            root,\n'
+            '            profile_id=profile_id,\n'
+            '            session_kind=session_kind,\n'
+            '            wallet_outcome="RUNTIME_PRESERVED",\n'
+            '            core_stop="CLEAN",\n'
+            '            codes=(code,),\n'
+            '            journal_seq=journal_seq,\n'
+            '        )\n'
+        )
+        ack_arg = json.dumps(ack_payload) if ack_payload is not None else ''
+        env = dict(os.environ, PYTHONPATH=pythonpath)
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                '-c',
+                child_code,
+                str(root),
+                profile_id,
+                session_kind,
+                boundary,
+                code,
+                str(journal_seq),
+                ack_arg,
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+        )
+        try:
+            ready_line = proc.stdout.readline().strip()
+            if not ready_line.startswith('BOUNDARY_READY '):
+                if proc.stdin and not proc.stdin.closed:
+                    proc.stdin.close()
+                proc.wait(timeout=10)
+                self.fail(f'child did not reach {boundary}: stdout={ready_line!r} stderr={proc.stderr.read()!r}')
+            stage_name = ready_line.split(' ', 1)[1]
+            # Confirm the child still holds exclusive_lease(root) at the barrier.
+            with self.assertRaisesRegex(SupervisorStorageError, '^SUPERVISOR_STORAGE_LEASE_BUSY$'):
+                with exclusive_lease(root):
+                    pass
+            os.kill(proc.pid, signal.SIGKILL)
+            returncode = proc.wait(timeout=10)
+            self.assertEqual(returncode, -signal.SIGKILL)
+            return stage_name, returncode
+        finally:
+            if proc.poll() is None:
+                os.kill(proc.pid, signal.SIGKILL)
+                proc.wait(timeout=10)
+            for stream in (proc.stdin, proc.stdout, proc.stderr):
+                if stream is not None and not stream.closed:
+                    stream.close()
+
+    def _assert_apfs_if_darwin(self, path):
+        if sys.platform == 'darwin':
+            res = subprocess.run(
+                ['df', '-T', 'apfs', str(path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(res.returncode, 0, res.stderr)
+
+    def test_rn1_real_process_sigkill_before_link_on_apfs(self):
+        self._assert_apfs_if_darwin(self.root)
+        for idx, (session_kind, code) in enumerate((
+            ('Q06', 'Q06_SPEND_RUNTIME_PRESERVED'),
+            ('Q05', 'WALLET_MANAGED_RUNTIME_PRESERVED'),
+        )):
+            with self.subTest(session_kind=session_kind):
+                parent = self.root.parent / f'rn1_sigkill_{idx}'
+                parent.mkdir(mode=0o700, exist_ok=True)
+                sub_root = _private_core_root(parent)
+                self._assert_apfs_if_darwin(sub_root)
+
+                stage_name, rc = self._spawn_publish_and_sigkill_at_boundary(
+                    sub_root,
+                    boundary='before_link',
+                    session_kind=session_kind,
+                    code=code,
+                    journal_seq=2,
+                )
+                self.assertEqual(rc, -signal.SIGKILL)
+                stage_path = sub_root / stage_name
+                final_path = sub_root / 'supervisor.notice.000001'
+                self.assertTrue(stage_path.exists())
+                self.assertFalse(final_path.exists())
+                stage_bytes = stage_path.read_bytes()
+                parsed_stage = parse_notice_bytes(
+                    stage_bytes, expected_seq=1, expected_profile_id=PROFILE_ID
+                )
+                self.assertEqual(parsed_stage['codes'], [code])
+
+                # Reader tolerates leftover stage without lease, reports truthful unreadable state,
+                # never deletes stage, and never blocks.
+                store_ro = read_store(sub_root, expected_profile_id=PROFILE_ID)
+                self.assertEqual(store_ro['notices'], ())
+                self.assertEqual(len(store_ro['unreadable']), 1)
+                self.assertEqual(store_ro['unreadable'][0]['name'], stage_name)
+                self.assertEqual(store_ro['unreadable'][0]['reason'], 'NOTICE_STAGE_ORPHAN')
+                self.assertEqual(store_ro['unreadable'][0]['size'], len(stage_bytes))
+                self.assertEqual(
+                    store_ro['unreadable'][0]['raw_sha256'],
+                    sha256(stage_bytes).hexdigest(),
+                )
+                self.assertTrue(stage_path.exists())
+
+                # Subsequent publication under lease succeeds cleanly at seq=1 without collision.
+                with exclusive_lease(sub_root):
+                    published = publish_notice(
+                        sub_root,
+                        profile_id=PROFILE_ID,
+                        session_kind=session_kind,
+                        wallet_outcome='RUNTIME_PRESERVED',
+                        core_stop='CLEAN',
+                        codes=(code,),
+                        journal_seq=3,
+                    )
+                    self.assertEqual(published['seq'], 1)
+                    unresolved = unacknowledged(sub_root, expected_profile_id=PROFILE_ID)
+                    self.assertEqual({item['kind'] for item in unresolved}, {'notice', 'unreadable'})
+                    acks = acknowledge_unresolved(sub_root, expected_profile_id=PROFILE_ID)
+                    self.assertEqual(len(acks), 2)
+                self.assertEqual(unacknowledged(sub_root, expected_profile_id=PROFILE_ID), ())
+                self.assertTrue(stage_path.exists())
+                self.assertTrue(final_path.exists())
+                self.assertEqual(final_path.lstat().st_nlink, 1)
+
+    def test_rn2_real_process_sigkill_after_link_before_unlink_on_apfs(self):
+        self._assert_apfs_if_darwin(self.root)
+        for idx, (session_kind, code) in enumerate((
+            ('Q06', 'Q06_SPEND_RUNTIME_PRESERVED'),
+            ('Q05', 'WALLET_MANAGED_RUNTIME_PRESERVED'),
+        )):
+            with self.subTest(session_kind=session_kind):
+                parent = self.root.parent / f'rn2_sigkill_{idx}'
+                parent.mkdir(mode=0o700, exist_ok=True)
+                sub_root = _private_core_root(parent)
+                self._assert_apfs_if_darwin(sub_root)
+
+                stage_name, rc = self._spawn_publish_and_sigkill_at_boundary(
+                    sub_root,
+                    boundary='before_unlink',
+                    session_kind=session_kind,
+                    code=code,
+                    journal_seq=5,
+                )
+                self.assertEqual(rc, -signal.SIGKILL)
+                stage_path = sub_root / stage_name
+                final_path = sub_root / 'supervisor.notice.000001'
+                self.assertTrue(stage_path.exists())
+                self.assertTrue(final_path.exists())
+                self.assertEqual(final_path.lstat().st_nlink, 2)
+                self.assertEqual(
+                    (final_path.lstat().st_dev, final_path.lstat().st_ino),
+                    (stage_path.lstat().st_dev, stage_path.lstat().st_ino),
+                )
+                final_record = parse_notice_bytes(
+                    final_path.read_bytes(), expected_seq=1, expected_profile_id=PROFILE_ID
+                )
+                self.assertEqual(final_record['codes'], [code])
+
+                # Without lease, reader accepts the complete linked notice without duplicating the stage.
+                ro_store = read_store(sub_root, expected_profile_id=PROFILE_ID, complete_staged=False)
+                self.assertEqual(len(ro_store['notices']), 1)
+                self.assertEqual(ro_store['unreadable'], ())
+                self.assertEqual(ro_store['notices'][0]['notice'], final_record)
+                self.assertTrue(stage_path.exists())
+
+                # Under lease, reader accepts AND completes publication (unlink stage + F_FULLFSYNC).
+                with exclusive_lease(sub_root):
+                    completed = read_store(sub_root, expected_profile_id=PROFILE_ID)
+                    self.assertEqual(len(completed['notices']), 1)
+                    self.assertEqual(completed['unreadable'], ())
+                    self.assertFalse(stage_path.exists())
+                    self.assertEqual(final_path.lstat().st_nlink, 1)
+                    acknowledge_unresolved(sub_root, expected_profile_id=PROFILE_ID)
+                self.assertEqual(unacknowledged(sub_root, expected_profile_id=PROFILE_ID), ())
+                self.assertTrue(final_path.exists())
+
+    def test_rn2_real_process_sigkill_ack_before_unlink_on_apfs(self):
+        self._assert_apfs_if_darwin(self.root)
+        with exclusive_lease(self.root):
+            published = publish_notice(
+                self.root,
+                profile_id=PROFILE_ID,
+                session_kind='Q05',
+                wallet_outcome='RUNTIME_PRESERVED',
+                core_stop='CLEAN',
+                codes=('WALLET_MANAGED_RUNTIME_PRESERVED',),
+                journal_seq=1,
+            )
+        stage_name, rc = self._spawn_publish_and_sigkill_at_boundary(
+            self.root,
+            boundary='before_unlink',
+            session_kind='Q05',
+            code='WALLET_MANAGED_RUNTIME_PRESERVED',
+            journal_seq=1,
+            ack_payload={
+                'kind': 'notice',
+                'seq': published['seq'],
+                'body_sha256': published['body_sha256'],
+            },
+        )
+        self.assertEqual(rc, -signal.SIGKILL)
+        ack_path = self.root / 'supervisor.notice-ack.000001'
+        stage_path = self.root / stage_name
+        self.assertTrue(ack_path.exists())
+        self.assertTrue(stage_path.exists())
+        self.assertEqual(ack_path.lstat().st_nlink, 2)
+
+        # Without lease, ack is honored and stage stays intact.
+        self.assertEqual(unacknowledged(self.root, expected_profile_id=PROFILE_ID), ())
+        self.assertTrue(stage_path.exists())
+
+        # Under lease, reader unlinks the ack stage and reduces st_nlink to 1.
+        with exclusive_lease(self.root):
+            self.assertEqual(unacknowledged(self.root, expected_profile_id=PROFILE_ID), ())
+        self.assertFalse(stage_path.exists())
+        self.assertEqual(ack_path.lstat().st_nlink, 1)
 
 
 class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
@@ -1099,6 +1371,63 @@ class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
             owner.close.assert_not_called()
             with self.assertRaisesRegex(WalletExecutorError, '^NOTICE_PERSIST_FAILED$'):
                 executor.request('control', 'release', timeout=5)
+
+    def test_real_sigkill_rn1_and_rn2_truthful_in_q05_and_q06_readers(self):
+        owner = self.owner()
+        profile_id = owner.profile['profile_id']
+        owner.close()
+
+        # R-n1 real SIGKILL before link -> Q05 open_owned refuses, Q06 backend surfaces orphan stage.
+        stage_rn1, rc_rn1 = QuitNoticeStoreContracts._spawn_publish_and_sigkill_at_boundary(
+            self,
+            self.root,
+            boundary='before_link',
+            profile_id=profile_id,
+            session_kind='Q06',
+            code='Q06_SPEND_RUNTIME_PRESERVED',
+            journal_seq=2,
+        )
+        self.assertEqual(rc_rn1, -signal.SIGKILL)
+        owner2 = CoreSupervisor(self.root, self.core, authorized=True)
+        self.addCleanup(owner2.close)
+        with patch.object(q05_session, '_inputs'):
+            with self.assertRaisesRegex(WalletSessionError, '^QUIT_NOTICE_REVIEW_REQUIRED$'):
+                WalletSession.open_owned(owner2, self.core, PASSWORD, authorized=True)
+        q06_backend = Bip39ReadOnlyBackend(self.root, self.core, self.core)
+        q06_backend.owner = owner2
+        from wam_regtest.bip39_owner_backend import _read_unresolved_quit_notices
+        surfaced_rn1 = _read_unresolved_quit_notices(owner2)
+        self.assertEqual(len(surfaced_rn1), 1)
+        self.assertEqual(surfaced_rn1[0]['kind'], 'unreadable')
+        self.assertEqual(surfaced_rn1[0]['name'], stage_rn1)
+        self.assertEqual(surfaced_rn1[0]['reason'], 'NOTICE_STAGE_ORPHAN')
+        ack_res = q06_backend.acknowledge_quit_notices()
+        self.assertEqual(ack_res['count'], 1)
+        self.assertTrue((self.root / stage_rn1).exists())
+        self.assertEqual(_read_unresolved_quit_notices(owner2), ())
+        owner2.close()
+
+        # R-n2 real SIGKILL after link before unlink -> reopening owner completes stage cleanly.
+        stage_rn2, rc_rn2 = QuitNoticeStoreContracts._spawn_publish_and_sigkill_at_boundary(
+            self,
+            self.root,
+            boundary='before_unlink',
+            profile_id=profile_id,
+            session_kind='Q05',
+            code='WALLET_MANAGED_RUNTIME_PRESERVED',
+            journal_seq=3,
+        )
+        self.assertEqual(rc_rn2, -signal.SIGKILL)
+        self.assertTrue((self.root / stage_rn2).exists())
+        self.assertEqual((self.root / 'supervisor.notice.000001').lstat().st_nlink, 2)
+        owner3 = CoreSupervisor(self.root, self.core, authorized=True)
+        self.addCleanup(owner3.close)
+        surfaced_rn2 = _read_unresolved_quit_notices(owner3)
+        self.assertEqual(len(surfaced_rn2), 1)
+        self.assertEqual(surfaced_rn2[0]['kind'], 'notice')
+        self.assertEqual(surfaced_rn2[0]['notice']['codes'], ['WALLET_MANAGED_RUNTIME_PRESERVED'])
+        self.assertFalse((self.root / stage_rn2).exists())
+        self.assertEqual((self.root / 'supervisor.notice.000001').lstat().st_nlink, 1)
 
 
 if __name__ == '__main__':
