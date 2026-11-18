@@ -18,6 +18,7 @@ from .q05_platforms import detect_adapter
 from .wallet_executor import WalletExecutor
 from .wsp_live import _pinned_source
 from .core import verified_core_paths
+from .qualification import failure_exception_name, valid_optional_failure_exception
 
 
 class Q06PlatformQualificationError(ValueError):
@@ -401,7 +402,8 @@ def qualify(core, source, root, receipt, *, confirmed=False,
         restored_history = restore_same_chain(core,source,root.parent,adapter)
         record["fresh_profile_same_chain_history"] = restored_history
         if (restored_history['status']!='FRESH_PROFILE_SAME_CHAIN_HISTORY_RESTORE_PASS'
-                or restored_history['all_original_owners_shutdown_verified'] is not True):
+                or restored_history['all_original_owners_shutdown_verified'] is not True
+                or not valid_optional_failure_exception(restored_history)):
             raise Q06PlatformQualificationError("Q06_PLATFORM_FRESH_SAME_CHAIN_RESTORE_DENIED")
         record["fresh_same_chain_profile_full_history_recovered"] = True
         good = True
@@ -411,13 +413,17 @@ def qualify(core, source, root, receipt, *, confirmed=False,
     except Exception as error:
         # Fixed public diagnostic codes only; never format exception repr,
         # native OS strings, RPC bodies, process arguments or seed words.
+        # Record failure_exception (class name only) on generic fallback; omit on specific code.
         from .wallet_executor import WalletExecutorError
         code = error.args[0] if (type(error) in (
             Q06PlatformQualificationError, WalletExecutorError)
             and len(error.args) == 1) else None
-        record["failure_code"] = (code if type(code) is str
-                                  and re.fullmatch(r"(?:Q06|WALLET|MANAGED|RPC|CORE)_[A-Z0-9_]{3,80}", code)
-                                  else "Q06_NATIVE_ENGINE_DENIED")
+        if (type(code) is str
+                and re.fullmatch(r"(?:Q06|WALLET|MANAGED|RPC|CORE)_[A-Z0-9_]{3,80}", code)):
+            record["failure_code"] = code
+        else:
+            record["failure_code"] = "Q06_NATIVE_ENGINE_DENIED"
+            record["failure_exception"] = failure_exception_name(error)
         return record
     finally:
         if window is not None:

@@ -64,6 +64,14 @@ class Evidence(unittest.TestCase):
         result = self.passing_result()
         result["core"]["archive_sha256"] = "abcd"
         self.assertFalse(valid_pass_result(result))
+        for valid_exc in (None, "BrokenPipeError", "_Custom_1"):
+            ok_result = self.passing_result()
+            ok_result["failure_exception"] = valid_exc
+            self.assertTrue(valid_pass_result(ok_result), repr(valid_exc))
+        for bad_exc in ("/tmp/secret", "1Bad", "A" * 65, "Err\n", 123):
+            bad_result = self.passing_result()
+            bad_result["failure_exception"] = bad_exc
+            self.assertFalse(valid_pass_result(bad_result), repr(bad_exc))
 
     def test_executor_container_copy_does_not_mutate_original(self):
         from wam_regtest.wallet_executor import immutable
@@ -1461,7 +1469,32 @@ class ExecutorAndGuiBoundary(unittest.TestCase):
                 )
         self.assertEqual(result["status"], "FAIL")
         self.assertEqual(result["failure_code"], "Q06_FIX_GUI_DENIED_REOPEN")
+        self.assertNotIn("failure_exception", result)
         self.assertEqual(result.get("gui_denied"), "Q06_GUI_BACKUP_ACK_TAMPERED")
+
+    def test_run_fixture_generic_fallback_records_class_name_without_secret(self):
+        from wam_regtest.qualification import q06_fix_scenarios
+        fixture = FIXTURES[0]
+        result = {"assertions": {}}
+        with tempfile.TemporaryDirectory() as folder:
+            case_dir = Path(folder) / "case"
+            case_dir.mkdir()
+            with (
+                patch.object(q06_fix_scenarios, "_profile", return_value=case_dir / "profile"),
+                patch.object(q06_fix_scenarios, "_bind",
+                             side_effect=BrokenPipeError(32, "/Users/alice/secret-seed")),
+            ):
+                run_fixture(
+                    fixture, SimpleNamespace(processEvents=lambda: None),
+                    SimpleNamespace(make_anchor=lambda _r: None),
+                    Path(folder) / "core", Path(folder) / "wsp", result, actor="test",
+                )
+        self.assertEqual(result["status"], "FAIL")
+        self.assertEqual(result["failure_code"], "INTERNAL")
+        self.assertEqual(result["failure_exception"], "BrokenPipeError")
+        encoded = json.dumps(result)
+        self.assertNotIn("/Users/alice", encoded)
+        self.assertNotIn("secret-seed", encoded)
 
 
 

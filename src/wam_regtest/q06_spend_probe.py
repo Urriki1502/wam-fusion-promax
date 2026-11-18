@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 
 from . import custody
 from .bip39_owner_backend import Bip39ReadOnlyBackend
+from .qualification import valid_optional_failure_exception
 from .wallet_executor import WalletExecutor
 from .wsp_live import _pinned_source
 
@@ -1029,7 +1030,8 @@ def validate_restore_reservation_claim(restored):
     if (type(restored) is not dict
             or restored.get('status') != 'FRESH_PROFILE_SAME_CHAIN_HISTORY_RESTORE_PASS'
             or restored.get('all_original_owners_shutdown_verified') is not True
-            or restored.get('mnemonic_does_not_restore_signed_reservations') is not True):
+            or restored.get('mnemonic_does_not_restore_signed_reservations') is not True
+            or not valid_optional_failure_exception(restored)):
         raise ValueError('Q06_MAC_FRESH_SAME_CHAIN_RESTORE_DENIED')
 
 

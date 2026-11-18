@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import secrets
 import subprocess
 import sys
@@ -93,6 +94,15 @@ def main():
         expected_source = os.environ.get("WAM_SOURCE_HEAD") or subprocess.check_output(
             ['git','rev-parse','HEAD'],text=True).strip()
         checks["source_sha"] = data.get("source_sha") == expected_source
+        def _valid_exc(obj):
+            if type(obj) is not dict:
+                return False
+            val = obj.get("failure_exception")
+            return val is None or (type(val) is str and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", val) is not None)
+        nested_restore = data.get("fresh_profile_same_chain_history")
+        checks["failure_exception_valid"] = (
+            _valid_exc(data) and (nested_restore is None or _valid_exc(nested_restore))
+        )
         # Public, bounded diagnostic keys ONLY. Keep strict failure on ANY
         # mismatched gate (especially native binary hash and process exit).
         # No args, datadirs, raw errors, keys, RPC bodies or seed words.

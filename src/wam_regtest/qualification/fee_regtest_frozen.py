@@ -21,6 +21,7 @@ import platform
 import re
 import sys
 
+from . import valid_optional_failure_exception
 from .fee_regtest_safety import NATURAL, FAULTS
 
 from .fee_regtest import (
@@ -126,7 +127,7 @@ def _case_result(fixture, identity, core_identity, app, started):
 def run(core, source):
     """Entry from the frozen app. 0 only when all 27 required rows PASS."""
     from .fee_regtest_runner import resolve_actor, run_fixture, utc
-    from .q06_fix_scenarios import failure_code
+    from .q06_fix_scenarios import failure_code, record_failure
     started = utc()
     actor = resolve_actor()
     identity = core_identity = app = adapter = None
@@ -159,9 +160,10 @@ def run(core, source):
                 run_fixture(fixture, app, adapter, Path(core), Path(source), result, actor=actor)
             except Exception as error:
                 # Outside the protected lifetime: never permit a second owner.
-                result.update(status="FAIL", failure_code=failure_code(error), cleanup={
+                result.update(status="FAIL", cleanup={
                     "verified_original_owner_shutdown": False, "profile_retained": True,
                     "actor": actor, "action": "inspect unverified setup/owner before continuing"})
+                record_failure(result, error)
         result["ended_utc"] = utc()
         result["exit_code"] = 0 if result["status"] == "PASS" else 2
         observations = result.pop("observations", {})
@@ -175,6 +177,8 @@ def run(core, source):
                "result_sha256": write_artifact(folder / "result.json", result)}
         if result.get("failure_code"):
             row["failure_code"] = result["failure_code"]
+        if result.get("failure_exception") is not None:
+            row["failure_exception"] = result["failure_exception"]
         rows[row_name(fixture)] = row
         print("MACOS_FEE3_FROZEN_CASE=%s %s" % (row_name(fixture), result["status"]), flush=True)
         if result.get("cleanup", {}).get("verified_original_owner_shutdown") is False:
@@ -284,6 +288,7 @@ def gate(report, *, cases_dir, source_sha, checkout_sha, inventory_sha256,
         if type(row) is not dict:
             problems.append("F3_FROZEN_ROW_MISSING:" + name)
             continue
+        check(valid_optional_failure_exception(row), "F3_FROZEN_ROW_FAILURE_EXCEPTION:" + name)
         if row.get("status") != "PASS":
             problems.append("F3_FROZEN_ROW_NOT_PASS:" + name)
             continue

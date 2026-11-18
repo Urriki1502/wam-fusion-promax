@@ -105,8 +105,34 @@ class FixScenarioEvidence(unittest.TestCase):
         })
         self.assertEqual(refused["status"], "FAIL")
         self.assertEqual(refused["failure_code"], "INTERNAL")
+        self.assertNotIn("failure_exception", refused)
         self.assertEqual(refused["diagnostics"], [
             {"stage": "CONFIRM_PENDING", "category": "ValueError", "open_stage": None}])
+
+        with_valid_exc = stage.public_evidence({
+            "status": "FAIL",
+            "scenarios": {"S1": "FAIL", "S2": "NOT_RUN", "S3": "NOT_RUN"},
+            "failure_code": "INTERNAL",
+            "failure_exception": "BrokenPipeError",
+        })
+        self.assertEqual(with_valid_exc["failure_exception"], "BrokenPipeError")
+
+        with_null_exc = stage.public_evidence({
+            "status": "FAIL",
+            "scenarios": {"S1": "FAIL", "S2": "NOT_RUN", "S3": "NOT_RUN"},
+            "failure_code": "INTERNAL",
+            "failure_exception": None,
+        })
+        self.assertNotIn("failure_exception", with_null_exc)
+
+        for bad_exc in ("/Users/alice/secret", "1Bad", "A" * 65, "Err\n", 123):
+            sanitized = stage.public_evidence({
+                "status": "FAIL",
+                "scenarios": {"S1": "FAIL", "S2": "NOT_RUN", "S3": "NOT_RUN"},
+                "failure_code": "INTERNAL",
+                "failure_exception": bad_exc,
+            })
+            self.assertNotIn("failure_exception", sanitized)
 
     def test_drive_prints_pass_markers_and_writes_public_evidence(self):
         def s1(report):
@@ -159,10 +185,27 @@ class FixScenarioEvidence(unittest.TestCase):
             self.assertNotIn("ALL_PASS", buffer.getvalue())
             self.assertEqual(evidence["scenarios"], {"S1": "FAIL", "S2": "NOT_RUN", "S3": "NOT_RUN"})
             self.assertEqual(evidence["failure_code"], "Q06_FIX_S1_REOPEN_PENDING_DENIED")
+            self.assertNotIn("failure_exception", evidence)
             self.assertEqual(evidence["diagnostics"][0]["stage"], "CONFIRM_PENDING")
             self.assertEqual(evidence["diagnostics"][0]["category"],
                              "Q06_CONFIRM_EXACT_PENDING_TX_REQUIRED")
             self.assertNotIn("abandon", path.read_text())
+
+    def test_drive_generic_fallback_records_class_name_without_secret_message(self):
+        def s1(_report):
+            raise BrokenPipeError(32, "/Users/alice/secret_mnemonic_phrase")
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / stage.EVIDENCE_NAME
+            with redirect_stdout(io.StringIO()):
+                code = stage.drive((("S1", s1),), evidence_path=path)
+            raw_text = path.read_text()
+            evidence = json.loads(raw_text)
+            self.assertEqual(code, 2)
+            self.assertEqual(evidence["failure_code"], "INTERNAL")
+            self.assertEqual(evidence["failure_exception"], "BrokenPipeError")
+            self.assertNotIn("/Users/alice", raw_text)
+            self.assertNotIn("secret_mnemonic_phrase", raw_text)
 
 
 class FixScenarioWiring(unittest.TestCase):

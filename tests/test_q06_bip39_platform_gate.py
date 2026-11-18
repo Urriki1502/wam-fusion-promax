@@ -3,12 +3,21 @@
 These are source-only denial checks. Real-Core, frozen Qt and native witness
 acceptance must run inside the final OS-specific package, not this suite.
 """
+import contextlib
+import io
+import json
+import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
+from wam_regtest import q06_platform_probe as platform_probe
 from wam_regtest.q06_platform_probe import (
     Q06PlatformQualificationError, qualify)
+from wam_regtest.qualification import valid_optional_failure_exception
+from wam_regtest.wallet_executor import WalletExecutorError
 
 
 class Q06NativePlatformScope(unittest.TestCase):
@@ -51,6 +60,63 @@ class Q06NativePlatformScope(unittest.TestCase):
                         parent/"proof.json",confirmed=False)
             self.assertFalse(profile.exists())
             self.assertFalse((parent/"proof.json").exists())
+
+    def _drive_platform_failure(self, exc):
+        with tempfile.TemporaryDirectory(prefix="q06-platform-exc-") as t:
+            parent = Path(t).resolve()
+            fake_adapter = SimpleNamespace(
+                platform_id="linux-x86_64",
+                official_signed=True,
+                enforce_host=lambda: None,
+                prepare_trust=lambda *_a, **_kw: (_ for _ in ()).throw(exc),
+                teardown=lambda: None,
+            )
+            with (
+                patch.object(sys, "frozen", True, create=True),
+                patch.object(sys, "executable", __file__),
+                patch.object(platform_probe.platform, "system", return_value="Linux"),
+                patch.object(platform_probe, "detect_adapter", return_value=fake_adapter),
+                patch.object(platform_probe, "_pinned_source", return_value=None),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                return qualify(
+                    parent / "core",
+                    parent / "wsp",
+                    parent / ("wam-fusion-core-" + "c" * 16),
+                    parent / "receipt.json",
+                    confirmed=True,
+                    headless=True,
+                )
+
+    def test_generic_fallback_records_class_name_without_message_or_secret(self):
+        record = self._drive_platform_failure(
+            BrokenPipeError(32, "/Users/alice/secret-seed-abandon")
+        )
+        self.assertEqual(record["status"], "FAIL")
+        self.assertEqual(record["failure_code"], "Q06_NATIVE_ENGINE_DENIED")
+        self.assertEqual(record["failure_exception"], "BrokenPipeError")
+        encoded = json.dumps(record)
+        self.assertNotIn("/Users/alice", encoded)
+        self.assertNotIn("secret-seed-abandon", encoded)
+
+    def test_specific_code_omits_failure_exception(self):
+        for exc, code in (
+            (Q06PlatformQualificationError("Q06_PLATFORM_TRUST_DENIED"), "Q06_PLATFORM_TRUST_DENIED"),
+            (WalletExecutorError("WALLET_LOCKED"), "WALLET_LOCKED"),
+        ):
+            with self.subTest(code=code):
+                record = self._drive_platform_failure(exc)
+                self.assertEqual(record["status"], "FAIL")
+                self.assertEqual(record["failure_code"], code)
+                self.assertNotIn("failure_exception", record)
+
+    def test_optional_failure_exception_validator(self):
+        self.assertTrue(valid_optional_failure_exception({"status": "PASS"}))
+        self.assertTrue(valid_optional_failure_exception({"failure_exception": None}))
+        self.assertTrue(valid_optional_failure_exception({"failure_exception": "BrokenPipeError"}))
+        self.assertTrue(valid_optional_failure_exception({"failure_exception": "_" + "a" * 63}))
+        for bad in ("", "1abc", "A" * 65, "/tmp/secret", "Bad Error", "Err\n", 123, True):
+            self.assertFalse(valid_optional_failure_exception({"failure_exception": bad}), repr(bad))
 
 
 if __name__=="__main__":

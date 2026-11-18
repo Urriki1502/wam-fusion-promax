@@ -21,6 +21,7 @@ from .wallet_executor import WalletExecutor, WalletExecutorError
 from .bip39_owner_backend import Bip39ReadOnlyBackend
 from .shared_regtest import SharedRegtestProfile
 from .custody import create_directory
+from .qualification import failure_exception_name
 
 RESERVATION_DENIED_CODE = 'Q06_SAME_CHAIN_RESTORE_RESERVATION_DENIED'
 UNCERTAIN_FIXTURE_STATUS = (
@@ -487,7 +488,13 @@ def qualify(core, source, parent, adapter, *, port_base=29554):
     except Exception as error:
         report['status'] = 'FAIL'
         code = error.args[0] if len(error.args)==1 and type(error.args[0]) is str else ''
-        report['failure_code'] = code if re.fullmatch('[A-Z0-9_]{5,100}',code) else 'Q06_SAME_CHAIN_RESTORE_DENIED'
+        if re.fullmatch('[A-Z0-9_]{5,100}',code):
+            report['failure_code'] = code
+        else:
+            # Generic fallback: record class name only (never message/args/traceback/paths/secrets).
+            # Omitted when a specific failure_code is used.
+            report['failure_code'] = 'Q06_SAME_CHAIN_RESTORE_DENIED'
+            report['failure_exception'] = failure_exception_name(error)
         print('Q06_SAME_CHAIN_RESTORE_FAILURE=' + report['failure_code'], flush=True)
     finally:
         clean = True

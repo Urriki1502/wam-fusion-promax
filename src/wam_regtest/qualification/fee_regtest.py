@@ -13,6 +13,8 @@ import os
 from pathlib import Path
 import re
 
+from . import valid_optional_failure_exception
+
 
 CHARACTERIZATION_PENDING_STATUS = "OWNER DECISION PENDING (absorb sub-dust remainder vs refuse)"
 INSUFFICIENT_DATA_ERROR_SHA256 = sha256(b"Insufficient data or no feerate found").hexdigest()
@@ -507,7 +509,8 @@ def _valid_result_with_status(result, expected_status, expect_characterization, 
             and result["cleanup"]["verified_original_owner_shutdown"] is True
             and result["cleanup"]["profile_retained"] is True
             and set(result["artifacts"]) == {"policy.json", "events.json", "tma.json"}
-            and all(digest(v) for v in result["artifacts"].values()))
+            and all(digest(v) for v in result["artifacts"].values())
+            and valid_optional_failure_exception(result))
     except (KeyError, TypeError, ValueError, AttributeError, StopIteration):
         return False
 

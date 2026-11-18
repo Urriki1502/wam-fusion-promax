@@ -671,7 +671,7 @@ def run_fixture(fixture, app, adapter, core, source, result, actor=None):
     from .q06_fix_scenarios import (
         _profile, _bind, _finish_backup, _shutdown, _PASSWORD,
     )
-    from .q06_fix_scenarios import failure_code
+    from .q06_fix_scenarios import failure_code, record_failure
     actor_name = resolve_actor(actor)
     observations = {}
     wait_report = {}
@@ -881,12 +881,12 @@ def run_fixture(fixture, app, adapter, core, source, result, actor=None):
         )
     except Blocked as error:
         result["status"] = "BLOCKED"
-        result["failure_code"] = failure_code(error)
+        code = record_failure(result, error)
         result["blocker"] = {"actor": actor_name, "action": "provide the specified fixture prerequisites",
-                             "code": failure_code(error)}
+                             "code": code}
     except Exception as error:
         result["status"] = "FAIL"
-        result["failure_code"] = failure_code(error)
+        record_failure(result, error)
     finally:
         gui_denied = wait_report.get("fee", {}).get("gui_denied")
         if gui_denied is not None:
@@ -1022,7 +1022,7 @@ def main(argv=None, *, exit_on_uncertain=False):
     setup = None
     core_identity = None
     app = adapter = None
-    from .q06_fix_scenarios import failure_code
+    from .q06_fix_scenarios import failure_code, record_failure
     try:
         from .q06_fix_scenarios import _require_cocoa
         from ..q05_platforms import DarwinArm64Adapter
@@ -1065,9 +1065,10 @@ def main(argv=None, *, exit_on_uncertain=False):
             except Exception as error:
                 # An exception outside the scenario's protected lifetime must
                 # never permit a second owner or erase the failed receipt.
-                result.update(status="FAIL", failure_code=failure_code(error), cleanup={
+                result.update(status="FAIL", cleanup={
                     "verified_original_owner_shutdown": False, "profile_retained": True,
                     "actor": actor, "action": "inspect unverified setup/owner before continuing"})
+                record_failure(result, error)
         result["ended_utc"] = utc()
         expected_ok_status = CHARACTERIZATION_PENDING_STATUS if fixture.characterization else "PASS"
         result["exit_code"] = 0 if result["status"] == expected_ok_status else 2

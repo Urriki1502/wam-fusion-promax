@@ -128,12 +128,21 @@ class SpendProbeConsumerContractTests(unittest.TestCase):
 
     def test_validate_restore_reservation_claim_strict_boolean(self):
         spend_probe.validate_restore_reservation_claim(_valid_nested_restore())
+        for valid_exc in (None, "BrokenPipeError", "_Custom_1", "A" * 64):
+            nested = _valid_nested_restore()
+            nested["failure_exception"] = valid_exc
+            spend_probe.validate_restore_reservation_claim(nested)
         for bad in (_SENTINEL, False, "true", 1, None):
             nested = _valid_nested_restore()
             if bad is _SENTINEL:
                 nested.pop("mnemonic_does_not_restore_signed_reservations")
             else:
                 nested["mnemonic_does_not_restore_signed_reservations"] = bad
+            with self.assertRaisesRegex(ValueError, "^Q06_MAC_FRESH_SAME_CHAIN_RESTORE_DENIED$"):
+                spend_probe.validate_restore_reservation_claim(nested)
+        for bad_exc in ("/tmp/secret", "1BadName", "A" * 65, "BrokenPipeError\n", "", 123, True):
+            nested = _valid_nested_restore()
+            nested["failure_exception"] = bad_exc
             with self.assertRaisesRegex(ValueError, "^Q06_MAC_FRESH_SAME_CHAIN_RESTORE_DENIED$"):
                 spend_probe.validate_restore_reservation_claim(nested)
 
@@ -205,6 +214,25 @@ class MacosBundleConsumerContractTests(unittest.TestCase):
         rc, _, published = self._run_bundle_check_via_bash(bad_outer)
         self.assertNotEqual(rc, 0)
         self.assertFalse(published)
+
+    def test_bundle_builder_accepts_null_or_valid_failure_exception_and_rejects_bad(self):
+        for valid_exc in (None, "BrokenPipeError", "_Custom_1"):
+            payload = _valid_spend_receipt()
+            payload["failure_exception"] = valid_exc
+            payload["fresh_profile_same_chain_history"]["failure_exception"] = valid_exc
+            rc, stderr, published = self._run_bundle_check_via_bash(payload)
+            self.assertEqual(rc, 0, stderr)
+            self.assertTrue(published)
+        for target_nested in (False, True):
+            for bad_exc in ("/tmp/secret", "1Bad", "A" * 65, 123):
+                payload = _valid_spend_receipt()
+                if target_nested:
+                    payload["fresh_profile_same_chain_history"]["failure_exception"] = bad_exc
+                else:
+                    payload["failure_exception"] = bad_exc
+                rc, _, published = self._run_bundle_check_via_bash(payload)
+                self.assertNotEqual(rc, 0)
+                self.assertFalse(published)
 
 
 class RestoreProbePredicateTests(unittest.TestCase):
@@ -575,7 +603,77 @@ class FakeRestoreProbeFlowTests(unittest.TestCase):
         )
         self.assertEqual(report["status"], "FAIL")
         self.assertEqual(report["failure_code"], "Q06_SAME_CHAIN_RESTORE_RESERVATION_DENIED")
+        self.assertNotIn("failure_exception", report)
         self.assertIs(report["mnemonic_does_not_restore_signed_reservations"], False)
+
+    def test_qualify_generic_fallback_records_class_name_without_message_or_secret(self):
+        secret_msg = "/Users/alice/.wam/secret-mnemonic-word-abandon"
+        fake_adapter = SimpleNamespace(
+            platform_id="macos-arm64",
+            make_anchor=lambda root: None,
+            reopen_anchor=lambda root: None,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp).resolve()
+            parent.chmod(0o700)
+            with (
+                patch.object(
+                    restore_probe,
+                    "WalletExecutor",
+                    side_effect=BrokenPipeError(32, secret_msg),
+                ),
+                patch("wam_regtest.shared_regtest.reserve_ports", return_value=contextlib.nullcontext()),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                report = restore_probe.qualify(
+                    Path("/tmp/core"),
+                    Path("/tmp/wsp"),
+                    parent,
+                    fake_adapter,
+                )
+            evidence_files = list(parent.glob("*/public-evidence.json"))
+            self.assertEqual(len(evidence_files), 1)
+            written = evidence_files[0].read_text()
+            loaded = json.loads(written)
+        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(report["failure_code"], "Q06_SAME_CHAIN_RESTORE_DENIED")
+        self.assertEqual(report["failure_exception"], "BrokenPipeError")
+        self.assertEqual(loaded["failure_exception"], "BrokenPipeError")
+        self.assertNotIn("secret-mnemonic-word-abandon", written)
+        self.assertNotIn("/Users/alice", written)
+        self.assertNotIn("Broken pipe", written)
+
+    def test_qualify_specific_code_omits_failure_exception(self):
+        fake_adapter = SimpleNamespace(
+            platform_id="macos-arm64",
+            make_anchor=lambda root: None,
+            reopen_anchor=lambda root: None,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp).resolve()
+            parent.chmod(0o700)
+            with (
+                patch.object(
+                    restore_probe,
+                    "WalletExecutor",
+                    side_effect=WalletExecutorError("Q06_SPECIFIC_TEST_CODE"),
+                ),
+                patch("wam_regtest.shared_regtest.reserve_ports", return_value=contextlib.nullcontext()),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                report = restore_probe.qualify(
+                    Path("/tmp/core"),
+                    Path("/tmp/wsp"),
+                    parent,
+                    fake_adapter,
+                )
+            evidence_files = list(parent.glob("*/public-evidence.json"))
+            self.assertEqual(len(evidence_files), 1)
+            loaded = json.loads(evidence_files[0].read_text())
+        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(report["failure_code"], "Q06_SPECIFIC_TEST_CODE")
+        self.assertNotIn("failure_exception", report)
+        self.assertNotIn("failure_exception", loaded)
 
 
 if __name__ == "__main__":

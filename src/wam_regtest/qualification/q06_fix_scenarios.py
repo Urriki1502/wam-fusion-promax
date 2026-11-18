@@ -18,6 +18,7 @@ import tempfile
 import time
 
 from .. import custody
+from . import failure_exception_name, valid_failure_exception
 
 EVIDENCE_NAME = "q06-fix-scenarios-evidence.json"
 _PASSWORD = b"public-disposable-q06-fix-scenarios-only"
@@ -65,6 +66,18 @@ def failure_code(error):
     if (type(args) is tuple and len(args) == 1 and _token(args[0]) and _CODE.match(args[0])):
         return args[0]
     return "INTERNAL"
+
+
+def record_failure(target, error):
+    """Record failure_code, plus failure_exception (class name only) on INTERNAL fallback.
+
+    When a specific public code is used, failure_exception is omitted.
+    """
+    code = failure_code(error)
+    target["failure_code"] = code
+    if code == "INTERNAL":
+        target["failure_exception"] = failure_exception_name(error)
+    return code
 
 
 def diagnostic_records():
@@ -210,6 +223,8 @@ def public_evidence(raw):
     if status != "PASS":
         code = raw.get("failure_code")
         out["failure_code"] = code if _token(code) and _CODE.match(code) else "INTERNAL"
+        if out["failure_code"] == "INTERNAL" and valid_failure_exception(raw.get("failure_exception")):
+            out["failure_exception"] = raw["failure_exception"]
         diagnostics = []
         for item in raw.get("diagnostics") or ():
             if type(item) is not dict:
@@ -251,7 +266,7 @@ def drive(steps, preamble=None, evidence_path=None, setup_error=None):
         _stage("ALL_PASS")
         code = 0
     except Exception as error:
-        evidence["failure_code"] = failure_code(error)
+        record_failure(evidence, error)
         evidence["diagnostics"] = diagnostic_records()
         _stage("DENIED")
         code = 2

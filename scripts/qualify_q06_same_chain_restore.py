@@ -23,6 +23,7 @@ def main():
     proof=verify_source(Path(__file__).resolve().parents[1])
     from wam_regtest.q05_platforms import detect_adapter,stage_windows_core
     from wam_regtest.q06_same_chain_restore_probe import qualify
+    from wam_regtest.qualification import valid_optional_failure_exception
     from wam_regtest.core import verified_core_paths
     adapter=detect_adapter();adapter.enforce_host()
     core=a.core_dir.absolute();source=a.wsp_source.absolute()
@@ -32,6 +33,8 @@ def main():
     adapter.prepare_trust(core,test_witness=a.test_root_witness)
     node,cli,_=verified_core_paths(core)
     result=qualify(core,source,a.report.parent,adapter)
+    if not valid_optional_failure_exception(result):
+        raise ValueError('Q06_SAME_CHAIN_FAILURE_EXCEPTION_INVALID')
     result['source_provenance']=proof
     result['core_sha256']={b.name:sha256(b.read_bytes()).hexdigest() for b in (node,cli)}
     result['wsp_source_commit']='ac55f13423620252bdbf848c7e8a280c3b84721e'

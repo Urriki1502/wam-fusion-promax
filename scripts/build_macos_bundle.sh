@@ -237,9 +237,13 @@ else:
         subprocess.run([str(Path(binary).resolve()), '--ci-q06-bip39-spend'],
                        cwd=clean, env=spend_env, timeout=600, check=True)
         # PM-080-SPEND-RECEIPT-CHECK-START
+        import re as _re
         report=Path(clean)/'q06-frozen-spend-evidence.json'
         data=loads(report.read_text())
         restored=data.get("fresh_profile_same_chain_history")
+        def _valid_exc(obj):
+            val=obj.get("failure_exception")
+            return val is None or (type(val) is str and _re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}",val) is not None)
         assert (data["status"]=="Q06_NATIVE_BIP39_SEND_CONFIRM_REOPEN_PASS"
                 and data["mainnet_allowed"] is False
                 and data["q06_bip39_spend_confirmed"] is True
@@ -248,10 +252,12 @@ else:
                 and data["fresh_same_chain_profile_full_history_recovered"] is True
                 and data["q06_post_reopen_txid_readonly_reconciliation"] is True
                 and data["q06_bip39_fresh_mnemonic_full_history_recovery"] is False
+                and _valid_exc(data)
                 and type(restored) is dict
                 and restored.get("status")=="FRESH_PROFILE_SAME_CHAIN_HISTORY_RESTORE_PASS"
                 and restored.get("all_original_owners_shutdown_verified") is True
-                and restored.get("mnemonic_does_not_restore_signed_reservations") is True)
+                and restored.get("mnemonic_does_not_restore_signed_reservations") is True
+                and _valid_exc(restored))
         shutil.copyfile(report,out/'q06-frozen-spend-evidence.json')
         # PM-080-SPEND-RECEIPT-CHECK-END
         shutil.copytree(Path(clean)/'fusion-ui-review',
@@ -268,7 +274,8 @@ else:
                 and data['scenarios']['S1'] == 'PASS'
                 and data['scenarios']['S2'] == 'PASS'
                 and data['scenarios']['S3'] == 'PASS'
-                and data.get('diagnostics') is None)
+                and data.get('diagnostics') is None
+                and _valid_exc(data))
         shutil.copyfile(report, out/'q06-fix-scenarios-evidence.json')
     print("MACOS_APP_STAGE=FROZEN_Q06_FIX_SCENARIOS_PASS", flush=True)
     # FEE-3 frozen: closed F3-01..F3-06 + F3-09 positive set on native Cocoa,

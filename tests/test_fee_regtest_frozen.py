@@ -319,6 +319,32 @@ class ReportGate(unittest.TestCase):
             del bad[key]
             self.assertEqual(self.gate(bad, cases), [code], key)
 
+    def test_optional_failure_exception_accepted_and_validated_by_gate(self):
+        for valid_exc in (None, "BrokenPipeError", "_Custom_1"):
+            sub = Path(self.folder.name) / ("ok-" + str(valid_exc))
+            sub.mkdir()
+            report, cases = write_report(
+                str(sub),
+                mutate_case=lambda _f, r, v=valid_exc: r.update(failure_exception=v),
+            )
+            report["rows"][frozen.REQUIRED_ROWS[0]]["failure_exception"] = valid_exc
+            self.assertEqual(self.gate(report, cases), [])
+        for idx, bad_exc in enumerate(("/tmp/secret", "1Bad", "A" * 65, 123)):
+            sub_row = Path(self.folder.name) / ("bad-row-" + str(idx))
+            sub_row.mkdir()
+            report, cases = write_report(str(sub_row))
+            report["rows"][frozen.REQUIRED_ROWS[0]]["failure_exception"] = bad_exc
+            self.assertIn("F3_FROZEN_ROW_FAILURE_EXCEPTION:" + frozen.REQUIRED_ROWS[0],
+                          self.gate(report, cases))
+            sub_case = Path(self.folder.name) / ("bad-case-" + str(idx))
+            sub_case.mkdir()
+            report2, cases2 = write_report(
+                str(sub_case),
+                mutate_case=lambda f, r, v=bad_exc: r.update(failure_exception=v) if f == frozen.FROZEN_FIXTURES[0] else None,
+            )
+            self.assertIn("F3_FROZEN_CASE_CONTRACT:" + frozen.REQUIRED_ROWS[0],
+                          self.gate(report2, cases2))
+
 
 class FrozenRunShell(unittest.TestCase):
     """run() with fake identity/Cocoa/runner: report layout, never PASS without all rows."""
@@ -429,6 +455,30 @@ class FrozenRunShell(unittest.TestCase):
         self.assertEqual(report["status"], "FAIL")
         later = [report["rows"][name] for name in frozen.REQUIRED_ROWS[1:]]
         self.assertTrue(all(row["status"] == "BLOCKED" for row in later))
+
+    def test_generic_exception_outside_runner_records_class_name_not_message(self):
+        first_name = frozen.row_name(frozen.FROZEN_FIXTURES[0])
+        code, report, _ = self.run_shell(
+            lambda *_a, **_kw: (_ for _ in ()).throw(
+                BrokenPipeError(32, "/Users/alice/secret_mnemonic_phrase")
+            )
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(report["rows"][first_name]["failure_code"], "INTERNAL")
+        self.assertEqual(report["rows"][first_name]["failure_exception"], "BrokenPipeError")
+        first_json = (Path(frozen.CASES_DIR) / frozen.FROZEN_FIXTURES[0].case
+                      / frozen.FROZEN_FIXTURES[0].name / "result.json").read_text()
+        self.assertNotIn("/Users/alice", first_json)
+        self.assertNotIn("secret_mnemonic_phrase", first_json)
+
+    def test_specific_code_outside_runner_omits_failure_exception(self):
+        first_name = frozen.row_name(frozen.FROZEN_FIXTURES[0])
+        code, report, _ = self.run_shell(
+            lambda *_a, **_kw: (_ for _ in ()).throw(ValueError("F3_SPECIFIC_DENIED"))
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(report["rows"][first_name]["failure_code"], "F3_SPECIFIC_DENIED")
+        self.assertNotIn("failure_exception", report["rows"][first_name])
 
 
 class PackageEntryDispatch(unittest.TestCase):
