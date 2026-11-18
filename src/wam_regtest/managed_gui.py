@@ -130,13 +130,16 @@ class ManagedWalletWindow(QuitLifecycleMixin,OperationalWalletWindow):
             else:
                 self.status.setText(t('quit_lifecycle.status_blocked_live'))
         elif action=='quit_ack_unrecorded':
+            self._close_transient_quit_dialogs()
             self._notice_persist_failed=False;self._runtime_preserved_acknowledged=True
             self._quit_completed=True
         elif action=='quit':
+            self._close_transient_quit_dialogs()
             self._quit_completed=True
             if isinstance(result,dict) and result.get('runtime_preserved') is True and not self._runtime_preserved_acknowledged:
                 self.status.setText(t('quit_lifecycle.runtime_preserved_title'))
         elif action=='core_restart':
+            self._close_quit_dialog('_dead_owner_dialog')
             self.review=None;self.signed=False;self._submitted_txid=None
             self._clear_balance();self.status.setText(t('managed.core_restarted'))
         elif action=='recovery_status':
@@ -168,6 +171,7 @@ class ManagedWalletWindow(QuitLifecycleMixin,OperationalWalletWindow):
         if self._worker is not None or self.session.executor.busy or self._approval_open:return
         executor=self.session.executor
         if executor.closed:
+            self._close_transient_quit_dialogs()
             if executor.state.runtime_preserved is True and not self._runtime_preserved_acknowledged:
                 self._present_runtime_preserved_ack();return
             if executor.join(0):
@@ -181,6 +185,7 @@ class ManagedWalletWindow(QuitLifecycleMixin,OperationalWalletWindow):
     def closeEvent(self,event):
         executor=self.session.executor
         if executor.closed:
+            self._close_transient_quit_dialogs()
             if executor.state.runtime_preserved is True and not self._runtime_preserved_acknowledged:
                 event.ignore();self._present_runtime_preserved_ack();return
             event.accept();return

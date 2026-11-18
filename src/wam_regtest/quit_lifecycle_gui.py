@@ -245,9 +245,28 @@ class QuitLifecycleMixin:
     def _on_runtime_preserved_ack(self):
         self._check_quit()
 
+    def _close_quit_dialog(self, attr):
+        """Close a non-mandatory quit-lifecycle sheet so Cocoa can exit app.exec()."""
+        dlg = getattr(self, attr, None)
+        if dlg is not None:
+            setattr(self, attr, None)
+            dlg.reject()
+            dlg.hide()
+            dlg.deleteLater()
+
+    def _close_transient_quit_dialogs(self):
+        for attr in (
+            '_quit_notice_dialog',
+            '_notice_persist_dialog',
+            '_unrecorded_confirm_dialog',
+            '_dead_owner_dialog',
+        ):
+            self._close_quit_dialog(attr)
+
     def _present_runtime_preserved_ack(self):
         if self._runtime_preserved_acknowledged:
             return
+        self._close_transient_quit_dialogs()
         if hasattr(self, '_invalidate_payment_decision'):
             self._invalidate_payment_decision()
         if self._runtime_preserved_dialog is not None and self._runtime_preserved_dialog.isVisible():

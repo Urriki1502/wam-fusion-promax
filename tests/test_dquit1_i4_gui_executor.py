@@ -695,6 +695,51 @@ class GuiLifecycleI4Contracts(unittest.TestCase):
             app_quit3.assert_called_once_with()
             self.assertEqual(len(unacknowledged(sub_root3, expected_profile_id=PROFILE_ID)), 1)
 
+    def test_dead_owner_dialog_closes_on_subsequent_clean_quit_and_exits_event_loop(self):
+        from PySide6.QtCore import QCoreApplication, QTimer
+        for idx, kind in enumerate(('Q06', 'Q05')):
+            with self.subTest(kind=kind):
+                parent = self.root.parent / f'dead_then_quit_{idx}'
+                parent.mkdir(mode=0o700)
+                sub_root = _private_core_root(parent)
+                owner = _live_mock_owner(sub_root)
+                owner.process.poll.return_value = 9
+                backend = (
+                    Bip39ReadOnlyBackend(sub_root, self.core, SOURCE)
+                    if kind == 'Q06'
+                    else ManagedWalletBackend(sub_root, self.core, SOURCE)
+                )
+                backend.owner = owner
+                executor, window = (
+                    self._q06_window(backend)
+                    if kind == 'Q06'
+                    else self._q05_window(backend)
+                )
+                window.request_quit()
+                self.wait(lambda: window._dead_owner_dialog is not None
+                          and window._dead_owner_dialog.isVisible())
+                self.assertFalse(executor.closed)
+
+                # Subsequent clean quit must close the dead-owner dialog and exit app.exec().
+                owner.process = None
+                seen = {}
+
+                def watchdog():
+                    seen['watchdog'] = True
+                    QCoreApplication.exit(99)
+
+                dog = QTimer()
+                dog.setSingleShot(True)
+                dog.timeout.connect(watchdog)
+                dog.start(4000)
+                QTimer.singleShot(50, window.request_quit)
+                rc = self.app.exec()
+                dog.stop()
+                self.assertNotIn('watchdog', seen)
+                self.assertEqual(rc, 0)
+                self.assertTrue(executor.closed)
+                self.assertIsNone(window._dead_owner_dialog)
+
     def test_all_six_locales_render_quit_lifecycle_copy_without_raw_keys(self):
         for lang in SUPPORTED_LANGUAGES:
             with self.subTest(language=lang), patch.object(bip39_locale, '_lang', return_value=lang):

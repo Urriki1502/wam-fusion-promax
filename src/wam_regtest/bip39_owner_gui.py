@@ -824,12 +824,14 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
             else:
                 self.status.setText(t('quit_lifecycle.status_blocked_live'))
         elif action=="quit_ack_unrecorded":
+            self._close_transient_quit_dialogs()
             self._notice_persist_failed=False
             self._runtime_preserved_acknowledged=True
             self._ready=False
             self._closed=True
             self._clear_last_txid()
         elif action=="core_restart":
+            self._close_quit_dialog('_dead_owner_dialog')
             self._ready=False
             self._spend_enabled=False
             self._signed_ready=False
@@ -844,6 +846,7 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
             self.history.clear()
             self.status.setText(t('managed.core_restarted'))
         elif action=="quit":
+            self._close_transient_quit_dialogs()
             self._ready=False
             self._closed=True
             self._clear_last_txid()
@@ -996,6 +999,7 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
         if self._worker is not None or self._delivering_result or self.executor.busy:
             return
         if self.executor.closed:
+            self._close_transient_quit_dialogs()
             if (self.executor.state.runtime_preserved is True
                     and not self._runtime_preserved_acknowledged):
                 self._present_runtime_preserved_ack()
@@ -1018,6 +1022,7 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
 
     def closeEvent(self,event):
         if self.executor.closed:
+            self._close_transient_quit_dialogs()
             if (self.executor.state.runtime_preserved is True
                     and not self._runtime_preserved_acknowledged):
                 event.ignore()
