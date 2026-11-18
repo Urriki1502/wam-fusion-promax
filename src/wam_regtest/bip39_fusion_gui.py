@@ -1190,7 +1190,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self.review_summary.setText(t('wallet.no_prepared_payment'))
 
     def _on_ready(self, action, result):
-        if action in ('lock', 'quit', 'open', 'unlock', 'reconcile_reorg'):
+        if action in ('lock', 'quit', 'open', 'unlock', 'reconcile_reorg',
+                      'core_restart', 'quit_ack_unrecorded'):
             self._invalidate_payment_decision()
         if action in ('open', 'unlock'):
             # Revoke old values before the base handler can expose the new
@@ -1260,7 +1261,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self._open_payment_decision(dialog, decide)
             return
         super()._on_ready(action, result)
-        if action in ("cancel", "broadcast", "lock", "quit"):
+        if action in ("cancel", "broadcast", "lock", "quit", "core_restart", "quit_ack_unrecorded"):
             self._last_review = None
         if action == "broadcast":
             txid = self.last_txid.text().strip()
@@ -1307,11 +1308,12 @@ class Bip39FusionWindow(Bip39TrialWindow):
             # Same owner, bounded read-only chain sync only after the explicit
             # backup acknowledgement; a refused create above stops with lock.
             if (not self._backup_flow_active and not self._backup_unacked
-                    and not result.get('checkpoint_present')):
+                    and not result.get('checkpoint_present')
+                    and not self._unresolved_quit_notices):
                 self._pending_action = ("snapshot",)
         elif action == "mine":
             self._pending_action = ("snapshot",)
-        elif action in ("lock", "quit"):
+        elif action in ("lock", "quit", "core_restart", "quit_ack_unrecorded"):
             self._broadcast_complete = False
             self._clear_visuals()
         elif action == 'unlock':

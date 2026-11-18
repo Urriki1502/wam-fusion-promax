@@ -4,9 +4,10 @@ from PySide6.QtWidgets import QMenu,QMessageBox,QSystemTrayIcon
 
 from .operational_gui import OperationalWalletWindow,qt_application
 from .wallet_executor import ManagedWalletBackend,ManagedWalletProxy,WalletExecutor
-from .gui_errors import operation_error
+from .gui_errors import operation_error,public_code
 from .bip39_locale import t
 from .bip39_backup_page import get_secret_text
+from .quit_lifecycle_gui import QuitLifecycleMixin
 
 
 class ControlWorker(QThread):
@@ -48,12 +49,13 @@ class QuitFilter(QObject):
         return False
 
 
-class ManagedWalletWindow(OperationalWalletWindow):
+class ManagedWalletWindow(QuitLifecycleMixin,OperationalWalletWindow):
     owner_closed=Signal()
     def __init__(self,proxy):
         if type(proxy) is not ManagedWalletProxy:raise ValueError('MANAGED_GUI_PROXY_REQUIRED')
         self._close_requested=self._quit_requested=self._quit_completed=False
         self._after_control=None;self.background_available=False
+        self._init_quit_lifecycle()
         super().__init__(proxy)
         self.setWindowTitle(t('managed.window_title'))
         self.warning.setText(t('managed.warning'))
@@ -96,8 +98,18 @@ class ManagedWalletWindow(OperationalWalletWindow):
     def open_wallet(self,password,*,create=False):
         return self._control('open',password,create=create)
 
+    def _quit_executor(self):
+        return self.session.executor
+
+    def _submit_quit_action(self,action,*args):
+        return self._control(action,*args)
+
+    def _on_runtime_preserved_ack(self):
+        self._poll_owner()
+
     def _control_ready(self,action,result):
         if action=='open':
+            self._unresolved_quit_notices=()
             self.apply_snapshot(result);self.status.setText(t('managed.ready'))
         elif action=='lock' and self._close_requested:
             self._close_requested=False
@@ -105,7 +117,25 @@ class ManagedWalletWindow(OperationalWalletWindow):
             self._clear_balance()
             if self.background_available:self.hide()
             else:self.showMinimized()  # Keep a reachable window if no tray exists.
-        elif action=='quit':self._quit_completed=True
+        elif action=='quit_notices':
+            self._unresolved_quit_notices=tuple(result.get('notices') or ()) if isinstance(result,dict) else ()
+            self._present_unresolved_quit_notices()
+        elif action=='acknowledge_quit_notices':
+            self._unresolved_quit_notices=();self._quit_notice_dialog=None
+            self.status.setText(t('quit_lifecycle.unresolved_acked_status'))
+        elif action=='retry_quit_notice':
+            self._notice_persist_failed=False
+            if isinstance(result,dict) and result.get('recorded') is True and result.get('core_alive') is False:
+                self._quit_requested=True
+            else:
+                self.status.setText(t('quit_lifecycle.status_blocked_live'))
+        elif action=='quit_ack_unrecorded':
+            self._notice_persist_failed=False;self._runtime_preserved_acknowledged=True
+            self._quit_completed=True
+        elif action=='quit':
+            self._quit_completed=True
+            if isinstance(result,dict) and result.get('runtime_preserved') is True and not self._runtime_preserved_acknowledged:
+                self.status.setText(t('quit_lifecycle.runtime_preserved_title'))
         elif action=='core_restart':
             self.review=None;self.signed=False;self._submitted_txid=None
             self._clear_balance();self.status.setText(t('managed.core_restarted'))
@@ -116,8 +146,16 @@ class ManagedWalletWindow(OperationalWalletWindow):
         self._update_controls()
 
     def _control_denied(self,reason):
+        code=public_code(reason)
         self._close_requested=self._quit_requested=False;self._after_control=None
-        self._operation_denied(reason)
+        self._operation_denied(code)
+        if code=='QUIT_NOTICE_REVIEW_REQUIRED':
+            self._after_control=lambda:self._control('quit_notices')
+        elif code=='NOTICE_PERSIST_FAILED':
+            self._notice_persist_failed=True
+            self._present_notice_persist_failed()
+        elif code=='MANAGED_DEAD_OWNER_RECOVERY_REQUIRED':
+            self._present_dead_owner_recovery()
 
     def _worker_finished(self):
         super()._worker_finished()
@@ -128,8 +166,11 @@ class ManagedWalletWindow(OperationalWalletWindow):
     def _poll_owner(self):
         self._update_controls()
         if self._worker is not None or self.session.executor.busy or self._approval_open:return
-        if self._quit_completed or self.session.executor.closed:
-            if self.session.executor.closed and self.session.executor.join(0):
+        executor=self.session.executor
+        if executor.closed:
+            if executor.state.runtime_preserved is True and not self._runtime_preserved_acknowledged:
+                self._present_runtime_preserved_ack();return
+            if executor.join(0):
                 self._executor_poll.stop()
                 self.owner_closed.emit()
                 from PySide6.QtWidgets import QApplication
@@ -138,9 +179,14 @@ class ManagedWalletWindow(OperationalWalletWindow):
         elif self._close_requested:self._control('lock')
 
     def closeEvent(self,event):
-        if self.session.executor.closed:
+        executor=self.session.executor
+        if executor.closed:
+            if executor.state.runtime_preserved is True and not self._runtime_preserved_acknowledged:
+                event.ignore();self._present_runtime_preserved_ack();return
             event.accept();return
         event.ignore()
+        if self._notice_persist_failed:
+            self._present_notice_persist_failed();return
         self._close_requested=True
         self.status.setText(t('managed.locking'))
         self._poll_owner()
@@ -150,6 +196,8 @@ class ManagedWalletWindow(OperationalWalletWindow):
         self._close_requested=False;self.showNormal();self.raise_();self.activateWindow()
 
     def request_quit(self):
+        if self._notice_persist_failed:
+            self._present_notice_persist_failed();return
         self._quit_requested=True;self._close_requested=False
         self.status.setText(t('managed.finishing_shutdown'))
         self._poll_owner()
@@ -208,7 +256,9 @@ def launch_managed(root,core,source,*,authorized=False,create=False,keychain=Non
     if ok:window.open_wallet(password.encode(),create=create)
     else:window.request_quit()
     password=''
-    result=app.exec() if not executor.closed else 0
+    result=app.exec() if (not executor.closed or (
+        executor.state.runtime_preserved is True
+        and not window._runtime_preserved_acknowledged)) else 0
     # A normal Qt quit must have positive owner shutdown. An unexpected event
     # loop exit retains the non-daemon owner thread; never kill guessed PIDs.
     if not executor.closed:raise ValueError('MANAGED_OWNER_STILL_ACTIVE')

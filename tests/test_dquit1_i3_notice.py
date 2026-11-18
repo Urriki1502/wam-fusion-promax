@@ -912,7 +912,8 @@ class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
         backend._core = lambda: owner
 
         keys = Bip39Regtest12Keys(PHRASE, source=SOURCE, authorized_disposable=True)
-        keys._q06_generation = 1
+        keys._q06_generation = 2
+        backend._q06_write_ack(seed_folder, True, secret=keys.backup_ack_key())
         with patch('wam_regtest.bip39_seed_vault.open_owned_seed_container') as opened:
             opened.return_value.__enter__ = lambda *a, **kw: keys
             opened.return_value.__exit__ = lambda *a, **kw: None
@@ -934,18 +935,18 @@ class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
         self.assertTrue((self.root / 'supervisor.notice.000001').exists())
         self.assertTrue((self.root / 'supervisor.notice-ack.000001').exists())
 
-        # Reopen now has no unresolved notices and spend activation proceeds past the gate.
+        # Reopen now has no unresolved notices and spend activation proceeds past both gates.
         backend.execute('lock', (), {})
         with patch('wam_regtest.bip39_seed_vault.open_owned_seed_container') as opened:
             opened.return_value.__enter__ = lambda *a, **kw: keys
             opened.return_value.__exit__ = lambda *a, **kw: None
             reopened2 = backend.execute('open', (PASSWORD, 'reopen', ''), {})
-        self.assertEqual(reopened2['unresolved_notices'], ())
-        with patch('wam_regtest.bip39_spend_session.open_owned_spend_session',
-                   side_effect=ValueError('TEST_REACHED_SPEND_OPEN')) as spend_open:
-            with self.assertRaisesRegex(ValueError, '^TEST_REACHED_SPEND_OPEN$'):
-                backend.execute('activate', (), {})
-            spend_open.assert_called_once()
+            self.assertEqual(reopened2['unresolved_notices'], ())
+            with patch('wam_regtest.bip39_spend_session.open_owned_spend_session',
+                       side_effect=ValueError('TEST_REACHED_SPEND_OPEN')) as spend_open:
+                with self.assertRaisesRegex(ValueError, '^TEST_REACHED_SPEND_OPEN$'):
+                    backend.execute('activate', (), {})
+                spend_open.assert_called_once()
 
     def test_supervisor_failure_only_is_unresolved_and_ack_preserves_failure_file(self):
         owner = self.owner()
@@ -973,26 +974,27 @@ class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
         q06_backend.owner = owner
         q06_backend._core = lambda: owner
         keys = Bip39Regtest12Keys(PHRASE, source=SOURCE, authorized_disposable=True)
-        keys._q06_generation = 1
+        keys._q06_generation = 2
+        q06_backend._q06_write_ack(seed_folder, True, secret=keys.backup_ack_key())
         with patch('wam_regtest.bip39_seed_vault.open_owned_seed_container') as opened:
             opened.return_value.__enter__ = lambda *a, **kw: keys
             opened.return_value.__exit__ = lambda *a, **kw: None
             reopened = q06_backend.execute('open', (PASSWORD, 'reopen', ''), {})
-        self.assertEqual(len(reopened['unresolved_notices']), 1)
-        self.assertEqual(reopened['unresolved_notices'][0]['name'], 'supervisor.failure')
-        with self.assertRaisesRegex(Q06ReadOnlyError, '^QUIT_NOTICE_REVIEW_REQUIRED$'):
-            q06_backend.execute('activate', (), {})
-
-        # Ack unblocks without deleting supervisor.failure.
-        ack_result = q06_backend.acknowledge_quit_notices()
-        self.assertEqual(ack_result['count'], 1)
-        self.assertEqual(failure_path.read_bytes(), before_bytes)
-        self.assertEqual(unacknowledged(self.root, expected_profile_id=owner.profile['profile_id']), ())
-
-        with patch('wam_regtest.bip39_spend_session.open_owned_spend_session',
-                   side_effect=ValueError('TEST_REACHED_SPEND_OPEN')):
-            with self.assertRaisesRegex(ValueError, '^TEST_REACHED_SPEND_OPEN$'):
+            self.assertEqual(len(reopened['unresolved_notices']), 1)
+            self.assertEqual(reopened['unresolved_notices'][0]['name'], 'supervisor.failure')
+            with self.assertRaisesRegex(Q06ReadOnlyError, '^QUIT_NOTICE_REVIEW_REQUIRED$'):
                 q06_backend.execute('activate', (), {})
+
+            # Ack unblocks without deleting supervisor.failure.
+            ack_result = q06_backend.acknowledge_quit_notices()
+            self.assertEqual(ack_result['count'], 1)
+            self.assertEqual(failure_path.read_bytes(), before_bytes)
+            self.assertEqual(unacknowledged(self.root, expected_profile_id=owner.profile['profile_id']), ())
+
+            with patch('wam_regtest.bip39_spend_session.open_owned_spend_session',
+                       side_effect=ValueError('TEST_REACHED_SPEND_OPEN')):
+                with self.assertRaisesRegex(ValueError, '^TEST_REACHED_SPEND_OPEN$'):
+                    q06_backend.execute('activate', (), {})
         with patch.object(q05_session, '_inputs'), \
                 patch.object(q05_session, '_read_reference', side_effect=ValueError('TEST_REACHED_Q05')):
             with self.assertRaises(WalletSessionError) as caught:

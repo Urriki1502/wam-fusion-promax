@@ -26,6 +26,7 @@ from .domain.payment_state import reservations_need_attention
 
 from .fusion_ui import label, action
 from .fusion_pages import owner_approval_text
+from .quit_lifecycle_gui import QuitLifecycleMixin
 
 
 def reservation_warning(result):
@@ -273,7 +274,7 @@ class Bip39RecoveryVerifyDialog(QDialog):
         super().closeEvent(event)
 
 
-class Bip39TrialWindow(QWidget):
+class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
     def __init__(self, executor):
         super().__init__()
         self.executor = executor
@@ -372,6 +373,8 @@ class Bip39TrialWindow(QWidget):
         self._recovery_dialog=None
         self._recovered_unsigned_cancel=False
         self._resumable_intent=None
+        self._had_opened_profile=False
+        self._init_quit_lifecycle()
         self.resume.setToolTip(t('owner.resume_tooltip'))
         self.cancel.setToolTip(t('owner.cancel_tooltip'))
         self._set_actions()
@@ -587,6 +590,7 @@ class Bip39TrialWindow(QWidget):
         elif action in ('snapshot', 'activate', 'unlock') and isinstance(result, dict):
             self._recovered_unsigned_cancel = result.get('recovered_unsigned_cancel_available') is True
         if action=="open":
+            self._had_opened_profile = True
             self._backup_unacked=False
             # Start from a locked UI state; the backup flow (if required) will
             # promote to ready via _backup_flow_completed.
@@ -596,6 +600,8 @@ class Bip39TrialWindow(QWidget):
             self.account.setText(t('owner.account_locked'))
             self.balance.setText(t('owner.balance_unverified'))
             self.tip.setText(t('owner.chain_unverified'))
+            notices = result.get("unresolved_notices") if isinstance(result, dict) else ()
+            self._unresolved_quit_notices = tuple(notices) if notices else ()
             backup_status = result.get("backup_status", "verified")
             seed_folder = result.get("seed_folder")
             if backup_status in ("required", "deferred"):
@@ -621,10 +627,15 @@ class Bip39TrialWindow(QWidget):
             self.balance.setText(t('owner.balance_unsynced'))
             self.tip.setText(t('owner.chain_unchecked'))
             self.status.setText(t('owner.seed_opened'))
-            self._pending_action = None if result.get('checkpoint_present') else ("snapshot",)
+            self._pending_action = (
+                None if (result.get('checkpoint_present') or self._unresolved_quit_notices)
+                else ("snapshot",)
+            )
             if result.get('checkpoint_present'):
                 self.status.setText(t('owner.checkpoint_retained'))
             self._remember_profile(result.get("seed_folder"))
+            if self._unresolved_quit_notices:
+                self._present_unresolved_quit_notices()
         elif action=="mine":
             self._test_funded=True
             self.status.setText(t('owner.receive_confirmed').format(height=result['height']))
@@ -799,10 +810,45 @@ class Bip39TrialWindow(QWidget):
                 self._unlock_allowed = False
                 self.status.setText(
                     t('owner.unlock_backup_refused'))
+        elif action=="quit_notices":
+            self._unresolved_quit_notices=tuple(result.get("notices") or ()) if isinstance(result,dict) else ()
+            self._present_unresolved_quit_notices()
+        elif action=="acknowledge_quit_notices":
+            self._unresolved_quit_notices=()
+            self._quit_notice_dialog=None
+            self.status.setText(t('quit_lifecycle.unresolved_acked_status'))
+        elif action=="retry_quit_notice":
+            self._notice_persist_failed=False
+            if isinstance(result,dict) and result.get("recorded") is True and result.get("core_alive") is False:
+                self._quit_requested=True
+            else:
+                self.status.setText(t('quit_lifecycle.status_blocked_live'))
+        elif action=="quit_ack_unrecorded":
+            self._notice_persist_failed=False
+            self._runtime_preserved_acknowledged=True
+            self._ready=False
+            self._closed=True
+            self._clear_last_txid()
+        elif action=="core_restart":
+            self._ready=False
+            self._spend_enabled=False
+            self._signed_ready=False
+            self._approved_commitment=None
+            self._pending_confirm_txid=None
+            self._unlock_allowed=self._had_opened_profile
+            self._clear_last_txid()
+            self.receive.clear()
+            self.account.setText(t('owner.account_locked'))
+            self.balance.setText(t('owner.balance_unverified'))
+            self.tip.setText(t('owner.chain_unverified'))
+            self.history.clear()
+            self.status.setText(t('managed.core_restarted'))
         elif action=="quit":
             self._ready=False
             self._closed=True
             self._clear_last_txid()
+            if isinstance(result,dict) and result.get("runtime_preserved") is True and not self._runtime_preserved_acknowledged:
+                self.status.setText(t('quit_lifecycle.runtime_preserved_title'))
         self._set_actions()
 
     def _present_backup_ack(self, result):
@@ -839,6 +885,8 @@ class Bip39TrialWindow(QWidget):
             return
         self._pending_action = ("snapshot",)
         self._finished()
+        if self._unresolved_quit_notices:
+            self._present_unresolved_quit_notices()
 
     def _defer_active_backup(self):
         """Fail-safe helper used on quit/close when the backup UI is open."""
@@ -876,6 +924,21 @@ class Bip39TrialWindow(QWidget):
             # stays locked and is listed by "Review signed payments".
             self._signed_ready=False
             self._approved_commitment=None
+        if code == 'QUIT_NOTICE_REVIEW_REQUIRED':
+            if self._unresolved_quit_notices:
+                self._present_unresolved_quit_notices()
+            else:
+                self._pending_action = ("quit_notices",)
+        elif code == 'NOTICE_PERSIST_FAILED':
+            self._notice_persist_failed = True
+            self._quit_requested = False
+            self._present_notice_persist_failed()
+        elif code == 'MANAGED_DEAD_OWNER_RECOVERY_REQUIRED':
+            self._quit_requested = False
+            self._present_dead_owner_recovery()
+        elif code in ('MANAGED_SHUTDOWN_UNCERTAIN', 'MANAGED_STOP_NOT_DELIVERED',
+                      'MANAGED_LIVE_OWNER_CLOSE_DENIED'):
+            self._quit_requested = False
         self.status.setText(
             t('owner.faulted')
             if self.executor.state.faulted else
@@ -930,15 +993,24 @@ class Bip39TrialWindow(QWidget):
         self._check_quit()
 
     def _check_quit(self):
-        if self.executor.closed and self.executor.join(0):
-            self._poll.stop()
-            self._closed=True
-            qt_application().quit()
-        elif (self._quit_requested and self._worker is None and not self.executor.busy
-              and not self._delivering_result):
+        if self._worker is not None or self._delivering_result or self.executor.busy:
+            return
+        if self.executor.closed:
+            if (self.executor.state.runtime_preserved is True
+                    and not self._runtime_preserved_acknowledged):
+                self._present_runtime_preserved_ack()
+                return
+            if self.executor.join(0):
+                self._poll.stop()
+                self._closed=True
+                qt_application().quit()
+        elif self._quit_requested:
             self._command("quit")
 
     def request_quit(self):
+        if self._notice_persist_failed:
+            self._present_notice_persist_failed()
+            return
         self._quit_requested=True
         self._defer_active_backup()
         self.status.setText(t('owner.stopping'))
@@ -946,6 +1018,11 @@ class Bip39TrialWindow(QWidget):
 
     def closeEvent(self,event):
         if self.executor.closed:
+            if (self.executor.state.runtime_preserved is True
+                    and not self._runtime_preserved_acknowledged):
+                event.ignore()
+                self._present_runtime_preserved_ack()
+                return
             event.accept()
         else:
             event.ignore()
@@ -1018,7 +1095,9 @@ def launch_bip39_trial(root,core,source,*,mode,authorized=False,shared_profile=N
     else:
         window.request_quit()
     password=phrase=""
-    result=app.exec() if not executor.closed else 0
+    result=app.exec() if (not executor.closed or (
+        executor.state.runtime_preserved is True
+        and not window._runtime_preserved_acknowledged)) else 0
     if not executor.closed:
         raise ValueError("Q06_GUI_ORIGINAL_OWNER_STILL_ACTIVE")
     executor.join()

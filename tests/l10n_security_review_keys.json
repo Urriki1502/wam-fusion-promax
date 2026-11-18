@@ -1496,6 +1496,30 @@
     {
       "key": "errors.WALLET_CHANGE_BELOW_DUST",
       "reason": "PM-072 S/U: payment safety and user action; 330 atoms is the verified network output minimum. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "errors.QUIT_NOTICE_REVIEW_REQUIRED",
+      "reason": "PM-075 I4 S/U: unresolved shutdown or fault notice review gate; preserved evidence remains untouched. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "errors.NOTICE_PERSIST_FAILED",
+      "reason": "PM-075 I4 S/U: failed quit-notice persistence keeps ownership and refuses silent exit. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "errors.MANAGED_DEAD_OWNER_RECOVERY_REQUIRED",
+      "reason": "PM-075 I4 S/U: dead-owner Core exit refusal and explicit original-owner recovery prompt; no kill or adoption. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "quit_lifecycle.runtime_preserved_body",
+      "reason": "PM-075 I4 S/U: truthful preserved-runtime warning after Core stop; never delete wallet files. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "quit_lifecycle.persist_failed_body_live",
+      "reason": "PM-075 I4 S/U: double-fault exit block while Core may still be running and notice failed to save. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "quit_lifecycle.exit_unrecorded_confirm_body",
+      "reason": "PM-075 I4 S/U: second explicit confirmation before quit_ack_unrecorded when Core is stopped. Machine-assisted; native review PENDING."
     }
   ]
 }

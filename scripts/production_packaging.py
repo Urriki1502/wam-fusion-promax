@@ -23,7 +23,7 @@ fusion_motion fusion_pages fusion_status fusion_ui gui_errors history_pages json
 linux_anchor_witness linux_developer_core linux_official_core linux_private_storage
 linux_runtime managed_gui managed_onboarding managed_wallet_checkpoint managed_wallet_session
 network_policy official_core_v013 operational_gui payjoin_safety private_directory
-production_entry q05_platforms quit_notice regtest_funding release rpc_contention rpc_credentials rpc_scope
+production_entry q05_platforms quit_lifecycle_gui quit_notice regtest_funding release rpc_contention rpc_credentials rpc_scope
 shared_regtest shared_regtest_gui supervisor_client supervisor_identity supervisor_journal
 supervisor_protocol supervisor_store telemetry tx_observation vault wallet_executor wallet_read wallet_recovery
 foundation foundation.diagnostics
@@ -49,7 +49,7 @@ LINUX_EXTRA = frozenset(('linux_production_entry',))
 # Modules importing PySide6 at module level: never in the no-Qt headless build.
 QT_MODULES = frozenset(('bip39_backup_page bip39_fusion_gui bip39_locale bip39_owner_gui '
                         'desktop external_core_gui fusion_motion fusion_pages fusion_ui '
-                        'managed_gui operational_gui').split())
+                        'managed_gui operational_gui quit_lifecycle_gui').split())
 ENTRY = {'macos': 'production_entry', 'windows': 'windows_production_entry',
          'linux-desktop': 'linux_production_entry'}
 

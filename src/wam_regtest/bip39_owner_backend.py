@@ -78,6 +78,7 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
             "reauthentication_required": bool(
                 s is not None and getattr(s, "_core_reauthentication_required", False)),
             "core_alive": p is not None and p.poll() is None,
+            "runtime_preserved": bool(getattr(self, "_quit_cleanup_uncertain", False)),
         }
 
     def _lock_q06(self):
@@ -589,7 +590,9 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                 if self._secret is not None:self._secret[:]=bytes(len(self._secret))
                 self._secret=self._public=self._seed_folder=None
                 raise Q06ReadOnlyError('Q06_SHARED_RECONCILIATION_DENIED') from None
-        if action in ('network_status', 'network_active', 'core_start', 'core_status'):
+        if action in ('network_status', 'network_active', 'core_start', 'core_status',
+                      'acknowledge_quit_notices', 'quit_ack_unrecorded',
+                      'retry_quit_notice', 'quit_notices'):
             return super().execute(action, args, kwargs)
         if self.shared_profile is not None and action in ('prepare','prepare_auto','sign','broadcast','mine','confirm','ci_confirm'):
             from .shared_regtest import peer_status
@@ -739,6 +742,15 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
         if action == "lock":
             if args or kwargs:raise Q06ReadOnlyError("Q06_GUI_LOCK_ARGUMENTS_DENIED")
             self._lock_q06();return None
+        if action == "core_restart":
+            if getattr(self, "_notice_persist_failed", False):
+                raise WalletExecutorError("NOTICE_PERSIST_FAILED")
+            try:
+                self._lock_q06()
+            except Exception as error:
+                self._record_quit_cleanup(
+                    error, fallback='Q06_SPEND_RUNTIME_PRESERVED')
+            return super().execute(action, args, kwargs)
         if action == "quit":
             try:
                 self._lock_q06()
