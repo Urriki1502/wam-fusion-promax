@@ -282,10 +282,11 @@ class Q06OwnedSpendSession(WalletSession):
         """Stage B: owner-approved submission of the EXACT previously signed tx.
 
         Eligible only for a verified-evidence intent whose inputs are still
-        unspent and which is neither confirmed nor in the mempool. A 'signed'
-        intent gets the same read-only preflight and durable 'uncertain'
-        write-ahead as a fresh broadcast; an 'uncertain' intent is resubmitted
-        byte-for-byte (same txid, so it can never double-spend). No re-signing.
+        unspent and which is neither confirmed nor in the mempool. Both 'signed'
+        and 'uncertain' intents require BIP125 replaceability signalling and run
+        the same exact-byte read-only preflight before submission; a 'signed'
+        intent also takes its durable 'uncertain' write-ahead before broadcast.
+        No re-signing or fee rewrite.
         """
         import re
         from types import SimpleNamespace
@@ -330,13 +331,13 @@ class Q06OwnedSpendSession(WalletSession):
             review = SimpleNamespace(commitment=body['commitment'], code=body['recipient'],
                                      atoms=body['atoms'], fee=body['fee'],
                                      fee_quote=fee_quote)
-            rpc = self._rpc()
             # RBF-RESUME-01: no resubmission without explicit BIP125 signalling
             # on the stored PSBT. This local check precedes any preflight or
             # submission; a missing signal keeps the durable state, locks,
             # bytes and provenance exactly as they are and sends nothing.
             if not _psbt_replaceable(signed):
                 raise WalletSessionError('RBF_SIGNALLING_MISSING')
+            rpc = self._rpc()
             try:
                 # REC-2 (SPEC §5 bullet 1): the SAME exact-byte preflight
                 # contract for a 'signed' AND an 'uncertain' intent, before

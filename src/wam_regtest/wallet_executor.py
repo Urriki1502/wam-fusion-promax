@@ -120,20 +120,17 @@ class WalletExecutor:
                     exit_owner=action=='quit'
             except Exception as failure:
                 code=failure.args[0] if len(failure.args)==1 else None
-                from .gui_errors import operation_error,INPUT_ERRORS
+                from .gui_errors import operation_error,preflight_rejection,INPUT_ERRORS
                 public=operation_error(action,failure)
                 if public in INPUT_ERRORS:code=public
                 if type(code) is not str or not re.fullmatch('[A-Z][A-Z0-9_]{1,95}',code):
                     code='WALLET_EXECUTOR_DENIED'
                 error=WalletExecutorError(code)
                 # REC-2 (SPEC §5.1): carry ONLY the fixed allowlisted
-                # preflight-rejection token, validated by exact type against
-                # the allowlist. Never str(exception); arbitrary exception
-                # text never crosses this boundary, and a missing or unknown
-                # diagnostic stays safely generic (attribute absent).
-                from .wallet_session import PREFLIGHT_REJECTION_TOKENS
-                token=getattr(failure,'preflight_rejection',None)
-                if type(token) is str and token in PREFLIGHT_REJECTION_TOKENS:
+                # preflight-rejection token from a trusted rejection error.
+                # Never str(exception) or untrusted ValueError subclasses.
+                token=preflight_rejection(failure)
+                if token is not None and code=='WALLET_BROADCAST_REJECTED_LOCK_RETAINED':
                     error.preflight_rejection=token
             finally:
                 # State and idle transition precede delivery, so a caller that

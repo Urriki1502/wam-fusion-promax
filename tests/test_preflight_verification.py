@@ -49,7 +49,7 @@ class PreflightVerification(unittest.TestCase):
                        'fees': {'base': Decimal('0.00001000'),
                                 'effective-feerate': Decimal(1000000 // self.vsize).scaleb(-8),
                                 'effective-includes': [self.wtxid]}}]
-        self.psbt = SimpleNamespace(finalize=lambda: self.raw, txid=lambda: self.txid)
+        self.psbt = SimpleNamespace(finalize=lambda: self.raw, txid=lambda: self.txid, tx=self.tx)
         self.decode_patch = patch.object(PSBT, 'decode', return_value=self.psbt)
         self.decode_patch.start()
         self.addCleanup(self.decode_patch.stop)

@@ -16,13 +16,26 @@ def error_text(code,*,fallback='WALLET_OPERATION_DENIED_STATE_RETAINED'):
     # No arbitrary reason, path, RPC error, address, passphrase or traceback.
     return ui_text('errors.' + public_code(code,fallback=fallback))
 
+def preflight_rejection(error):
+    """Fixed public preflight-rejection token from a trusted rejection error."""
+    from .wallet_session import WalletSessionError, PREFLIGHT_REJECTION_TOKENS
+    from .wallet_executor import WalletExecutorError
+    from .bip39_spend_session import Q06SpendSessionError
+    if type(error) not in (WalletSessionError, Q06SpendSessionError, WalletExecutorError):
+        return None
+    if error.args != ('WALLET_BROADCAST_REJECTED_LOCK_RETAINED',):
+        return None
+    token = getattr(error, 'preflight_rejection', None)
+    return token if type(token) is str and token in PREFLIGHT_REJECTION_TOKENS else None
+
 def operation_error(action,error):
     from .wallet_session import WalletSessionError
     from .vault import VaultError
     from .wallet_executor import WalletExecutorError
+    from .bip39_spend_session import Q06SpendSessionError
     # Do not call str(error): an external exception may contain private data
     # or implement a hostile formatter. Exact single-argument categories only.
-    args=error.args if type(error) in (ValueError,WalletSessionError,VaultError,WalletExecutorError) else ()
+    args=error.args if type(error) in (ValueError,WalletSessionError,VaultError,WalletExecutorError,Q06SpendSessionError) else ()
     code=args[0] if len(args)==1 and type(args[0]) is str else None
     if type(error) is WalletExecutorError and code in _MESSAGES:return code
     if type(error) is WalletExecutorError:
@@ -46,7 +59,7 @@ def operation_error(action,error):
     if (action in ('prepare', 'prepare_auto') and type(error) is WalletSessionError
             and code == 'WALLET_CHANGE_BELOW_DUST'):
         return code
-    if type(error) is WalletSessionError and code in _MESSAGES and code not in INPUT_ERRORS:
+    if type(error) in (WalletSessionError, Q06SpendSessionError) and code in _MESSAGES and code not in INPUT_ERRORS:
         return code
     if action in ('unlock','recover') and type(error) in (VaultError,WalletSessionError):
         return 'WALLET_UNLOCK_REFUSED' if action=='unlock' else 'WALLET_RECOVERY_REFUSED'

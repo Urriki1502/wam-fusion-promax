@@ -50,9 +50,15 @@ def _states(scanner):
     return {r[0] for r in scanner.store.db.execute("SELECT state FROM reservations")}
 
 
+def _reservations(scanner):
+    return tuple(scanner.store.db.execute(
+        "SELECT txid,vout,token,state,created FROM reservations ORDER BY token,txid,vout"
+    ).fetchall())
+
+
 def _evidence_files(session):
-    directory = session._evidence_store().directory
-    return sorted(p.name for p in directory.iterdir())
+    directory = session._evidence_store()._folder()
+    return {p.name: p.read_bytes() for p in sorted(directory.iterdir())}
 
 
 class _Chain:
@@ -87,15 +93,23 @@ class _Core:
     def _call(self, method, params):
         if method == "getrawmempool":
             return sorted(self.mempool)
+        if method == "getblockchaininfo":
+            # OBS-01a: whole-acquisition prerequisite 1 (equal heights).
+            return {"blocks": 1, "headers": 1, "initialblockdownload": False}
         raise ValueError("REC2_RPC_DENIED")
 
     def call(self, method, params=None):
         if method == "getbestblockhash":
             return self.test.tip
+        if method == "getblockcount":
+            return 1
+        if method == "getblockhash":
+            return GENESIS if params[0] == 0 else self.test.tip
         if method == "gettxout":
             if (params[0], params[1]) in self.spent:
                 return None
-            return {"value": 0.001, "scriptPubKey": {"hex": "5120" + self.test.coin["public_key"]}}
+            return {"bestblock": self.test.tip, "value": 0.001,
+                    "scriptPubKey": {"hex": "5120" + self.test.coin["public_key"]}}
         self.calls.append(method)
         if method == "testmempoolaccept":
             if isinstance(self.accept, BaseException):
@@ -204,47 +218,59 @@ class UncertainResumePreflight(unittest.TestCase):
                          or status["abandon_available"])
         return next(i for i in status["intents"] if i["token"] == token)
 
-    def _fee_floor_core(self):
-        """A definitive fee-floor rejection with the typed reason attached."""
+    def _reject_core(self, reason):
+        """A definitive policy rejection with the typed Core reason attached."""
         original_call = self.core.call
 
         def call(method, params=None):
             reply = original_call(method, params)
             if (method == "testmempoolaccept" and type(reply) is list and len(reply) == 1
                     and type(reply[0]) is dict and reply[0].get("allowed") is False):
-                reply[0]["reject-reason"] = "min relay fee not met"
+                reply[0]["reject-reason"] = reason
             return reply
         self.core.call = call
 
     # ---- same preflight boundary for 'uncertain' (REC-2 §5 bullet 1) ------
     def test_uncertain_resume_policy_rejection_refuses_and_keeps_everything(self):
-        session, review = self._signed_session()
-        self.core.send = Crash()
-        with self.assertRaises(Crash):
-            session.broadcast(review.commitment)
-        restarted = self._restart()
-        self.assertEqual(self.vault.saved[-1], {"uncertain"})
-        self.assertEqual(self._item(restarted, self.token)["classification"],
-                         "UNCERTAIN_NOT_OBSERVED_RESUMABLE")
-        self._fee_floor_core()
-        before_files = _evidence_files(restarted)
-        before_saved = list(self.vault.saved)
-        from wam_regtest.wallet_session import WalletSessionError
-        with self.assertRaises(WalletSessionError) as caught:
-            restarted.resume_signed_intent(self.token, self.txid, approved=True)
-        self.assertEqual(caught.exception.args, ("WALLET_BROADCAST_REJECTED_LOCK_RETAINED",))
-        self.assertEqual(caught.exception.preflight_rejection, "FEE_POLICY_REJECTED")
-        self.assertNotIn("sendrawtransaction", self.core.calls)
-        # The ORIGINAL uncertain state, locks, bytes and provenance are kept.
-        self.assertEqual(_states(restarted.scanner), {"uncertain"})
-        self.assertEqual(self.vault.saved, before_saved)
-        self.assertEqual(_evidence_files(restarted), before_files)
-        # No new session fault or uncertainty latch; historical uncertainty
-        # is NOT cleared, and the inventory stays reachable for review.
-        self.assertFalse(restarted.faulted)
-        self.assertFalse(restarted._q06_uncertain)
-        self.assertEqual(self._item(restarted, self.token)["classification"],
-                         "UNCERTAIN_NOT_OBSERVED_RESUMABLE")
+        for reason, expected_token in (
+                ("min relay fee not met", "FEE_POLICY_REJECTED"),
+                ("dust", "POLICY_REJECTED"),
+                ("txn-already-in-mempool", "ALREADY_IN_MEMPOOL"),
+        ):
+            with self.subTest(reason=reason):
+                self.setUp()
+                session, review = self._signed_session()
+                self.core.send = Crash()
+                with self.assertRaises(Crash):
+                    session.broadcast(review.commitment)
+                restarted = self._restart()
+                self.assertEqual(self.vault.saved[-1], {"uncertain"})
+                self.assertEqual(self._item(restarted, self.token)["classification"],
+                                 "UNCERTAIN_NOT_OBSERVED_RESUMABLE")
+                self.core.accept = False
+                self._reject_core(reason)
+                self.core.calls.clear()
+                before_files = _evidence_files(restarted)
+                before_rows = _reservations(restarted.scanner)
+                before_saved = list(self.vault.saved)
+                from wam_regtest.wallet_session import WalletSessionError
+                with self.assertRaises(WalletSessionError) as caught:
+                    restarted.resume_signed_intent(self.token, self.txid, approved=True)
+                self.assertEqual(caught.exception.args,
+                                 ("WALLET_BROADCAST_REJECTED_LOCK_RETAINED",))
+                self.assertEqual(caught.exception.preflight_rejection, expected_token)
+                self.assertEqual(self.core.calls, ["testmempoolaccept"])
+                # The ORIGINAL uncertain state, locks, bytes and provenance are kept.
+                self.assertEqual(_states(restarted.scanner), {"uncertain"})
+                self.assertEqual(_reservations(restarted.scanner), before_rows)
+                self.assertEqual(self.vault.saved, before_saved)
+                self.assertEqual(_evidence_files(restarted), before_files)
+                # No new session fault or uncertainty latch; historical uncertainty
+                # is NOT cleared, and the inventory stays reachable for review.
+                self.assertFalse(restarted.faulted)
+                self.assertFalse(restarted._q06_uncertain)
+                self.assertEqual(self._item(restarted, self.token)["classification"],
+                                 "UNCERTAIN_NOT_OBSERVED_RESUMABLE")
 
     def test_uncertain_resume_still_requires_explicit_approval(self):
         session, review = self._signed_session()
@@ -252,6 +278,7 @@ class UncertainResumePreflight(unittest.TestCase):
         with self.assertRaises(Crash):
             session.broadcast(review.commitment)
         restarted = self._restart()
+        self.core.calls.clear()
         from wam_regtest.bip39_spend_session import Q06SpendSessionError
         with self.assertRaisesRegex(Q06SpendSessionError, "EXPLICIT_APPROVAL_REQUIRED"):
             restarted.resume_signed_intent(self.token, self.txid)
@@ -263,13 +290,15 @@ class UncertainResumePreflight(unittest.TestCase):
         self.core.send = Crash()
         with self.assertRaises(Crash):
             session.broadcast(review.commitment)
+        self.core.send = None
         restarted = self._restart()
+        self.core.calls.clear()
         result = restarted.resume_signed_intent(self.token, self.txid, approved=True)
         self.assertEqual((result["txid"], result["resigned"], result["automatic"]),
                          (self.txid, False, False))
-        # REC-2: the uncertain resume now runs the same preflight first.
-        self.assertEqual(self.core.calls.count("testmempoolaccept"), 1)
-        self.assertEqual(self.core.calls.count("sendrawtransaction"), 1)
+        # REC-2: product preflight runs first, then WSP's own preflight + send.
+        self.assertEqual(self.core.calls,
+                         ["testmempoolaccept", "testmempoolaccept", "sendrawtransaction"])
         self.assertEqual(self.vault.saved[-1], {"broadcast"})
         self.assertEqual(_states(restarted.scanner), {"broadcast"})
         self.assertEqual(restarted._q06_pending_confirm, self.txid)
@@ -289,8 +318,10 @@ class UncertainResumePreflight(unittest.TestCase):
                 reply[0]["txid"] = "f" * 64
             return reply
         self.core.call = call
+        self.core.calls.clear()
         before_saved = list(self.vault.saved)
         before_files = _evidence_files(restarted)
+        before_rows = _reservations(restarted.scanner)
         from wam_regtest.wallet_session import WalletSessionError
         with self.assertRaises(WalletSessionError) as caught:
             restarted.resume_signed_intent(self.token, self.txid, approved=True)
@@ -300,31 +331,39 @@ class UncertainResumePreflight(unittest.TestCase):
         self.assertFalse(hasattr(caught.exception, "preflight_rejection"))
         self.assertNotIn("sendrawtransaction", self.core.calls)
         self.assertEqual(_states(restarted.scanner), {"uncertain"})
+        self.assertEqual(_reservations(restarted.scanner), before_rows)
         self.assertEqual(self.vault.saved, before_saved)
         self.assertEqual(_evidence_files(restarted), before_files)
         self.assertTrue(restarted.faulted)
         # Nothing reached send, so no new submission uncertainty was created.
         self.assertFalse(restarted._q06_uncertain)
 
-    def test_uncertain_transport_preflight_latches_and_is_never_relabelled(self):
-        session, review = self._signed_session()
-        self.core.send = Crash()
-        with self.assertRaises(Crash):
-            session.broadcast(review.commitment)
-        restarted = self._restart()
-        self.core.accept = RuntimeError("PUBLIC_RPC_LOSS")
-        before_saved = list(self.vault.saved)
+    def test_uncertain_transport_and_untrusted_preflight_latch_never_relabelled(self):
         from wam_regtest.wallet_session import WalletSessionError
-        with self.assertRaises(WalletSessionError) as caught:
-            restarted.resume_signed_intent(self.token, self.txid, approved=True)
-        self.assertEqual(caught.exception.args,
-                         ("WALLET_BROADCAST_NOT_SUBMITTED_LOCK_RETAINED",))
-        self.assertFalse(hasattr(caught.exception, "preflight_rejection"))
-        self.assertNotIn("sendrawtransaction", self.core.calls)
-        self.assertEqual(_states(restarted.scanner), {"uncertain"})
-        self.assertEqual(self.vault.saved, before_saved)
-        self.assertTrue(restarted.faulted)
-        self.assertFalse(restarted._q06_uncertain)
+        for failure in (RuntimeError("PUBLIC_RPC_LOSS"),
+                        WalletSessionError("WALLET_CORE_IDENTITY_DENIED")):
+            with self.subTest(failure=type(failure).__name__):
+                self.setUp()
+                session, review = self._signed_session()
+                self.core.send = Crash()
+                with self.assertRaises(Crash):
+                    session.broadcast(review.commitment)
+                restarted = self._restart()
+                self.core.accept = failure
+                self.core.calls.clear()
+                before_saved = list(self.vault.saved)
+                before_files = _evidence_files(restarted)
+                with self.assertRaises(WalletSessionError) as caught:
+                    restarted.resume_signed_intent(self.token, self.txid, approved=True)
+                self.assertEqual(caught.exception.args,
+                                 ("WALLET_BROADCAST_NOT_SUBMITTED_LOCK_RETAINED",))
+                self.assertFalse(hasattr(caught.exception, "preflight_rejection"))
+                self.assertNotIn("sendrawtransaction", self.core.calls)
+                self.assertEqual(_states(restarted.scanner), {"uncertain"})
+                self.assertEqual(self.vault.saved, before_saved)
+                self.assertEqual(_evidence_files(restarted), before_files)
+                self.assertTrue(restarted.faulted)
+                self.assertFalse(restarted._q06_uncertain)
 
     # ---- the same boundary stays exact for 'signed' ------------------------
     def test_signed_resume_policy_rejection_refuses_and_keeps_everything(self):
@@ -336,16 +375,20 @@ class UncertainResumePreflight(unittest.TestCase):
         self.assertEqual(self.vault.saved[-1], {"signed"})
         self.assertEqual(self._item(restarted, self.token)["classification"],
                          "SIGNED_NOT_SUBMITTED_RESUMABLE")
-        self._fee_floor_core()
+        self.core.accept = False
+        self._reject_core("min relay fee not met")
+        self.core.calls.clear()
         before_files = _evidence_files(restarted)
+        before_rows = _reservations(restarted.scanner)
         before_saved = list(self.vault.saved)
         from wam_regtest.wallet_session import WalletSessionError
         with self.assertRaises(WalletSessionError) as caught:
             restarted.resume_signed_intent(self.token, self.txid, approved=True)
         self.assertEqual(caught.exception.args, ("WALLET_BROADCAST_REJECTED_LOCK_RETAINED",))
         self.assertEqual(caught.exception.preflight_rejection, "FEE_POLICY_REJECTED")
-        self.assertNotIn("sendrawtransaction", self.core.calls)
+        self.assertEqual(self.core.calls, ["testmempoolaccept"])
         self.assertEqual(_states(restarted.scanner), {"signed"})
+        self.assertEqual(_reservations(restarted.scanner), before_rows)
         self.assertEqual(self.vault.saved, before_saved)
         self.assertEqual(_evidence_files(restarted), before_files)
         self.assertFalse(restarted.faulted)
@@ -354,22 +397,27 @@ class UncertainResumePreflight(unittest.TestCase):
                          "SIGNED_NOT_SUBMITTED_RESUMABLE")
 
     # ---- RBF-RESUME-01 ------------------------------------------------------
-    def _install_nonsignalling_intent(self):
+    def _install_nonsignalling_intent(self, sequence=0xFFFFFFFF):
         """A second stored intent whose PSBT no longer signals replaceability.
 
         The stored bytes are sealed by the real evidence store, and matching
-        reservation rows are inserted directly; the resume path must refuse
-        on the local BIP125 check before any RPC.
+        reservation + coin rows are inserted directly; the resume path must
+        refuse on the local BIP125 check before any preflight or send RPC.
         """
         from wam_regtest.bip39_spend_session import _owner_binding
         base = PSBT.decode(self.signed)
         nonsignalling = replace(base, tx=replace(base.tx, inputs=(("07" * 32, 0),),
-                                                 sequence=0xFFFFFFFF)).encode()
-        self.assertEqual(PSBT.decode(nonsignalling).tx.sequence_values(), (0xFFFFFFFF,))
+                                                 sequence=sequence)).encode()
+        self.assertEqual(PSBT.decode(nonsignalling).tx.sequence_values(), (sequence,))
         token = "c" * 32
         txid = PSBT.decode(nonsignalling).txid()
         session = self._restart()
         with session.scanner.store.transaction():
+            session.scanner.store.db.execute(
+                "INSERT INTO coins(txid,vout,account,epoch,atoms,public_key,tweak,label,k,received,spent) "
+                "SELECT ?,0,account,epoch,atoms,public_key,tweak,label,k,received,NULL "
+                "FROM coins WHERE txid=? AND vout=?",
+                ("07" * 32, self.coin["txid"], self.coin["vout"]))
             session.scanner.store.db.execute(
                 "INSERT INTO reservations(txid,vout,token,state,created) VALUES (?,?,?,?,?)",
                 ("07" * 32, 0, token, "signed", 0))
@@ -384,21 +432,26 @@ class UncertainResumePreflight(unittest.TestCase):
 
     def test_nonsignalling_stored_psbt_refuses_before_any_rpc(self):
         from wam_regtest.wallet_session import WalletSessionError
-        self._signed_session()
-        session, token, txid = self._install_nonsignalling_intent()
-        self.assertEqual(self._item(session, token)["classification"],
-                         "SIGNED_NOT_SUBMITTED_RESUMABLE")
-        before_saved = list(self.vault.saved)
-        with self.assertRaises(WalletSessionError) as caught:
-            session.resume_signed_intent(token, txid, approved=True)
-        self.assertEqual(caught.exception.args, ("RBF_SIGNALLING_MISSING",))
-        self.assertFalse(hasattr(caught.exception, "preflight_rejection"))
-        # Refused before any preflight or submission; the state is kept.
-        self.assertEqual(self.core.calls, [])
-        self.assertEqual(_states(session.scanner), {"signed"})
-        self.assertEqual(self.vault.saved, before_saved)
-        self.assertFalse(session.faulted)
-        self.assertFalse(session._q06_uncertain)
+        for sequence in (0xFFFFFFFF, 0xFFFFFFFE):
+            with self.subTest(sequence=hex(sequence)):
+                self.setUp()
+                self._signed_session()
+                session, token, txid = self._install_nonsignalling_intent(sequence)
+                self.assertEqual(self._item(session, token)["classification"],
+                                 "SIGNED_NOT_SUBMITTED_RESUMABLE")
+                self.core.calls.clear()
+                before_saved = list(self.vault.saved)
+                before_rows = _reservations(session.scanner)
+                with self.assertRaises(WalletSessionError) as caught:
+                    session.resume_signed_intent(token, txid, approved=True)
+                self.assertEqual(caught.exception.args, ("RBF_SIGNALLING_MISSING",))
+                self.assertFalse(hasattr(caught.exception, "preflight_rejection"))
+                # Refused before any preflight or submission; the state is kept.
+                self.assertEqual(self.core.calls, [])
+                self.assertEqual(_reservations(session.scanner), before_rows)
+                self.assertEqual(self.vault.saved, before_saved)
+                self.assertFalse(session.faulted)
+                self.assertFalse(session._q06_uncertain)
 
     def test_uncertain_nonsignalling_stored_psbt_refuses_before_any_rpc(self):
         from wam_regtest.wallet_session import WalletSessionError
@@ -410,12 +463,14 @@ class UncertainResumePreflight(unittest.TestCase):
                 "UPDATE reservations SET state='uncertain' WHERE token=?", (token,))
         self.assertEqual(self._item(session, token)["classification"],
                          "UNCERTAIN_NOT_OBSERVED_RESUMABLE")
+        self.core.calls.clear()
         before_saved = list(self.vault.saved)
+        before_rows = _reservations(session.scanner)
         with self.assertRaises(WalletSessionError) as caught:
             session.resume_signed_intent(token, txid, approved=True)
         self.assertEqual(caught.exception.args, ("RBF_SIGNALLING_MISSING",))
         self.assertEqual(self.core.calls, [])
-        self.assertEqual(_states(session.scanner), {"uncertain"})
+        self.assertEqual(_reservations(session.scanner), before_rows)
         self.assertEqual(self.vault.saved, before_saved)
         self.assertFalse(session.faulted)
         self.assertFalse(session._q06_uncertain)
@@ -451,9 +506,10 @@ class AllowlistAndPropagation(unittest.TestCase):
         finally:
             executor.submit("quit").result(timeout=30)
 
-    def _session_rejection(self, token=None):
+    def _session_rejection(self, token=None, *, cls=None,
+                           code="WALLET_BROADCAST_REJECTED_LOCK_RETAINED"):
         from wam_regtest.wallet_session import WalletSessionError
-        error = WalletSessionError("WALLET_BROADCAST_REJECTED_LOCK_RETAINED")
+        error = (WalletSessionError if cls is None else cls)(code)
         if token is not None:
             error.preflight_rejection = token
         return error
@@ -465,20 +521,43 @@ class AllowlistAndPropagation(unittest.TestCase):
                          set(PREFLIGHT_REJECT_REASONS.values()) | {"POLICY_REJECTED"})
 
     def test_allowlisted_token_reaches_the_executor_typed(self):
+        from wam_regtest.bip39_spend_session import Q06SpendSessionError
         from wam_regtest.wallet_executor import WalletExecutorError
-        for token in ("FEE_POLICY_REJECTED", "POLICY_REJECTED", "ALREADY_IN_MEMPOOL"):
-            with self.subTest(token=token):
-                error = self._deny(self._session_rejection(token))
-                self.assertIs(type(error), WalletExecutorError)
-                self.assertEqual(error.args, ("WALLET_BROADCAST_REJECTED_LOCK_RETAINED",))
-                self.assertEqual(getattr(error, "preflight_rejection", None), token)
+        from wam_regtest.wallet_session import WalletSessionError
+        for cls in (WalletSessionError, Q06SpendSessionError):
+            for token in ("FEE_POLICY_REJECTED", "POLICY_REJECTED", "ALREADY_IN_MEMPOOL"):
+                with self.subTest(cls=cls.__name__, token=token):
+                    error = self._deny(self._session_rejection(token, cls=cls))
+                    self.assertIs(type(error), WalletExecutorError)
+                    self.assertEqual(error.args, ("WALLET_BROADCAST_REJECTED_LOCK_RETAINED",))
+                    self.assertEqual(getattr(error, "preflight_rejection", None), token)
 
-    def test_unlisted_or_missing_tokens_never_cross(self):
+    def test_unlisted_missing_or_untrusted_tokens_never_cross(self):
+        from wam_regtest.gui_errors import preflight_rejection
+        from wam_regtest.wallet_session import WalletSessionError
+
+        class HostileValueError(ValueError):
+            def __str__(self):
+                raise AssertionError("str() must not be called")
+
         error = self._deny(self._session_rejection("MALICIOUS_CUSTOM_TOKEN"))
         self.assertIsNone(getattr(error, "preflight_rejection", None))
         self.assertEqual(error.args, ("WALLET_BROADCAST_REJECTED_LOCK_RETAINED",))
+        self.assertIsNone(preflight_rejection(error))
         error = self._deny(self._session_rejection(None))
         self.assertIsNone(getattr(error, "preflight_rejection", None))
+        self.assertIsNone(preflight_rejection(error))
+        # Untrusted ValueError / RuntimeError or non-rejection codes never cross.
+        for bad in (
+                self._session_rejection("FEE_POLICY_REJECTED", cls=ValueError),
+                self._session_rejection("FEE_POLICY_REJECTED", cls=HostileValueError),
+                self._session_rejection("FEE_POLICY_REJECTED", cls=WalletSessionError,
+                                        code="WALLET_BROADCAST_NOT_SUBMITTED_LOCK_RETAINED"),
+        ):
+            delivered = self._deny(bad)
+            self.assertIsNone(getattr(delivered, "preflight_rejection", None))
+            self.assertIsNone(preflight_rejection(bad))
+            self.assertIsNone(preflight_rejection(delivered))
 
     def test_arbitrary_exception_text_never_reaches_the_result(self):
         from wam_regtest.wallet_executor import WalletExecutorError
@@ -489,15 +568,34 @@ class AllowlistAndPropagation(unittest.TestCase):
         self.assertIsNone(getattr(error, "preflight_rejection", None))
         self.assertNotIn("SECRET", " ".join(str(a) for a in error.args))
 
-    def test_gui_sees_the_public_category_after_executor_transport(self):
-        from wam_regtest.gui_errors import error_text, operation_error
-        from wam_regtest.wallet_executor import WalletExecutorError
-        delivered = WalletExecutorError("WALLET_BROADCAST_REJECTED_LOCK_RETAINED")
-        delivered.preflight_rejection = "FEE_POLICY_REJECTED"
-        self.assertEqual(operation_error("resume_intent", delivered),
-                         "WALLET_BROADCAST_REJECTED_LOCK_RETAINED")
-        # The delivered diagnostic is the neutral attempt-scoped copy.
-        self.assertEqual(error_text("WALLET_BROADCAST_REJECTED_LOCK_RETAINED"), ENGLISH)
+    def test_gui_sees_the_public_category_and_neutral_copy_after_executor_transport(self):
+        from PySide6.QtWidgets import QApplication
+        from wam_regtest.bip39_owner_gui import Bip39TrialWindow
+        from wam_regtest.gui_errors import error_text, operation_error, preflight_rejection
+        from wam_regtest.wallet_executor import ExecutorState, WalletExecutorError
+        delivered = self._deny(self._session_rejection("FEE_POLICY_REJECTED"))
+        code = operation_error("resume_intent", delivered)
+        self.assertEqual(code, "WALLET_BROADCAST_REJECTED_LOCK_RETAINED")
+        self.assertEqual(preflight_rejection(delivered), "FEE_POLICY_REJECTED")
+        self.assertEqual(error_text(code), ENGLISH)
+
+        app = QApplication.instance() or QApplication([])
+
+        class Owner:
+            state = ExecutorState(locked=False, core_alive=True)
+            busy = False
+            closed = False
+
+        window = Bip39TrialWindow(Owner())
+        try:
+            window._on_denied(code)
+            self.assertEqual(window._last_error_code, "WALLET_BROADCAST_REJECTED_LOCK_RETAINED")
+            self.assertIn(ENGLISH, window.status.text())
+        finally:
+            window._poll.stop()
+            window.hide()
+            window.deleteLater()
+            app.processEvents()
 
 
 class CatalogParity(unittest.TestCase):
