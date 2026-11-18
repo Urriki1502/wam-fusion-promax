@@ -1024,6 +1024,15 @@ _PUBLIC_FAILURE_CODES = frozenset((
 ))
 
 
+def validate_restore_reservation_claim(restored):
+    """Require strict boolean True on nested reservation non-restoration claim."""
+    if (type(restored) is not dict
+            or restored.get('status') != 'FRESH_PROFILE_SAME_CHAIN_HISTORY_RESTORE_PASS'
+            or restored.get('all_original_owners_shutdown_verified') is not True
+            or restored.get('mnemonic_does_not_restore_signed_reservations') is not True):
+        raise ValueError('Q06_MAC_FRESH_SAME_CHAIN_RESTORE_DENIED')
+
+
 def run(core, source):
     try:
         receipt = qualify(core, source)
@@ -1031,9 +1040,7 @@ def run(core, source):
         from .q05_platforms import DarwinArm64Adapter
         restored = restore_same_chain(core,source,Path.cwd(),DarwinArm64Adapter())
         receipt['fresh_profile_same_chain_history'] = restored
-        if (restored['status']!='FRESH_PROFILE_SAME_CHAIN_HISTORY_RESTORE_PASS'
-                or restored['all_original_owners_shutdown_verified'] is not True):
-            raise ValueError('Q06_MAC_FRESH_SAME_CHAIN_RESTORE_DENIED')
+        validate_restore_reservation_claim(restored)
         receipt['fresh_same_chain_profile_full_history_recovered'] = True
         recovered = _qualify_recovered_unsigned_cancel(
             core, source, DarwinArm64Adapter(), receipt['source_sha'])
@@ -1043,9 +1050,13 @@ def run(core, source):
         with Path("q06-frozen-spend-evidence.json").open("x") as output:
             json.dump(receipt, output, sort_keys=True, indent=2)
             output.write("\n")
+        nested = receipt.get("fresh_profile_same_chain_history")
         if (receipt["status"] != "Q06_NATIVE_BIP39_SEND_CONFIRM_REOPEN_PASS"
                 or receipt["q06_bip39_spend_confirmed"] is not True
-                or receipt["q06_bip39_same_owner_reopen_reserved"] is not True):
+                or receipt["q06_bip39_same_owner_reopen_reserved"] is not True
+                or receipt.get("fresh_same_chain_profile_full_history_recovered") is not True
+                or type(nested) is not dict
+                or nested.get("mnemonic_does_not_restore_signed_reservations") is not True):
             raise ValueError("Q06_SPEND_NOT_QUALIFIED")
         print("MACOS_Q06_NATIVE_BIP39_SEND_CONFIRM_REOPEN_PASS", flush=True)
         return 0

@@ -236,8 +236,10 @@ else:
     with nullcontext(tempfile.mkdtemp(prefix='q06-frozen-', dir=runs)) as clean:
         subprocess.run([str(Path(binary).resolve()), '--ci-q06-bip39-spend'],
                        cwd=clean, env=spend_env, timeout=600, check=True)
+        # PM-080-SPEND-RECEIPT-CHECK-START
         report=Path(clean)/'q06-frozen-spend-evidence.json'
         data=loads(report.read_text())
+        restored=data.get("fresh_profile_same_chain_history")
         assert (data["status"]=="Q06_NATIVE_BIP39_SEND_CONFIRM_REOPEN_PASS"
                 and data["mainnet_allowed"] is False
                 and data["q06_bip39_spend_confirmed"] is True
@@ -245,8 +247,13 @@ else:
                 and data["q06_bip39_same_chain_seed_history_recovery"] is True
                 and data["fresh_same_chain_profile_full_history_recovered"] is True
                 and data["q06_post_reopen_txid_readonly_reconciliation"] is True
-                and data["q06_bip39_fresh_mnemonic_full_history_recovery"] is False)
+                and data["q06_bip39_fresh_mnemonic_full_history_recovery"] is False
+                and type(restored) is dict
+                and restored.get("status")=="FRESH_PROFILE_SAME_CHAIN_HISTORY_RESTORE_PASS"
+                and restored.get("all_original_owners_shutdown_verified") is True
+                and restored.get("mnemonic_does_not_restore_signed_reservations") is True)
         shutil.copyfile(report,out/'q06-frozen-spend-evidence.json')
+        # PM-080-SPEND-RECEIPT-CHECK-END
         shutil.copytree(Path(clean)/'fusion-ui-review',
                         out/'q06-ui-review')
     print("MACOS_APP_STAGE=FROZEN_Q06_BIP39_SPEND_PASS", flush=True)

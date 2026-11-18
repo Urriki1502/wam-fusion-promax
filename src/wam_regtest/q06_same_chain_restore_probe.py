@@ -5,17 +5,111 @@ participant is positively stopped before a fresh participant on new ports restor
 and syncs historical blocks from the sole coordinator. No chain/vault/anchor is
 copied; restored custody remains read-only and original reservations survive.
 """
+from collections.abc import Mapping
 from hashlib import sha256
 import json
 import errno
+import os
 from pathlib import Path
 import re
 import secrets
+import stat
+import sys
 import time
 from .wallet_executor import WalletExecutor, WalletExecutorError
 from .bip39_owner_backend import Bip39ReadOnlyBackend
 from .shared_regtest import SharedRegtestProfile
 from .custody import create_directory
+
+RESERVATION_DENIED_CODE = 'Q06_SAME_CHAIN_RESTORE_RESERVATION_DENIED'
+UNCERTAIN_FIXTURE_STATUS = (
+    "UNREACHABLE: no non-faked executor action stops in 'uncertain' without "
+    "a mid-broadcast Core/save fault (and signed fixture locks remaining coin)"
+)
+
+
+def _rows_to_reservation_map(rows):
+    mapping = {}
+    for row in rows:
+        if type(row) not in (tuple, list) or len(row) != 5:
+            raise ValueError(RESERVATION_DENIED_CODE)
+        txid, vout, token, state, created = row
+        coin = (txid, vout)
+        if coin in mapping:
+            raise ValueError(RESERVATION_DENIED_CODE)
+        mapping[coin] = (token, state, created)
+    return mapping
+
+
+def _valid_reservation_map(mapping):
+    if not isinstance(mapping, Mapping):
+        raise ValueError(RESERVATION_DENIED_CODE)
+    out = {}
+    for coin, entry in mapping.items():
+        if (type(coin) is not tuple or len(coin) != 2
+                or type(entry) is not tuple or len(entry) < 2):
+            raise ValueError(RESERVATION_DENIED_CODE)
+        out[coin] = entry
+    return out
+
+
+def verify_restore_reservation_contract(
+    *,
+    before_original_map,
+    after_original_map,
+    restored_map,
+    signed_outpoints=None,
+    signed_token=None,
+    before_intents=None,
+    after_intents=None,
+):
+    """Enforce PROBE-FLAG-01: restored map empty, original unchanged, signed fixture retained."""
+    before_map = _valid_reservation_map(before_original_map)
+    after_map = _valid_reservation_map(after_original_map)
+    restored = _valid_reservation_map(restored_map)
+    if restored:
+        raise ValueError(RESERVATION_DENIED_CODE)
+    if after_map != before_map:
+        raise ValueError(RESERVATION_DENIED_CODE)
+    signed_before = {
+        coin: entry for coin, entry in before_map.items() if entry[1] == 'signed'
+    }
+    if not signed_before:
+        raise ValueError(RESERVATION_DENIED_CODE)
+    if signed_token is not None:
+        if not any(entry[0] == signed_token for entry in signed_before.values()):
+            raise ValueError(RESERVATION_DENIED_CODE)
+    if signed_outpoints is not None:
+        coins = tuple(signed_outpoints)
+        if not coins:
+            raise ValueError(RESERVATION_DENIED_CODE)
+        for coin in coins:
+            if coin not in signed_before or coin in restored:
+                raise ValueError(RESERVATION_DENIED_CODE)
+            if signed_token is not None and signed_before[coin][0] != signed_token:
+                raise ValueError(RESERVATION_DENIED_CODE)
+            if after_map.get(coin) != before_map[coin]:
+                raise ValueError(RESERVATION_DENIED_CODE)
+    if before_intents is not None or after_intents is not None:
+        if (type(before_intents) not in (list, tuple)
+                or type(after_intents) not in (list, tuple)
+                or list(after_intents) != list(before_intents)):
+            raise ValueError(RESERVATION_DENIED_CODE)
+        if not any(
+                isinstance(item, Mapping)
+                and item.get('state') == 'signed'
+                and item.get('classification') == 'SIGNED_NOT_SUBMITTED_RESUMABLE'
+                and (signed_token is None or item.get('token') == signed_token)
+                for item in after_intents):
+            raise ValueError(RESERVATION_DENIED_CODE)
+
+
+def _complete_backup_challenge(worker, phrase_value):
+    words = phrase_value.split()
+    challenge = worker.request('backup_challenge', timeout=30)
+    answers = tuple(words[i - 1] for i in challenge['positions'])
+    if worker.request('backup_verify', challenge['challenge_id'], answers, timeout=30) is not True:
+        raise ValueError('Q06_SAME_CHAIN_RESTORE_BACKUP_DENIED')
 
 
 def qualify(core, source, parent, adapter, *, port_base=29554):
@@ -27,6 +121,8 @@ def qualify(core, source, parent, adapter, *, port_base=29554):
               'physical_accepted':False,'independent_reviewed':False,
               'chain_copied':False,'native_anchor_copied':False,
               'old_profile_overwritten':False,'restored_signer_enabled':False,
+              'mnemonic_does_not_restore_signed_reservations':False,
+              'uncertain_fixture':UNCERTAIN_FIXTURE_STATUS,
               'platform':adapter.platform_id,'ports':[[port_base+i,port_base+i+1] for i in (0,2,4)]}
     profiles = [SharedRegtestProfile('127.0.0.1',coordinator=True,
                     rpc_port=port_base,p2p_port=port_base+1,peer_port=port_base+3),
@@ -45,6 +141,76 @@ def qualify(core, source, parent, adapter, *, port_base=29554):
         def _start_core(self):
             self.owner.start(timeout=90,
                 _defer_shared_network=self.shared_profile is profiles[2])
+
+        def _read_readonly_reservation_map(self):
+            from .managed_wallet_checkpoint import _owned
+            from .bip39_seed_vault import open_owned_seed_container
+            from .wallet_session import WalletCoreCli
+            from . import custody
+            from .managed_wallet_session import RuntimeGuard
+            from wam_sp.scanner import Scanner
+            owner = self._core()
+            _owned(owner)
+            if (any(p.name.startswith('bip39-12-scan-') for p in owner.directory.iterdir())
+                    or (owner.directory / 'q06-payment-evidence').exists()):
+                raise ValueError(RESERVATION_DENIED_CODE)
+            runtime_dir = owner.directory / ('q06-res-' + secrets.token_hex(16))
+            custody.create_directory(runtime_dir)
+            db_path = runtime_dir / 'wallet-runtime.sqlite'
+            scanner = guard = rpc = keys = None
+            cleaned = False
+            try:
+                keys = open_owned_seed_container(
+                    owner, self._seed_folder, self.source, bytes(self._secret),
+                    authorized=True, keychain=self.keychain)
+                if sys.platform == 'win32':
+                    from .windows_private_storage import create_managed_runtime
+                    create_managed_runtime(db_path)
+                scanner = Scanner(db_path, keys.accounts())
+                guard = RuntimeGuard(db_path)
+                rpc = WalletCoreCli(owner.cli, owner.directory)
+                rpc.attest()
+                scanner.sync(rpc)
+                scanner.assert_current()
+                with scanner.store.transaction():
+                    rows = scanner.store.db.execute(
+                        'SELECT txid,vout,token,state,created FROM reservations ORDER BY txid,vout'
+                    ).fetchall()
+                guard.check()
+                cleaned = True
+                return _rows_to_reservation_map(rows)
+            finally:
+                if scanner is not None:
+                    scanner.close()
+                if rpc is not None and getattr(rpc, '_transport', None) is not None:
+                    rpc._transport.close()
+                if keys is not None:
+                    keys.close()
+                if guard is not None:
+                    if cleaned:
+                        lock = db_path.with_name(db_path.name + '.scan.lock')
+                        if lock.exists() or lock.is_symlink():
+                            info = lock.lstat()
+                            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                                    or lock.is_symlink()
+                                    or (sys.platform != 'win32'
+                                        and (info.st_uid != os.geteuid()
+                                             or stat.S_IMODE(info.st_mode) != 0o600))):
+                                raise ValueError('Q06_SAME_CHAIN_RESTORE_SCAN_LOCK_UNCERTAIN')
+                            lock.unlink()
+                        guard.remove_owned()
+                        runtime_dir.rmdir()
+                    else:
+                        guard.close()
+
+        def _read_reservation_map(self):
+            if self._spend_session is not None:
+                with self._spend_session.scanner.store.transaction():
+                    rows = self._spend_session.scanner.store.db.execute(
+                        'SELECT txid,vout,token,state,created FROM reservations ORDER BY txid,vout'
+                    ).fetchall()
+                return _rows_to_reservation_map(rows)
+            return self._read_readonly_reservation_map()
 
         def execute(self, action, args, kwargs):
             try:
@@ -71,6 +237,8 @@ def qualify(core, source, parent, adapter, *, port_base=29554):
                     _owned(owner)  # Unchanged HTTP and custody checks after sync.
                     report['restored_core_attested_before_network_sync']=True
                     report['restored_core_synced_before_history_scan']=True
+                if action == 'snapshot' and type(result) is dict:
+                    result = dict(result, reservation_map=self._read_reservation_map())
                 return result
             except Exception as error:
                 # Public type/errno only: never exception strings, args,
@@ -202,11 +370,40 @@ def qualify(core, source, parent, adapter, *, port_base=29554):
         a.request('sign',draft.commitment,timeout=240)
         txid = a.request('broadcast',draft.commitment,timeout=240)
         confirmed = a.request('confirm',txid,timeout=240)
-        before = a.request('snapshot',timeout=240)
-        if (confirmed['txid']!=txid or before['history_count_shown']<2
-                or before['reservation_count']!=1):
+        initial = a.request('snapshot',timeout=240)
+        if (confirmed['txid']!=txid or initial['history_count_shown']<2
+                or initial['reservation_count']!=1):
             raise ValueError('Q06_SAME_CHAIN_RESTORE_ORIGINAL_HISTORY_DENIED')
-        wait(lambda:state(b)['tip']==before['tip'])
+        wait(lambda:state(b)['tip']==initial['tip'])
+        step('ORIGINAL_SIGNED_UNSUBMITTED_FIXTURE')
+        signed_draft = a.request('prepare',destination,40_000,1_000,timeout=240)
+        signed_review = a.request('sign',signed_draft.commitment,timeout=240)
+        if signed_review.commitment != signed_draft.commitment:
+            raise ValueError(RESERVATION_DENIED_CODE)
+        before = a.request('snapshot',timeout=240)
+        before_intents = a.request('intent_status',timeout=240)
+        before_map = _valid_reservation_map(before.get('reservation_map'))
+        signed_rows = {
+            coin: entry for coin, entry in before_map.items()
+            if entry[1] == 'signed'
+        }
+        signed_tokens = {entry[0] for entry in signed_rows.values()}
+        if (before['reservation_count'] != 2
+                or before['payment_signed'] is not True
+                or not signed_rows
+                or len(signed_tokens) != 1):
+            raise ValueError(RESERVATION_DENIED_CODE)
+        signed_token = next(iter(signed_tokens))
+        signed_outpoints = tuple(sorted(signed_rows))
+        if not any(
+                isinstance(item, Mapping)
+                and item.get('token') == signed_token
+                and item.get('state') == 'signed'
+                and item.get('classification') == 'SIGNED_NOT_SUBMITTED_RESUMABLE'
+                and item.get('txid') != txid
+                for item in before_intents.get('intents', ())):
+            raise ValueError(RESERVATION_DENIED_CODE)
+        report['uncertain_fixture'] = UNCERTAIN_FIXTURE_STATUS
         step('VERIFIED_ORIGINAL_PARTICIPANT_SHUTDOWN')
         stop(b)
         report['original_participant_shutdown_verified'] = True
@@ -229,10 +426,13 @@ def qualify(core, source, parent, adapter, *, port_base=29554):
                 or restored['account_id']!=opened['account_id']
                 or restored['signer_allowed'] is not False):
             raise ValueError('Q06_SAME_CHAIN_RESTORE_FRESH_IDENTITY_DENIED')
+        if restored.get('backup_status') != 'verified':
+            _complete_backup_challenge(c, phrase)
         wait(lambda:state(a)['connected'] and state(c)['connected']
                        and state(c)['tip']==before['tip'])
         recovered = c.request('snapshot',timeout=240)
         after = a.request('snapshot',timeout=240)
+        after_intents = a.request('intent_status',timeout=240)
         expected = {row['txid'] for row in before['history']}
         actual = {row['txid'] for row in recovered['history']}
         if (recovered['height']!=before['height'] or recovered['tip']!=before['tip']
@@ -243,15 +443,28 @@ def qualify(core, source, parent, adapter, *, port_base=29554):
                 or after['reservation_count']!=before['reservation_count']
                 or after['confirmed_atoms']!=before['confirmed_atoms']):
             raise ValueError('Q06_SAME_CHAIN_RESTORE_FUNDS_HISTORY_DENIED')
+        verify_restore_reservation_contract(
+            before_original_map=before.get('reservation_map'),
+            after_original_map=after.get('reservation_map'),
+            restored_map=recovered.get('reservation_map'),
+            signed_outpoints=signed_outpoints,
+            signed_token=signed_token,
+            before_intents=before_intents.get('intents'),
+            after_intents=after_intents.get('intents'),
+        )
         report.update(status='FRESH_PROFILE_SAME_CHAIN_HISTORY_RESTORE_PASS',
             restored_receive_code_sha256=sha256(restored['receive_code'].encode('ascii')).hexdigest(),
             confirmed_txid=txid,confirmed_height=before['height'],confirmed_tip=before['tip'],
             confirmed_atoms=before['confirmed_atoms'],history_count=len(actual),
             original_irreversible_reservations_preserved=True,
+            signed_unsubmitted_fixture_verified=True,
+            uncertain_fixture=UNCERTAIN_FIXTURE_STATUS,
             mnemonic_does_not_restore_signed_reservations=True)
         step('RESTORED_PROFILE_CORE_RESTART_AND_HISTORY')
         stop(c)
         c, reopened, _ = start(2,'reopen',existing_root=restored_root)
+        if reopened.get('backup_status') != 'verified':
+            _complete_backup_challenge(c, phrase)
         wait(lambda:state(a)['connected'] and state(c)['connected']
                        and state(c)['tip']==before['tip'])
         reopened_view = c.request('snapshot',timeout=240)
@@ -260,6 +473,12 @@ def qualify(core, source, parent, adapter, *, port_base=29554):
                 or {row['txid'] for row in reopened_view['history']}!=expected
                 or reopened_view['signer_allowed'] is not False):
             raise ValueError('Q06_SAME_CHAIN_RESTORE_POST_RESTART_HISTORY_DENIED')
+        try:
+            if _valid_reservation_map(reopened_view.get('reservation_map')):
+                raise ValueError(RESERVATION_DENIED_CODE)
+        except ValueError:
+            report['mnemonic_does_not_restore_signed_reservations'] = False
+            raise
         report['restored_same_owner_core_reopened'] = True
         step('RESTORED_AND_ORIGINAL_OWNERS_CLEAN_SHUTDOWN')
         stop(c)
