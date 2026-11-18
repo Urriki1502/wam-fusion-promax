@@ -52,6 +52,14 @@ import sys
 import unittest
 from pathlib import Path
 
+# Install the native WSP authentication guard (src/wam_regtest/__init__.py)
+# BEFORE the pinned WSP harness or any wam_sp module is imported. The harness
+# (wsp-upstream/tests/test_vectors.py) imports wam_sp.core at module level;
+# importing wam_sp first would leave an unauthenticated module in sys.modules
+# and wam_regtest.wsp_import.install_native_wsp_guard would then refuse it
+# (WSP_PREIMPORTED_RUNTIME_DENIED) when test_contracts runs after this file.
+import wam_regtest  # noqa: F401
+
 HERE = Path(__file__).resolve().parent
 VECDIR = HERE / "vectors_official"
 WSP_TESTS = HERE.parent / "wsp-upstream" / "tests"
@@ -82,6 +90,19 @@ WSP_BIP375_ORD_01_DESC = (
     "outputs 1 and 2 uses label=2 (same spend key)"
 )
 WSP_BIP375_ORD_01_ERROR = "SP_OUTPUT_MISMATCH"
+
+
+def _assert_exact_sp_output_mismatch(test_case, invoke):
+    """Assert invoke() raises ValueError exactly 'SP_OUTPUT_MISMATCH'.
+
+    Exact equality only: prefixed/suffixed or otherwise decorated messages
+    fail, and so does invoke() returning without raising (a future WSP that
+    accepts the fixture).
+    """
+    with test_case.assertRaises(ValueError) as caught:
+        invoke()
+    test_case.assertEqual(str(caught.exception), 'SP_OUTPUT_MISMATCH')
+    test_case.assertEqual(str(caught.exception), WSP_BIP375_ORD_01_ERROR)
 
 
 def _load_json(name):
@@ -276,8 +297,36 @@ class TestBIP375Official(unittest.TestCase):
         # the gap stays visible; if WSP's ordering is fixed upstream, this test
         # fails loudly and must be updated (the fixture would then belong to
         # test_valid_fixtures_accepted).
-        with self.assertRaisesRegex(ValueError, WSP_BIP375_ORD_01_ERROR):
-            self._validate({"psbt": self._gap_psbt(), "checks": None})
+        _assert_exact_sp_output_mismatch(
+            self,
+            lambda: self._validate({"psbt": self._gap_psbt(), "checks": None}),
+        )
+
+    def test_exact_error_helper_rejects_affixed_messages(self):
+        # The exact-match helper above must not let decorated messages pass:
+        # an unanchored regex would accept e.g.
+        # 'UNRELATED_SP_OUTPUT_MISMATCH_SUFFIX', assertEqual must not.
+        for message in (
+            "UNRELATED_SP_OUTPUT_MISMATCH_SUFFIX",
+            "PREFIX_SP_OUTPUT_MISMATCH",
+            "SP_OUTPUT_MISMATCH_SUFFIX",
+            " SP_OUTPUT_MISMATCH",
+            "SP_OUTPUT_MISMATCH ",
+        ):
+            with self.subTest(message=message):
+
+                def _raise(message=message):
+                    raise ValueError(message)
+
+                with self.assertRaises(AssertionError):
+                    _assert_exact_sp_output_mismatch(self, _raise)
+        # The exact message passes, and accepting (not raising) fails.
+        def _raise_exact():
+            raise ValueError(WSP_BIP375_ORD_01_ERROR)
+
+        _assert_exact_sp_output_mismatch(self, _raise_exact)
+        with self.assertRaises(AssertionError):
+            _assert_exact_sp_output_mismatch(self, lambda: None)
 
     def _gap_psbt(self):
         for item in self.valid:
