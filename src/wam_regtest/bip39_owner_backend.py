@@ -306,6 +306,11 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
             raise Q06ReadOnlyError("Q06_GUI_ALREADY_ACTIVATED")
         if self._secret is None or self._seed_folder is None:
             raise Q06ReadOnlyError("Q06_GUI_LOCKED")
+        # Enforce the MAC-authenticated backup acknowledgement boundary on
+        # every spending activation, matching reconcile_reorg rather than
+        # trusting UI routing or an unauthenticated sidecar read.
+        if not self._q06_ack_authenticated(self._seed_folder):
+            raise Q06ReadOnlyError("Q06_GUI_BACKUP_ACK_REQUIRED")
         from .bip39_spend_session import open_owned_spend_session
         session = open_owned_spend_session(
             self._core(), self._seed_folder, self.source,

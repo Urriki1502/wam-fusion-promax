@@ -148,6 +148,14 @@ def qualify(core, source, root, receipt, *, confirmed=False,
         if headless:
             opened = executor.request("open", password, "create", "", timeout=120)
             phrase = opened["mnemonic_once"]
+            words = phrase.split()
+            challenge = executor.request("backup_challenge", timeout=120)
+            if executor.request(
+                    "backup_verify", challenge["challenge_id"],
+                    tuple(words[p - 1] for p in challenge["positions"]),
+                    timeout=120) is not True:
+                raise Q06PlatformQualificationError("Q06_PLATFORM_BACKUP_DENIED")
+            words = None
         else:
             from .desktop import qt_application
             from .bip39_fusion_gui import Bip39FusionWindow
