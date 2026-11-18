@@ -20,7 +20,7 @@ def preflight_rejection(error):
     """Fixed public preflight-rejection token from a trusted rejection error."""
     from .wallet_session import WalletSessionError, PREFLIGHT_REJECTION_TOKENS
     from .wallet_executor import WalletExecutorError
-    from .bip39_spend_session import Q06SpendSessionError
+    from .domain.errors import Q06SpendSessionError
     if type(error) not in (WalletSessionError, Q06SpendSessionError, WalletExecutorError):
         return None
     if error.args != ('WALLET_BROADCAST_REJECTED_LOCK_RETAINED',):
@@ -32,7 +32,7 @@ def operation_error(action,error):
     from .wallet_session import WalletSessionError
     from .vault import VaultError
     from .wallet_executor import WalletExecutorError
-    from .bip39_spend_session import Q06SpendSessionError
+    from .domain.errors import Q06SpendSessionError
     # Do not call str(error): an external exception may contain private data
     # or implement a hostile formatter. Exact single-argument categories only.
     args=error.args if type(error) in (ValueError,WalletSessionError,VaultError,WalletExecutorError,Q06SpendSessionError) else ()

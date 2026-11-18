@@ -14,6 +14,7 @@ import stat
 import sys
 
 from . import custody
+from .domain.errors import Q06SpendSessionError
 from .domain.payment_evidence import PaymentEvidenceStore
 from .foundation import diagnostics
 from .managed_wallet_checkpoint import _owned, _runtime
@@ -33,10 +34,6 @@ from .bip39_scanner_checkpoint import (
     decode_candidate, require_irreversible_preserved,
 )
 from wam_sp.scanner import Scanner
-
-
-class Q06SpendSessionError(ValueError):
-    """Public bounded error. Never interpolate secrets, paths or RPC details."""
 
 
 def _reservation_map(scanner):
