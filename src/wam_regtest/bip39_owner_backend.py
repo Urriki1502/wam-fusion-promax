@@ -652,9 +652,14 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                 raise Q06ReadOnlyError("Q06_GUI_INTENT_STATUS_ARGUMENTS_DENIED")
             return self._spend_session.signed_intent_status()
         if action == "resume_intent":
-            # TX-03 Stage B: explicit owner approval of ONE exact signed intent.
+            # TX-03 Stage B / PM-088 REC-2: explicit owner approval of ONE
+            # exact signed intent. Locked/faulted refuses here, before any
+            # session call; otherwise the session decides and its typed
+            # REC2_UNCERTAIN_RESUBMIT_DEFERRED refusal propagates unchanged
+            # (no second re-submission path exists in this dispatch).
             if (kwargs or len(args) != 3 or args[2] is not True
                     or self._spend_session is None
+                    or self._spend_session.locked
                     or self.public_state()["faulted"]):
                 raise Q06ReadOnlyError("Q06_GUI_RESUME_ARGUMENTS_DENIED")
             return self._spend_session.resume_signed_intent(args[0], args[1], approved=True)

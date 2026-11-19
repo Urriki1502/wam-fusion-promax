@@ -331,15 +331,62 @@ class Q06OwnedSpendSession(WalletSession):
                 raise Q06SpendSessionError('Q06_INTENT_STATUS_SESSION_FAULTED')
             return self._intent_status_unlocked()
 
-    def resume_signed_intent(self, token, txid, *, approved=False):
-        """Stage B: owner-approved submission of the EXACT previously signed tx.
+    def _refuse_uncertain_resubmit(self, token):
+        """PM-088 REC-2: fail closed unless provably signed-and-never-submitted.
 
-        Eligible only for a verified-evidence intent whose inputs are still
-        unspent and which is neither confirmed nor in the mempool. Both 'signed'
-        and 'uncertain' intents require BIP125 replaceability signalling and run
-        the same exact-byte read-only preflight before submission; a 'signed'
-        intent also takes its durable 'uncertain' write-ahead before broadcast.
-        No re-signing or fee rewrite.
+        Why 'signed' with no write-ahead proves "never submitted": signing
+        makes the reservation durably 'signed' before any crypto
+        (wallet_session.py WalletSession.sign, mark_signed then _save), and
+        every submission attempt records its 'uncertain' write-ahead BEFORE
+        sendrawtransaction -- first the 'uncertain' evidence
+        (bip39_spend_session.py _before_broadcast_submission, called from
+        wallet_session.py WalletSession.broadcast before the reservation
+        mark and _save), then, on resume, evidence, mark and _save before
+        Wallet.broadcast. The native anchor is anti-rollback: _save only
+        advances the anchored generation by one from the expected record
+        (_Q06NativeScannerVault.save) and checkpoint advance refuses to
+        lose or downgrade an irreversible row
+        (require_irreversible_preserved), so a recorded write-ahead can
+        never silently revert to plain 'signed'. Durable all-'signed' rows
+        with no 'uncertain' (or 'broadcast') evidence therefore prove no
+        attempt ever passed the write-ahead; anything else -- an
+        'uncertain' or mixed reservation state, a recorded write-ahead, or
+        an unreadable one -- is ambiguous and is refused here, before any
+        RPC, write or state change. Status classification is untouched:
+        uncertain intents stay visible, never released or relabelled.
+        """
+        with self.scanner.store.transaction():
+            rows = self.scanner.store.db.execute(
+                "SELECT state FROM reservations WHERE token=?", (token,)).fetchall()
+        if not rows:
+            return  # No such intent: the caller's NOT_ELIGIBLE path decides.
+        states = {row[0] for row in rows}
+        if states != {'signed'}:
+            if 'uncertain' in states or len(states) != 1:
+                raise WalletSessionError('REC2_UNCERTAIN_RESUBMIT_DEFERRED')
+            return  # Uniform draft/broadcast/other: NOT_ELIGIBLE decides.
+        for stage in ('uncertain', 'broadcast'):
+            try:
+                recorded = self._read_payment_evidence(token, stage)
+            except Q06SpendSessionError:
+                raise  # Profile-level custody/owner failure stays global.
+            except Exception:
+                raise WalletSessionError(
+                    'REC2_UNCERTAIN_RESUBMIT_DEFERRED') from None
+            if recorded is not None:
+                raise WalletSessionError('REC2_UNCERTAIN_RESUBMIT_DEFERRED')
+
+    def resume_signed_intent(self, token, txid, *, approved=False):
+        """Stage B: owner-approved FIRST submission of the EXACT signed tx.
+
+        Eligible only for a verified-evidence intent whose durable state is
+        provably 'signed' with no 'uncertain' write-ahead ever recorded
+        (see _refuse_uncertain_resubmit), whose inputs are still unspent and
+        which is neither confirmed nor in the mempool. An 'uncertain' intent
+        is never re-submitted (PM-088 REC-2, owner UAT policy). A resumable
+        'signed' intent requires BIP125 replaceability signalling, runs the
+        exact-byte read-only preflight, and takes its durable 'uncertain'
+        write-ahead before broadcast. No re-signing or fee rewrite.
         """
         import re
         from types import SimpleNamespace
@@ -349,14 +396,20 @@ class Q06OwnedSpendSession(WalletSession):
                 or re.fullmatch('[0-9a-f]{64}', txid) is None):
             raise Q06SpendSessionError('Q06_RESUME_EXPLICIT_APPROVAL_REQUIRED')
         with self._lock, self.vault.anchor.lease():
-            if (self._q06_uncertain or self.faulted
+            if (self._q06_uncertain or self.faulted or self.locked
                     or any(v is not None for v in (self._prepared, self._signed,
                                                    self._review, self._q06_pending_confirm))):
                 raise Q06SpendSessionError('Q06_RESUME_SESSION_NOT_IDLE')
+            # PM-088 REC-2: refuse an 'uncertain'/ambiguous intent BEFORE
+            # the status observation RPC or any write/state change below.
+            self._refuse_uncertain_resubmit(token)
             item = next((i for i in self._intent_status_unlocked()['intents']
                          if i['token'] == token), None)
-            if (item is None or item['txid'] != txid or item['classification'] not in
-                    ('SIGNED_NOT_SUBMITTED_RESUMABLE', 'UNCERTAIN_NOT_OBSERVED_RESUMABLE')):
+            if (item is not None
+                    and item['classification'] == 'UNCERTAIN_NOT_OBSERVED_RESUMABLE'):
+                raise WalletSessionError('REC2_UNCERTAIN_RESUBMIT_DEFERRED')
+            if (item is None or item['txid'] != txid or item['classification'] !=
+                    'SIGNED_NOT_SUBMITTED_RESUMABLE'):
                 raise Q06SpendSessionError('Q06_RESUME_NOT_ELIGIBLE')
             body = self._read_payment_evidence(token, 'signed')
             signed = bytes.fromhex(body['signed_psbt'])
@@ -392,9 +445,9 @@ class Q06OwnedSpendSession(WalletSession):
                 raise WalletSessionError('RBF_SIGNALLING_MISSING')
             rpc = self._rpc()
             try:
-                # REC-2 (SPEC §5 bullet 1): the SAME exact-byte preflight
-                # contract for a 'signed' AND an 'uncertain' intent, before
-                # any submission attempt.
+                # REC-2 (SPEC §5 bullet 1): the exact-byte preflight contract
+                # for a provably 'signed' first submission, before any
+                # submission attempt ('uncertain' never reaches here, PM-088).
                 rejection = _verify_session_preflight(rpc, signed, review)
             except Exception:
                 # Malformed acceptance, bad identity, untrusted Core or a

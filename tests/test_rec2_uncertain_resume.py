@@ -1,8 +1,11 @@
-"""REC-2 (PM-077): uncertain and signed resume share one preflight boundary.
+"""REC-2 (PM-077) as amended by PM-088 (owner UAT policy): no 'uncertain' resume.
 
 Real pinned-WSP scanner/PSBT/signer/reservations and real encrypted create-only
 payment evidence (macOS native storage); synthetic Core RPC and anchored-vault
-doubles. A definitive typed policy rejection on resume must keep the ORIGINAL
+doubles. PM-088: an 'uncertain' intent is refused with
+REC2_UNCERTAIN_RESUBMIT_DEFERRED before any RPC, write or state change; only a
+provably 'signed' (never-submitted) intent reaches the preflight boundary. A
+definitive typed policy rejection on signed resume must keep the ORIGINAL
 state, locks, bytes and provenance without a new fault, a new uncertainty latch,
 a send, a re-sign or a fee rewrite. Malformed/untrusted/transport preflight
 failures keep today's fault. A non-signalling stored PSBT refuses before any

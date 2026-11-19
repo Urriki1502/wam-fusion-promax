@@ -129,6 +129,15 @@ class WalletExecutor:
                 from .gui_errors import operation_error,preflight_rejection,INPUT_ERRORS
                 public=operation_error(action,failure)
                 if public in INPUT_ERRORS:code=public
+                # PM-088 REC-2: the typed uncertain-resubmit refusal crosses
+                # ONLY from a trusted session/backend error type, unchanged,
+                # so the GUI can show it (locale copy lands in a later job).
+                # Untrusted exception text carrying the same string is denied.
+                from .wallet_session import WalletSessionError as _TrustedSessionError
+                from .domain.errors import Q06SpendSessionError as _TrustedQ06Error
+                if code=='REC2_UNCERTAIN_RESUBMIT_DEFERRED' and type(failure) not in (
+                        _TrustedSessionError,_TrustedQ06Error,WalletExecutorError):
+                    code='WALLET_EXECUTOR_DENIED'
                 if type(code) is not str or not re.fullmatch('[A-Z][A-Z0-9_]{1,95}',code):
                     code='WALLET_EXECUTOR_DENIED'
                 error=WalletExecutorError(code)
