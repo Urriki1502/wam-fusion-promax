@@ -21,6 +21,22 @@ def refuse_explicit_prepare(action):
         raise WalletExecutorError('FEE_EXPLICIT_PREPARE_DENIED')
 
 
+_LEGACY_Q05_RETIRED_ACTIONS = frozenset({
+    'prepare', 'prepare_auto', 'sign', 'broadcast', 'mine',
+    'cancel', 'recover', 'complete_recovery',
+})
+
+
+def legacy_q05_mutation(kind, action, args, kwargs):
+    """Q05 create and spend are retired. Existing-profile reads stay open."""
+    if kind != 'Q05':
+        return False
+    if action == 'open':
+        create = kwargs['create'] if 'create' in kwargs else (args[1] if len(args) > 1 else False)
+        return create is True
+    return action in _LEGACY_Q05_RETIRED_ACTIONS
+
+
 class FrozenDict(dict):
     def _deny(self,*args,**kwargs):raise TypeError('IMMUTABLE_WALLET_RESULT')
     __setitem__=__delitem__=clear=pop=popitem=setdefault=update=__ior__=_deny
@@ -381,6 +397,8 @@ class ManagedWalletBackend:
 
     def execute(self,action,args,kwargs):
         refuse_explicit_prepare(action)
+        if legacy_q05_mutation(self._session_kind, action, args, kwargs):
+            raise WalletExecutorError('LEGACY_Q05_RETIRED')
         if action in ('network_status','network_active'):
             from .shared_regtest import SharedRegtestProfile, peer_status, block_magic
             from .managed_wallet_checkpoint import _owned

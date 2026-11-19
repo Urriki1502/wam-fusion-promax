@@ -10,6 +10,7 @@ from .core import CoreSmokeError
 from .qualification.real_core_smoke import smoke_real_core
 from .q04_runner import Q04RunnerError, run_q04_scenario
 from .external_core import ExternalAttachmentError
+from .wallet_executor import WalletExecutorError
 
 
 def main() -> int:
@@ -75,12 +76,12 @@ def main() -> int:
     attach.add_argument('--manifest-sha256')
     attach.add_argument('--anchor-socket',type=Path)
     attach.add_argument('--confirm-experimental-developer-regtest',action='store_true')
-    managed=sub.add_parser('managed-gui',help='Persistent owned REGTEST wallet; no automatic fixture funding')
+    managed=sub.add_parser('managed-gui',help='Open an existing owned REGTEST profile; wallet creation is refused')
     managed.add_argument('--core-dir',type=Path,required=True)
     managed.add_argument('--root',type=Path,required=True)
     managed.add_argument('--wsp-source-root',type=Path,required=True)
     managed.add_argument('--confirm-regtest-managed-core',action='store_true')
-    managed.add_argument('--create-wallet',action='store_true')
+    managed.add_argument('--create-wallet',action='store_true',help=argparse.SUPPRESS)
     managed.add_argument('--linux-developer-manifest')
     managed.add_argument('--linux-root-witness',type=Path)
     args = ap.parse_args()
@@ -95,8 +96,10 @@ def main() -> int:
                     raise CoreSmokeError('LINUX_EXPLICIT_CORE_AND_WITNESS_POLICY_REQUIRED')
                 from .linux_runtime import configure
                 configure(core,args.linux_developer_manifest,args.linux_root_witness.expanduser().absolute(),authorized=True)
+            if args.create_wallet:
+                raise WalletExecutorError('LEGACY_Q05_RETIRED')
             from .managed_gui import launch_managed
-            return launch_managed(root,core,source,authorized=True,create=args.create_wallet)
+            return launch_managed(root,core,source,authorized=True,create=False)
         if args.command=='attach-core-readonly':
             if args.confirm_readonly_regtest_attachment is not True:
                 raise Q04RunnerError('Q04_ATTACH_EXPLICIT_CONSENT_REQUIRED')
@@ -172,7 +175,7 @@ def main() -> int:
             print(json.dumps(evidence, sort_keys=True))
             return 0
         raise CoreSmokeError("CORE_COMMAND_DENIED")
-    except (CoreSmokeError, Q04RunnerError, ExternalAttachmentError) as error:
+    except (CoreSmokeError, Q04RunnerError, ExternalAttachmentError, WalletExecutorError) as error:
         print(str(error), file=sys.stderr)
         return 2
     finally:
