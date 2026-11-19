@@ -54,7 +54,7 @@ RUNTIME_SNAPSHOT = frozenset({
     'bip39_scanner_checkpoint', 'bip39_seed_vault', 'bip39_spend_session',
     'branding', 'build_provenance', 'cli_rpc', 'core', 'core_process',
     'core_supervisor', 'custody', 'desktop', 'disclosure', 'encrypted_storage',
-    'external_core', 'external_core_gui', 'external_recovery', 'fusion_motion',
+    'external_core', 'external_core_gui', 'external_recovery', 'fullflush', 'fusion_motion',
     'fusion_pages', 'fusion_status', 'fusion_ui', 'gui_errors', 'history_pages',
     'json_rpc', 'linux_anchor_witness', 'linux_developer_core',
     'linux_official_core', 'linux_private_storage', 'linux_runtime',

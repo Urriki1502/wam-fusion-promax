@@ -15,6 +15,7 @@ import secrets
 import stat
 import sys
 
+from wam_regtest import fullflush
 from wam_regtest.domain.errors import Q06ReadOnlyError
 
 
@@ -117,7 +118,11 @@ def _ack_create_private_directory(directory):
     Never repairs or chmods an existing directory; callers re-validate.
     """
     if sys.platform == "darwin":
-        directory.mkdir(mode=0o700)
+        try:
+            directory.mkdir(mode=0o700)
+        except FileExistsError:
+            pass
+        fullflush.flush_parent_after_mkdir(directory.parent)
         from wam_regtest.private_directory import open_macos_private_directory
         os.close(open_macos_private_directory(directory))
     elif sys.platform == "linux":
@@ -180,6 +185,7 @@ def _ack_write(root, name, payload):
     dfd = _ack_posix_directory(directory)
     fd = None
     staged = False
+    primary = False
     try:
         try:
             existing = os.stat(name, dir_fd=dfd, follow_symlinks=False)
@@ -200,22 +206,33 @@ def _ack_write(root, name, payload):
             if count <= 0:
                 raise Q06ReadOnlyError(_ACK_DENIED)
             offset += count
-        os.fsync(fd)
+        fullflush.full_flush(fd)
         os.close(fd)
         fd = None
         os.rename(stage, name, src_dir_fd=dfd, dst_dir_fd=dfd)
         staged = False
-        os.fsync(dfd)
+        fullflush.flush_directory(dfd)
+    except BaseException:
+        primary = True
+        raise
     finally:
         if fd is not None:
-            os.close(fd)
+            try:
+                os.close(fd)
+            except OSError:
+                if not primary:
+                    raise
         try:
             if staged:
                 os.unlink(stage, dir_fd=dfd)
         except OSError:
             pass
         finally:
-            os.close(dfd)
+            try:
+                os.close(dfd)
+            except OSError:
+                if not primary:
+                    raise
 
 
 def ack_dir(root):

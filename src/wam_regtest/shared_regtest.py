@@ -12,6 +12,7 @@ import secrets
 import socket
 import stat
 import sys
+from .fullflush import flush_path_directory, full_flush
 from .infrastructure import core_compat
 
 MAGIC = bytes.fromhex('57414d52')
@@ -121,7 +122,8 @@ def write_config(directory, profile):
         with os.fdopen(fd, 'wb') as stream:
             stream.write(raw)
             stream.flush()
-            os.fsync(stream.fileno())
+            full_flush(stream.fileno())
+        flush_path_directory(directory)
 
 
 def validate_peers(rows, profile, *, require_connected=False):

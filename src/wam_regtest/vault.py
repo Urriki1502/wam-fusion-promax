@@ -17,7 +17,7 @@ import stat
 import tempfile
 import threading
 from contextlib import contextmanager
-from . import encrypted_storage, custody
+from . import encrypted_storage, custody, fullflush
 
 
 class VaultError(ValueError):
@@ -66,6 +66,8 @@ def _ensure_private_directory(directory):
             component.mkdir(mode=0o700)
         except FileExistsError:
             pass
+        if sys.platform == "darwin":
+            fullflush.flush_parent_after_mkdir(component.parent)
 
 
 def _open_lock(root, name):

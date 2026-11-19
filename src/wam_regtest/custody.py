@@ -3,7 +3,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from . import encrypted_storage
+from . import encrypted_storage, fullflush
 
 
 def storage():
@@ -27,6 +27,7 @@ def create_directory(directory):
         storage().create_private_directory(directory)
     elif sys.platform == 'darwin':
         directory.mkdir(mode=0o700)
+        fullflush.flush_parent_after_mkdir(directory.parent)
         encrypted_storage.validate_directory(directory)
     else:
         raise ValueError('VAULT_NATIVE_PLATFORM_REQUIRED')
@@ -51,6 +52,7 @@ def private_temporary_directory(prefix: str):
     # explicit create_private_directory used for the child datadir ignores root
     # ACL inheritance; validating the root here would reject the default DACL.
     if sys.platform == 'darwin':
+        fullflush.flush_parent_after_mkdir(root.parent)
         encrypted_storage.validate_directory(root)
     elif sys.platform == 'linux':
         storage().validate_directory(root)

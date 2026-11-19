@@ -15,6 +15,7 @@ import stat
 import sys
 
 from .core_supervisor import DIAGNOSTIC_CODES as _CORE_DIAGNOSTIC_CODES
+from .fullflush import flush_directory, full_flush
 from .supervisor_protocol import _distinct
 from .supervisor_store import (
     MAX_CONTROL_FILE,
@@ -29,7 +30,6 @@ NOTICE_SCHEMA = 'wam.fusion.quit-notice.v1'
 MAX_NOTICES = 64
 MAX_ACKS = 1024
 MAX_CODES = 8
-_F_FULLFSYNC_DARWIN = 51
 
 SESSION_KINDS = frozenset(('Q05', 'Q06'))
 WALLET_OUTCOMES = frozenset(('RUNTIME_PRESERVED', 'CLEANUP_UNCERTAIN', 'NONE'))
@@ -129,15 +129,6 @@ def _loads_strict_json(raw):
     if raw != _canonical(obj):
         raise QuitNoticeError('QUIT_NOTICE_CANONICAL_DENIED')
     return obj
-
-
-def _fullfsync(fd):
-    if sys.platform == 'darwin':
-        import fcntl
-        code = getattr(fcntl, 'F_FULLFSYNC', _F_FULLFSYNC_DARWIN)
-        fcntl.fcntl(fd, code)
-    else:
-        os.fsync(fd)
 
 
 def _check_acl(fd):
@@ -359,7 +350,7 @@ def _durable_publish(root, *, candidate_seq, max_seq, final_fmt, build_payload):
                     if written <= 0:
                         raise OSError('QUIT_NOTICE_SHORT_WRITE')
                     offset += written
-                _fullfsync(fd)
+                full_flush(fd)
             finally:
                 os.close(fd)
             try:
@@ -369,14 +360,14 @@ def _durable_publish(root, *, candidate_seq, max_seq, final_fmt, build_payload):
                 seq += 1
                 continue
             # I3-N3: once os.link succeeds, the notice file exists on disk
-            # (with st_nlink==2 until stage unlink). If either _fullfsync or
+            # (with st_nlink==2 until stage unlink). If either flush_directory or
             # os.unlink fails below, publication intentionally still fails
             # closed (raising QUIT_NOTICE_PUBLISH_DENIED -> NOTICE_PERSIST_FAILED)
             # so the owner/lease is retained; a later lease-holding reader
             # accepts the linked notice and completes the stage unlink.
-            _fullfsync(dfd)
+            flush_directory(dfd)
             os.unlink(stage, dir_fd=dfd)
-            _fullfsync(dfd)
+            flush_directory(dfd)
             return record
         raise QuitNoticeError('QUIT_NOTICE_CAPACITY_REACHED')
 
@@ -772,7 +763,7 @@ def read_store(root, *, expected_profile_id=None, complete_staged=None):
                         completed_dir = True
 
         if completed_dir:
-            _fullfsync(dfd)
+            flush_directory(dfd)
 
         for stage_name in sorted(stage_entries):
             if stage_name in paired_stages:

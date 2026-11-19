@@ -13,6 +13,7 @@ import secrets
 import socket
 import stat
 
+from .fullflush import flush_path_directory, full_flush
 from .release import ARCHIVES, CLI_SHA256, FINGERPRINT, VERSION, _sha
 from .official_core_v013 import ARCHIVES as SIGNED_ARCHIVES
 from .telemetry import increment
@@ -119,4 +120,5 @@ def _write_private_config(datadir: Path, rpcport: int, p2pport: int) -> None:
         for k, v in network_values.items():
             out.write(f"{k}={v}\n")
         out.flush()
-        os.fsync(out.fileno())
+        full_flush(out.fileno())
+    flush_path_directory(datadir)

@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import secrets
 import stat
+from .fullflush import flush_directory, full_flush
 from .private_directory import open_macos_private_directory
 
 MAX_ENVELOPE = 32 * 1024 * 1024 + 52
@@ -31,6 +32,7 @@ def publish(directory: Path, name: str, ciphertext: bytes):
     temporary = ".stage-" + secrets.token_hex(16)
     fd = None
     staged = False
+    primary = False
     try:
         fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL
                      | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=dfd)
@@ -42,22 +44,38 @@ def publish(directory: Path, name: str, ciphertext: bytes):
             if count <= 0:
                 raise OSError
             offset += count
-        os.fsync(fd)
+        full_flush(fd)
         os.close(fd)
         fd = None
         os.link(temporary, name, src_dir_fd=dfd, dst_dir_fd=dfd,
                 follow_symlinks=False)
         os.unlink(temporary, dir_fd=dfd)
         staged = False
-        os.fsync(dfd)
+        flush_directory(dfd)
     except (OSError, ValueError):
+        primary = True
         raise EncryptedStorageError("ENCRYPTED_STORAGE_PUBLISH_DENIED") from None
+    except BaseException:
+        primary = True
+        raise
     finally:
         if fd is not None:
-            os.close(fd)
+            try:
+                os.close(fd)
+            except OSError:
+                if not primary:
+                    raise EncryptedStorageError("ENCRYPTED_STORAGE_PUBLISH_DENIED") from None
         if staged:
-            os.unlink(temporary, dir_fd=dfd)
-        os.close(dfd)
+            try:
+                os.unlink(temporary, dir_fd=dfd)
+            except OSError:
+                if not primary:
+                    raise EncryptedStorageError("ENCRYPTED_STORAGE_PUBLISH_DENIED") from None
+        try:
+            os.close(dfd)
+        except OSError:
+            if not primary:
+                raise EncryptedStorageError("ENCRYPTED_STORAGE_PUBLISH_DENIED") from None
 
 
 def read(directory: Path, name: str) -> bytes:

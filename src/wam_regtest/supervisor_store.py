@@ -12,6 +12,8 @@ import stat
 import sys
 import threading
 
+from .fullflush import flush_after_mkdir, flush_directory, full_flush
+
 MAX_CONTROL_FILE=4096
 CONTROL_NAMES=frozenset({"supervisor.token","supervisor.profile","supervisor.lock",
                          "supervisor.failure","supervisor.wallet"})
@@ -224,6 +226,7 @@ def _open_stage_directory(root_directory,*,create):
             if not create:return None
             try:os.mkdir(STAGE_DIRECTORY,0o700,dir_fd=root_directory)
             except FileExistsError:pass
+            flush_after_mkdir(root_directory)
             directory=os.open(STAGE_DIRECTORY,flags,dir_fd=root_directory)
     except OSError:
         raise SupervisorStorageError("SUPERVISOR_STORAGE_STAGE_UNTRUSTED") from None
@@ -277,14 +280,13 @@ def _verify_stage(root_directory,stage_directory,stage,handle,size):
 
 
 def _create_darwin(root,name,data):
-    """DUR-02: stage -> complete write -> fsync -> verify -> exclusive rename -> verify -> fsync(root).
+    """DUR-02 + DUR-01a: stage -> write -> full_flush -> verify -> rename -> verify -> flush_directory(root).
 
-    Atomic publication against process interruption only. Durability is the
-    same as before (os.fsync of the file and of the final root directory); the
-    stage directory's own metadata change is not flushed and no power-loss or
-    F_FULLFSYNC claim is made (DUR-01a). Before the rename a failure leaves no
-    final; after it, any failure is raised while the complete final may exist
-    (never removed, replayed or reported as success). Residue is retained.
+    Atomic publication against process interruption with best-effort file-data
+    F_FULLFSYNC hardening. Namespace persistence on power loss remains
+    UNVERIFIED. Before the rename a failure leaves no final; after it, any
+    failure is raised while the complete final may exist (never removed,
+    replayed or reported as success). Residue is retained.
     """
     from .private_directory import _require_absent_acl
     with _posix_dir(root) as directory:
@@ -304,7 +306,7 @@ def _create_darwin(root,name,data):
                     n=os.write(handle,data[offset:])
                     if n<=0:raise SupervisorStorageError("SUPERVISOR_STORAGE_WRITE_DENIED")
                     offset+=n
-                os.fsync(handle)
+                full_flush(handle)
                 staged=_verify_stage(directory,stage_directory,stage,handle,len(data))
                 _rename_exclusive(stage_directory,stage,directory,name)
                 try:
@@ -325,7 +327,7 @@ def _create_darwin(root,name,data):
                     directory,stage_directory,"SUPERVISOR_STORAGE_PUBLISH_UNVERIFIED")
                 if stage_info.st_dev!=staged[0]:
                     raise SupervisorStorageError("SUPERVISOR_STORAGE_PUBLISH_UNVERIFIED")
-        os.fsync(directory)
+        flush_directory(directory)
 
 
 def stage_namespace(root):
