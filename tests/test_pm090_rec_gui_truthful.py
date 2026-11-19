@@ -28,8 +28,8 @@ ENGLISH = {
     'rec1.IN_LOCAL_MEMPOOL': (
         "Pending in this node's mempool. Not confirmed and not spendable."),
     'rec1.NOT_OBSERVED_LOCALLY': (
-        'Not seen by this node. The payment is not gone. Funds stay reserved '
-        'and no automatic action is taken.'),
+        'Not seen by this node. This does not mean the payment failed. '
+        'Funds stay reserved and no automatic action is taken.'),
     'rec1.CONFLICTED': (
         'Conflicted with another transaction or an unavailable input. '
         'Reservations stay locked and nothing is released automatically.'),
@@ -96,6 +96,20 @@ class Rec1Copy(unittest.TestCase):
                 lowered = value.lower()
                 self.assertNotIn('rebroadcast available', lowered)
                 self.assertNotIn('eligible', lowered)
+
+    def test_not_observed_locally_does_not_claim_payment_not_gone(self):
+        self.assertEqual(
+            CATALOG['en']['rec1.NOT_OBSERVED_LOCALLY'],
+            'Not seen by this node. This does not mean the payment failed. '
+            'Funds stay reserved and no automatic action is taken.')
+        for language, entries in CATALOG.items():
+            value = entries['rec1.NOT_OBSERVED_LOCALLY']
+            self.assertNotIn('not gone', value.lower(), language)
+            self.assertNotIn('chưa biến mất', value, language)
+            self.assertNotIn('并未消失', value, language)
+            self.assertNotIn('tidak hilang', value, language)
+            self.assertNotIn('消えたわけではありません', value, language)
+            self.assertNotIn('사라진 것은 아닙니다', value, language)
 
 
 class SubmitOffer(unittest.TestCase):

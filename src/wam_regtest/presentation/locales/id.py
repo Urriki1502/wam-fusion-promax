@@ -824,7 +824,7 @@ ID = {
     # PM-090
     "rec1.CONFIRMED": "Terkonfirmasi dalam riwayat terverifikasi simpul ini.",
     "rec1.IN_LOCAL_MEMPOOL": "Tertunda di mempool simpul ini. Belum terkonfirmasi dan tidak dapat dibelanjakan.",
-    "rec1.NOT_OBSERVED_LOCALLY": "Tidak terlihat oleh simpul ini. Pembayaran ini tidak hilang. Dana tetap dipesan dan tidak ada tindakan otomatis.",
+    "rec1.NOT_OBSERVED_LOCALLY": "Tidak terlihat oleh simpul ini. Ini tidak berarti pembayaran gagal. Dana tetap dipesan dan tidak ada tindakan otomatis.",
     "rec1.CONFLICTED": "Bentrok dengan transaksi lain atau input yang tidak tersedia. Reservasi tetap terkunci dan tidak ada yang dilepas secara otomatis.",
     "rec1.REJECTED_BY_POLICY": "Ditolak oleh pemeriksaan kebijakan yang tercatat. Catatan pembayaran tetap tidak berubah dan tidak ada yang dikirim ulang atau dilepas secara otomatis.",
     "rec1.BROADCAST_OUTCOME_UNCERTAIN": "Hasil siaran tidak diketahui. Versi ini tidak mengirim ulang.",

@@ -824,7 +824,7 @@ VI = {
     # PM-090
     "rec1.CONFIRMED": "Đã xác nhận trong lịch sử đã kiểm chứng của nút này.",
     "rec1.IN_LOCAL_MEMPOOL": "Đang chờ trong mempool của nút này. Chưa xác nhận và không thể chi tiêu.",
-    "rec1.NOT_OBSERVED_LOCALLY": "Nút này chưa thấy khoản thanh toán. Khoản thanh toán chưa biến mất. Tiền vẫn được giữ chỗ và không có hành động tự động.",
+    "rec1.NOT_OBSERVED_LOCALLY": "Nút này chưa thấy khoản thanh toán. Điều này không có nghĩa là thanh toán đã thất bại. Tiền vẫn được giữ chỗ và không có hành động tự động.",
     "rec1.CONFLICTED": "Xung đột với giao dịch khác hoặc một đầu vào không còn dùng được. Các khoản giữ chỗ vẫn khóa và không được giải phóng tự động.",
     "rec1.REJECTED_BY_POLICY": "Bị từ chối bởi một kiểm tra chính sách đã ghi nhận. Hồ sơ thanh toán giữ nguyên và không được gửi lại hay giải phóng tự động.",
     "rec1.BROADCAST_OUTCOME_UNCERTAIN": "Kết quả phát sóng chưa rõ. Phiên bản này không gửi lại.",

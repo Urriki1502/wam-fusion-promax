@@ -2,7 +2,7 @@
   "english": {
     "rec1.CONFIRMED": "Confirmed in this node's verified history.",
     "rec1.IN_LOCAL_MEMPOOL": "Pending in this node's mempool. Not confirmed and not spendable.",
-    "rec1.NOT_OBSERVED_LOCALLY": "Not seen by this node. The payment is not gone. Funds stay reserved and no automatic action is taken.",
+    "rec1.NOT_OBSERVED_LOCALLY": "Not seen by this node. This does not mean the payment failed. Funds stay reserved and no automatic action is taken.",
     "rec1.CONFLICTED": "Conflicted with another transaction or an unavailable input. Reservations stay locked and nothing is released automatically.",
     "rec1.REJECTED_BY_POLICY": "Rejected by a recorded policy check. The payment record is unchanged and nothing is re-sent or released automatically.",
     "rec1.BROADCAST_OUTCOME_UNCERTAIN": "Broadcast outcome is unknown. This version does not re-send.",
