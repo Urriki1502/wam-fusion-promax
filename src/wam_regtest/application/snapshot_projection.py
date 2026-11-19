@@ -4,7 +4,8 @@ Application layer. May import domain and foundation. Never imports PySide6.
 """
 
 
-def project_owned_spend_snapshot(item, session, *, profile, account_id, available_atoms):
+def project_owned_spend_snapshot(item, session, *, profile, account_id, available_atoms,
+                                 lock_summary=None):
     """Public owned-spend snapshot.
 
     ``reservation_states`` (PM-011, W-TX-03): the sorted distinct reservation
@@ -34,6 +35,7 @@ def project_owned_spend_snapshot(item, session, *, profile, account_id, availabl
                                else tuple(item.reservation_states)),
         # PM-013 (W-TX-03b): rows per state from the same verified read, or None.
         "reservation_state_counts": getattr(item, 'reservation_state_counts', None),
+        "reservation_lock_summary": lock_summary,
         "payment_review": session.payment_review,
         "payment_signed": session.payment_signed,
         "recovered_unsigned_cancel_available": session.recovered_unsigned_cancel_available(),

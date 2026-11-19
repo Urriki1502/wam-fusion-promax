@@ -18,10 +18,20 @@ class ReservedRows(unittest.TestCase):
         import os
         os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
         from wam_regtest.bip39_fusion_gui import displayed_reserved_inputs
-        self.assertEqual(displayed_reserved_inputs(
-            {'reservation_count': 2, 'reservation_state_counts': (('broadcast', 2),)}), 0)
-        self.assertEqual(displayed_reserved_inputs(
-            {'reservation_count': 3, 'reservation_state_counts': (('broadcast', 1), ('uncertain', 2))}), 2)
+        from wam_regtest.domain.payment_state import (
+            classify_broadcast_reservations, summarize_reservation_locks)
+        txid = 'ab' * 32
+        confirmed = summarize_reservation_locks(classify_broadcast_reservations(
+            [{'token': 't', 'rows': 2, 'txid': txid, 'evidence': 'ok'}],
+            {txid: {'state': 'CONFIRMED'}}), [])
+        self.assertEqual(displayed_reserved_inputs({
+            'reservation_count': 2, 'reservation_state_counts': (('broadcast', 2),),
+            'reservation_lock_summary': confirmed}), 0)
+        # Broadcast rows without a verified summary are unknown, never a partial or zero count.
+        self.assertIsNone(displayed_reserved_inputs(
+            {'reservation_count': 2, 'reservation_state_counts': (('broadcast', 2),)}))
+        self.assertIsNone(displayed_reserved_inputs(
+            {'reservation_count': 3, 'reservation_state_counts': (('broadcast', 1), ('uncertain', 2))}))
         # Older result shapes keep the previous raw count.
         self.assertEqual(displayed_reserved_inputs({'reservation_count': 2}), 2)
         self.assertIsNone(displayed_reserved_inputs({}))

@@ -408,21 +408,49 @@ class PaymentApproval(QDialog):
         self._sync_layouts()
 
 
-def describe_broadcast_result(txid, inspect=None):
-    """Map verified Core inspect/history facts to Result copy. Never infers failure."""
+def _lock_counts(summary):
+    counts = summary.get('counts') if isinstance(summary, dict) else None
+    if not isinstance(counts, dict):
+        return {}
+    return counts
+
+
+def describe_broadcast_result(txid, inspect=None, *, lock_summary=None):
+    """Map verified Core inspect/history facts to Result copy. Never infers failure.
+
+    An evicted, conflicted, unknown or unverified lock summary never keeps
+    "Confirmation is pending." Inspect facts still win when they are present.
+    """
     import re
-    if type(txid) is not str or re.fullmatch(r'[0-9a-f]{64}', txid) is None:
-        return (ui_text('pages.broadcast_uncertain'))
+    valid = type(txid) is str and re.fullmatch(r'[0-9a-f]{64}', txid) is not None
     status = inspect.get('status') if isinstance(inspect, dict) else None
     mempool = inspect.get('in_mempool') if isinstance(inspect, dict) else None
-    if status == 'Q06_CONFIRMED_IN_VERIFIED_HISTORY':
+    if valid and status == 'Q06_CONFIRMED_IN_VERIFIED_HISTORY':
         return ui_text('pages.confirmed_on_this_regtest_chain') + txid
-    if mempool is True:
+    if valid and mempool is True:
         return (ui_text('pages.mempool_pending')
                 + txid + ui_text('pages.no_retry_reserved'))
-    if mempool is False and status == 'Q06_TX_NOT_IN_CONFIRMED_HISTORY':
+    if valid and mempool is False and status == 'Q06_TX_NOT_IN_CONFIRMED_HISTORY':
         return (ui_text('pages.txid_uncertain') + txid
                 + ui_text('pages.no_retry_or_release'))
+    if isinstance(lock_summary, dict) and mempool not in (True, False) and status != 'Q06_CONFIRMED_IN_VERIFIED_HISTORY':
+        counts = _lock_counts(lock_summary)
+        evicted = counts.get('evicted', 0)
+        conflicted = counts.get('conflicted', 0)
+        unknown = counts.get('unknown', 0)
+        unverified = (lock_summary.get('verified') is not True or evicted > 0
+                      or conflicted > 0 or unknown > 0)
+        if unverified:
+            if valid:
+                return (ui_text('pages.txid_uncertain') + txid
+                        + ui_text('pages.no_retry_or_release'))
+            return ui_text('pages.broadcast_uncertain')
+        if (lock_summary.get('verified') is True and counts.get('mempool', 0) > 0
+                and evicted == 0 and conflicted == 0 and unknown == 0 and valid):
+            return (ui_text('pages.mempool_pending')
+                    + txid + ui_text('pages.no_retry_reserved'))
+    if not valid:
+        return ui_text('pages.broadcast_uncertain')
     return (ui_text('pages.submitted_pending') + txid
             + ui_text('pages.no_retry_until_confirmed'))
 

@@ -239,7 +239,7 @@
     },
     "fusion_pages": {
       "pages.broadcast_outcome_is_uncertain_reservations_are_retained_do_not_r": "Broadcast outcome is uncertain. Reservations are retained. Do not retry automatically.",
-      "pages.do_not_retry_reserved_inputs_stay_unavailable_until_confirmed": "\nDo not retry. Reserved inputs stay unavailable until confirmed.",
+      "pages.do_not_retry_reserved_inputs_stay_unavailable_until_confirmed": "\nDo not retry blindly. Reserved inputs stay locked while unconfirmed and are never released automatically. Check status in History or Inspect TXID.",
       "pages.qr_code_of_the_verified_regtest_silent_payment_address": "QR code of the verified REGTEST silent-payment address",
       "pages.receive": "Receive",
       "pages.one_genuine_bip352_silent_payment_code_a_new_on_chain_destination": "One genuine BIP352 silent-payment code. A new on-chain destination for each sender.",
@@ -348,7 +348,7 @@
   "source_fingerprints": {
     "managed_onboarding": "2e1b29ea32b86a7b83ece39c2f8db60cb69ae1211da14e0a72b5baa2c599b15c",
     "fusion_ui": "15191a755f24ec7ed594787d9e6a474b45913767234998ca9f7e1acac7f61a14",
-    "fusion_pages": "6901fbcb46c4e79e3861176ce79d04394017c9d86610bbbee9586f74a8628442"
+    "fusion_pages": "9c48a171e2004a7dd2be527f682f1202a32850cf94195d07847f1fbbeaa9802b"
   },
   "source_proven": {
     "managed_onboarding": {

@@ -41,9 +41,26 @@ class ReservationWarning(unittest.TestCase):
         return self.window.status.text()
 
     def test_confirmed_payment_leftover_broadcast_rows_do_not_warn(self):
+        from wam_regtest.domain.payment_state import (
+            classify_broadcast_reservations, summarize_reservation_locks)
+        txid = 'ab' * 32
+        classified = classify_broadcast_reservations(
+            [{'token': 't', 'rows': 2, 'txid': txid, 'evidence': 'ok'}],
+            {txid: {'state': 'CONFIRMED'}})
+        summary = summarize_reservation_locks(classified, [])
         self.window._spend_enabled = True
-        self.assertEqual(self._status(reservation_count=2, reservation_states=('broadcast',)),
+        self.assertEqual(summary['attention_level'], 'NONE')
+        self.assertEqual(summary['locked_inputs_total'], 0)
+        self.assertEqual(self._status(reservation_count=2, reservation_states=('broadcast',),
+                                      reservation_lock_summary=summary),
                          'Verified BIP39 REGTEST Send session; review every transaction')
+
+    def test_unobserved_broadcast_only_fails_closed(self):
+        from wam_regtest.bip39_locale import t
+        self.window._spend_enabled = True
+        text = self._status(reservation_count=2, reservation_states=('broadcast',))
+        self.assertEqual(text, t('owner.locks_unknown_warning'))
+        self.assertNotIn('Verified BIP39 REGTEST Send session', text)
 
     def test_rows_needing_attention_still_warn(self):
         for states in (('draft',), ('signed',), ('uncertain',), ('broadcast', 'signed'),

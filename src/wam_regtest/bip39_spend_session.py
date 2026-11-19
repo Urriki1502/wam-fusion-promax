@@ -385,6 +385,133 @@ class Q06OwnedSpendSession(WalletSession):
             return {'status': 'Q06_SIGNED_INTENT_RESUBMITTED', 'txid': actual,
                     'resigned': False, 'automatic': False, 'mainnet_allowed': False}
 
+    def reservation_lock_summary(self, *, reservation_count, reservation_states,
+                                 reservation_state_counts):
+        """Read-only broadcast lock classification for one snapshot.
+
+        Uses the reservations already anchored in SQLite, the create-only
+        broadcast evidence, and one ``observe_intents`` pass. It does not
+        write, unlock, relabel, rebroadcast, or change ``_q06_pending_confirm``.
+        Transport errors propagate. Only ``ObservationRefused`` becomes an
+        explicit unknown lock summary.
+        """
+        import re
+        from wam_sp.psbt import PSBT
+        from .domain.payment_state import (
+            BROADCAST, classify_broadcast_reservations, state_counts_match,
+            summarize_reservation_locks)
+        from .tx_observation import ObservationRefused, observe_intents
+        txid_text = re.compile(r'[0-9a-f]{64}\Z')
+        with self._lock:
+            with self.scanner.store.transaction():
+                raw = self.scanner.store.db.execute(
+                    "SELECT txid, vout, token, state FROM reservations "
+                    "ORDER BY token, txid, vout").fetchall()
+            grouped = {}
+            order = []
+            for txid, vout, token, state in raw:
+                bucket = grouped.get(token)
+                if bucket is None:
+                    bucket = {'broadcast': [], 'other': []}
+                    grouped[token] = bucket
+                    order.append(token)
+                if state == BROADCAST:
+                    bucket['broadcast'].append((txid, vout))
+                else:
+                    bucket['other'].append(state)
+            non_broadcast = []
+            for token in order:
+                tally = {}
+                for state in grouped[token]['other']:
+                    tally[state] = tally.get(state, 0) + 1
+                for state, rows in tally.items():
+                    non_broadcast.append({'token': token, 'state': state, 'rows': rows})
+            queried = {}
+            for _txid, _vout, _token, state in raw:
+                queried[state] = queried.get(state, 0) + 1
+            queried_counts = tuple(sorted(queried.items()))
+            expected_counts = (tuple(reservation_state_counts)
+                               if reservation_state_counts is not None else None)
+            expected_states = (tuple(reservation_states)
+                               if reservation_states is not None else ())
+            consistent = (state_counts_match(expected_counts, reservation_count, expected_states)
+                          and queried_counts == expected_counts)
+            tokens = []
+            if not consistent:
+                for token in order:
+                    rows = grouped[token]['broadcast']
+                    if rows:
+                        tokens.append({
+                            'token': token, 'rows': len(rows), 'txid': None,
+                            'evidence': 'unavailable', 'reason': 'FINGERPRINT_MISMATCH'})
+                classified = classify_broadcast_reservations(tokens)
+                return summarize_reservation_locks(
+                    classified, non_broadcast, verified_fingerprint=False)
+            evidence_ok = []
+            for token in order:
+                rows = grouped[token]['broadcast']
+                if not rows:
+                    continue
+                if grouped[token]['other']:
+                    tokens.append({
+                        'token': token, 'rows': len(rows), 'txid': None,
+                        'evidence': 'mixed', 'reason': 'MIXED_TOKEN_STATES'})
+                    continue
+                txid = self._broadcast_evidence_txid(token, set(rows), PSBT, txid_text)
+                if txid is None:
+                    tokens.append({
+                        'token': token, 'rows': len(rows), 'txid': None,
+                        'evidence': 'unavailable', 'reason': 'EVIDENCE_UNAVAILABLE'})
+                    continue
+                evidence_ok.append((token, rows, txid))
+            by_txid = {}
+            for token, rows, txid in evidence_ok:
+                by_txid.setdefault(txid, []).append((token, rows))
+            intents = {}
+            for token, rows, txid in evidence_ok:
+                if len(by_txid[txid]) > 1:
+                    tokens.append({
+                        'token': token, 'rows': len(rows), 'txid': txid,
+                        'evidence': 'duplicate', 'reason': 'DUPLICATE_TXID'})
+                    continue
+                tokens.append({
+                    'token': token, 'rows': len(rows), 'txid': txid, 'evidence': 'ok'})
+                intents[txid] = set(rows)
+            refused = None
+            observed = {}
+            if intents:
+                try:
+                    observed = observe_intents(self.scanner, self._rpc(), intents)
+                except ObservationRefused as refused_error:
+                    refused = (refused_error.args[0] if refused_error.args
+                               else refused_error.reason)
+            classified = classify_broadcast_reservations(
+                tokens, observed, observation_refused_reason=refused)
+            return summarize_reservation_locks(
+                classified, non_broadcast, verified_fingerprint=True,
+                observation_refused_reason=refused)
+
+    def _broadcast_evidence_txid(self, token, outpoints, psbt_type, txid_text):
+        """Return the evidence txid, or None when broadcast evidence is not authentic."""
+        try:
+            body = self._read_payment_evidence(token, 'broadcast')
+        except Exception:
+            return None
+        if not isinstance(body, dict):
+            return None
+        txid = body.get('txid')
+        signed = body.get('signed_psbt')
+        if (type(txid) is not str or txid_text.fullmatch(txid) is None
+                or type(signed) is not str):
+            return None
+        try:
+            decoded = psbt_type.decode(bytes.fromhex(signed))
+            if decoded.txid() != txid or set(decoded.tx.inputs) != set(outpoints):
+                return None
+        except Exception:
+            return None
+        return txid
+
     def _recover_pending_broadcast(self):
         """Read-only: re-identify this profile's one unconfirmed broadcast after reopen.
 

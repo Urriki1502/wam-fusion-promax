@@ -48,10 +48,12 @@ def _fixture_snapshot():
         signer_allowed=True, broadcast_allowed=True, history_complete=True,
         history_count=len(history), receive_count=1, reservation_count=0,
         reservation_state_counts=())
+    from ..domain.payment_state import summarize_reservation_locks
     result = dict(fusion_snapshot=snap, receive_code=code,
                   confirmed_atoms=snap.confirmed_atoms, available_atoms=snap.confirmed_atoms,
                   signer_allowed=True, broadcast_allowed=True,
-                  reservation_count=0, reservation_state_counts=())
+                  reservation_count=0, reservation_state_counts=(),
+                  reservation_lock_summary=summarize_reservation_locks([], []))
     return snap, result
 
 
@@ -238,7 +240,8 @@ def _render_window(language, width, height, theme_index, theme, shoot, settle, f
     from ..bip39_backup_page import BackupLeaveConfirm
     from ..bip39_fusion_gui import Bip39FusionWindow
     from ..bip39_locale import t
-    from ..fusion_pages import PaymentApproval, WalletConsent
+    from ..domain.payment_state import summarize_reservation_locks
+    from ..fusion_pages import PaymentApproval, WalletConsent, describe_broadcast_result
     from ..gui_errors import error_text
 
     executor = SimpleNamespace(state=ExecutorState(locked=False, faulted=False, core_alive=True),
@@ -273,6 +276,40 @@ def _render_window(language, width, height, theme_index, theme, shoot, settle, f
                           (6, '08-settings')):
             window.navigation.setCurrentRow(row)
             scene(name)
+
+        def lock_scene(name, broadcast, non_broadcast, status_key):
+            shown = dict(result)
+            shown['reservation_lock_summary'] = summarize_reservation_locks(
+                broadcast, non_broadcast)
+            window.navigation.setCurrentRow(0)
+            window._render_verified(shown)
+            window.status.setText(t(status_key))
+            scene(name)
+
+        def classified(token, rows, state):
+            return {'token': token, 'rows': rows, 'txid': TXIDS[0],
+                    'classification': state, 'reason': None, 'observation_unknown': False}
+
+        lock_scene('02b-overview-broadcast-evicted',
+                   [classified('evicted', 2, 'BROADCAST_EVICTED_LOCAL')], [],
+                   'owner.locks_evicted_warning')
+        lock_scene('02c-overview-broadcast-conflicted',
+                   [classified('conflicted', 1, 'BROADCAST_BLOCK_CONFLICTED')], [],
+                   'owner.locks_conflicted_warning')
+        unknown = classified('unknown', 1, 'BROADCAST_UNKNOWN')
+        unknown['observation_unknown'] = True
+        lock_scene('02d-overview-broadcast-unknown', [unknown], [],
+                   'owner.locks_unknown_warning')
+        window.navigation.setCurrentRow(3)
+        window._render_verified(result)
+        window.send_result.setText(describe_broadcast_result(
+            TXIDS[0], lock_summary=summarize_reservation_locks(
+                [classified('evicted', 2, 'BROADCAST_EVICTED_LOCAL')], [])))
+        window.status.setText(t('owner.locks_evicted_warning'))
+        scene('06b-send-broadcast-result')
+        window.send_result.setText(t('wallet.no_broadcast_result'))
+        window._render_verified(result)
+        window.status.setText('')
         window.advanced_toggle.setChecked(True)
         scene('09-settings-advanced')
         window.advanced_toggle.setChecked(False)

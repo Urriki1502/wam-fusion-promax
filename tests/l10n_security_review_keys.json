@@ -223,7 +223,7 @@
     },
     {
       "key": "pages.no_retry_until_confirmed",
-      "reason": "Irreversibility or retention rule. Do not let \"automatic\" limit a prohibition against retry, reset, or release."
+      "reason": "UX-02/C-03: reserved inputs stay locked while unconfirmed, are never released automatically, and must not be retried blindly. Check History or Inspect TXID. Machine-assisted; native review PENDING."
     },
     {
       "key": "pages.search_confirmed_transactions",
@@ -1520,6 +1520,66 @@
     {
       "key": "quit_lifecycle.exit_unrecorded_confirm_body",
       "reason": "PM-075 I4 S/U: second explicit confirmation before quit_ack_unrecorded when Core is stopped. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "fusion.broadcast_mempool_locked",
+      "reason": "PM-082 UX-01: unconfirmed mempool broadcast inputs stay locked. Do not describe them as spendable or as zero locks. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "fusion.broadcast_evicted_locked",
+      "reason": "PM-082 UX-01: a broadcast missing from local mempool and history stays locked. Do not imply the inputs were released. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "fusion.broadcast_conflicted_locked",
+      "reason": "PM-082 UX-01: conflicted or unavailable broadcast inputs stay locked. Stage C release is not offered. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "fusion.broadcast_unknown_locked",
+      "reason": "PM-082 UX-01: unverified broadcast inputs are treated as locked. Never render them as zero or safe. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "fusion.locks_count_unknown",
+      "reason": "PM-082 UX-01: unknown reservation lock status must not be displayed as zero locks. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "fusion.health_pending",
+      "reason": "PM-082 UX-01: pending broadcast confirmation is not operating normally. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "fusion.health_pending_details",
+      "reason": "PM-082 UX-01: mempool broadcast keeps funds preserved and forbids automatic retry or lock release. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "fusion.health_attention",
+      "reason": "PM-082 UX-01: evicted, conflicted, or unfinished locks need attention and are not operating normally. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "fusion.health_attention_details",
+      "reason": "PM-082 UX-01: custody stays safe while locked inputs remain; inspect the previous TXID before acting. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "fusion.health_unknown",
+      "reason": "PM-082 UX-01: unverified reservation status must not be displayed as operating normally. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "fusion.health_unknown_details",
+      "reason": "PM-082 UX-01: unverified broadcast locks stay unavailable and must not be resent. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "owner.locks_mempool_warning",
+      "reason": "PM-082 UX-01: mempool broadcasts stay reserved. Offer Inspect TXID or one REGTEST confirmation instead of resending. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "owner.locks_evicted_warning",
+      "reason": "PM-082 UX-01: a locally unseen broadcast stays locked and is never released automatically. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "owner.locks_conflicted_warning",
+      "reason": "PM-082 UX-01: a conflicted broadcast stays locked and nothing unlocks automatically. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "owner.locks_unknown_warning",
+      "reason": "PM-082 UX-01: an unverified lock state is unavailable, custody stays safe, and nothing unlocks automatically. Machine-assisted; native review PENDING."
     }
   ]
 }

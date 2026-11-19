@@ -29,17 +29,83 @@ from .fusion_pages import owner_approval_text
 from .quit_lifecycle_gui import QuitLifecycleMixin
 
 
-def reservation_warning(result):
-    """Warn about reservations only when one still needs the owner's attention.
+def _lock_summary(result):
+    summary = result.get("reservation_lock_summary") if isinstance(result, dict) else None
+    return summary if isinstance(summary, dict) else None
 
-    With the verified state set (W-TX-03) a confirmed payment's leftover
-    'broadcast' rows no longer warn. Without it (older result shapes) the
-    previous count-based rule applies unchanged.
+
+def _summary_count(summary, name):
+    counts = summary.get("counts") if isinstance(summary, dict) else None
+    if not isinstance(counts, dict):
+        return 0
+    value = counts.get(name, 0)
+    return value if type(value) is int and value > 0 else 0
+
+
+def reservation_warning(result):
+    """True when the owner still needs a reservation warning.
+
+    A verified confirmed-only summary does not warn. Broadcast rows without
+    that summary are not treated as safe. Older shapes without per-state
+    data keep the count rule.
     """
+    summary = _lock_summary(result)
+    if summary is not None:
+        if summary.get("read_only") is True or summary.get("attention_level") == "READ_ONLY":
+            return False
+        return summary.get("attention_level") != "NONE" or summary.get("verified") is not True
     states = result.get("reservation_states")
+    count = result.get("reservation_count") or 0
+    if states is not None and set(states) <= {"broadcast"} and count > 0:
+        return True
     if states is None:
-        return result.get("reservation_count", 0) > 0
-    return result.get("reservation_count", 0) > 0 and reservations_need_attention(states)
+        return count > 0
+    return count > 0 and reservations_need_attention(states)
+
+
+def reservation_status_key(result):
+    """PM-082 owner status key, or None to keep the pre-summary rule.
+
+    Precedence when a summary is present: unknown, conflicted, evicted,
+    mempool, non-broadcast, then the calm verified line. Pure broadcast
+    rows without a summary fail closed to the unknown warning.
+    """
+    summary = _lock_summary(result)
+    if summary is None:
+        states = result.get("reservation_states")
+        count = result.get("reservation_count") or 0
+        if states is not None and set(states) <= {"broadcast"} and count > 0:
+            return "owner.locks_unknown_warning"
+        return None
+    if summary.get("read_only") is True or summary.get("attention_level") == "READ_ONLY":
+        return None
+    if _summary_count(summary, "unknown") or summary.get("attention_level") == "UNKNOWN_UNVERIFIED":
+        return "owner.locks_unknown_warning"
+    if _summary_count(summary, "conflicted"):
+        return "owner.locks_conflicted_warning"
+    if _summary_count(summary, "evicted"):
+        return "owner.locks_evicted_warning"
+    if _summary_count(summary, "mempool"):
+        return "owner.locks_mempool_warning"
+    if _summary_count(summary, "non_broadcast"):
+        return "owner.reservations_warning"
+    if summary.get("verified") is True and summary.get("attention_level") == "NONE":
+        return "owner.send_verified"
+    return "owner.locks_unknown_warning"
+
+
+def pending_confirmation_is_clear(result):
+    """Awaiting-confirmation copy is only honest when no worse lock is known.
+
+    A snapshot with no summary keeps the previous pending-TXID priority.
+    """
+    summary = _lock_summary(result)
+    if summary is None:
+        return True
+    if summary.get("verified") is not True or summary.get("attention_level") == "UNKNOWN_UNVERIFIED":
+        return False
+    return not (_summary_count(summary, "unknown") or _summary_count(summary, "conflicted")
+                or _summary_count(summary, "evicted"))
 
 
 class Bip39RecoveryVerifyDialog(QDialog):
@@ -669,9 +735,22 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
             if self._recovered_unsigned_cancel:
                 self.status.setText(
                     t('owner.draft_retained'))
-            elif self._spend_enabled and self._pending_confirm_txid is not None:
+            elif (self._spend_enabled and self._pending_confirm_txid is not None
+                    and pending_confirmation_is_clear(result)):
                 self.status.setText(
                     t('owner.awaiting_confirmation').format(txid=self._pending_confirm_txid))
+            elif self._spend_enabled and reservation_status_key(result) == "owner.locks_unknown_warning":
+                self.status.setText(t("owner.locks_unknown_warning"))
+            elif self._spend_enabled and reservation_status_key(result) == "owner.locks_conflicted_warning":
+                self.status.setText(t("owner.locks_conflicted_warning"))
+            elif self._spend_enabled and reservation_status_key(result) == "owner.locks_evicted_warning":
+                self.status.setText(t("owner.locks_evicted_warning"))
+            elif self._spend_enabled and reservation_status_key(result) == "owner.locks_mempool_warning":
+                self.status.setText(t("owner.locks_mempool_warning"))
+            elif self._spend_enabled and reservation_status_key(result) == "owner.reservations_warning":
+                self.status.setText(t("owner.reservations_warning"))
+            elif self._spend_enabled and reservation_status_key(result) == "owner.send_verified":
+                self.status.setText(t("owner.send_verified"))
             elif (self._spend_enabled and self._pending_confirm_txid is None
                     and reservation_warning(result)):
                 self.status.setText(

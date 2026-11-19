@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from .bip39_owner_gui import Bip39TrialWindow
 from .presentation.action_state import SharedInputs, apply_shared_profile, available_actions, fusion_actions
-from .domain.payment_state import reserved_rows_needing_attention
+from .domain.payment_state import BROADCAST, reserved_rows_needing_attention
 
 from .bip39_locale import effective_choice, t
 from .desktop import resolve_theme
@@ -40,15 +40,27 @@ from .ui_settings import ui_settings
 
 
 def displayed_reserved_inputs(result):
-    """Reserved-input count for the overview (W-TX-03b).
+    """Reserved-input count for the overview.
 
-    With verified per-state counts, a confirmed payment's leftover 'broadcast'
-    rows are not shown as coins that "stay unavailable". Without them (older
-    result shapes) the previous raw count is shown unchanged.
+    A verified lock summary supplies the locked total. Confirmed leftover
+    broadcast rows contribute 0. Broadcast rows without that summary are
+    unknown and must not be reported as 0. Older shapes that have no
+    per-state counts keep the raw reservation count.
     """
+    summary = result.get("reservation_lock_summary")
+    if isinstance(summary, dict):
+        if summary.get("read_only") is True or summary.get("attention_level") in (
+                "READ_ONLY", "UNKNOWN_UNVERIFIED"):
+            return None
+        total = summary.get("locked_inputs_total")
+        if type(total) is int and total >= 0:
+            return total
+        return None
     counts = result.get("reservation_state_counts")
     if counts is None:
         return result.get("reservation_count")
+    if any(state == BROADCAST and type(rows) is int and rows > 0 for state, rows in counts):
+        return None
     return reserved_rows_needing_attention(counts)
 
 
@@ -303,7 +315,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
         fl.addWidget(self.recipient_input)
         fl.addWidget(label(t('wallet.amount_caption'), "FusionKicker"))
         fl.addWidget(self.amount_input)
-        fl.addWidget(label(t('wallet.fee_is_network')))
+        fee_note = grow_with_wrapped_text(_HeightForWidthLabel(t('wallet.fee_is_network')))
+        fee_note.setObjectName('FusionMuted')
+        fee_note.setWordWrap(True)
+        fee_note.setMinimumWidth(0)
+        fl.addWidget(fee_note)
         self.send.setText(t('wallet.review_payment'))
         self.send.setObjectName("FusionPrimary")
         self.send.setProperty("fusion_icon", "send")
@@ -328,7 +344,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         rl.addWidget(self.activate)
         rl.addWidget(self.broadcast)
         rl.addWidget(self.cancel)
-        self.send_result = label(t('wallet.no_broadcast_result'))
+        self.send_result = grow_with_wrapped_text(label(t('wallet.no_broadcast_result')))
         self.send_result.setMinimumWidth(0)
         rl.addWidget(self.send_result)
         rl.addWidget(label(t('wallet.no_automatic_retry'), "FusionGold"))
@@ -1127,9 +1143,13 @@ class Bip39FusionWindow(Bip39TrialWindow):
             return
         try:
             self.overview.render_snapshot(
-                snap, operational=True, network=self._network_view(snap),
+                snap,
+                operational=bool(result.get("signer_allowed") is True
+                                 and result.get("broadcast_allowed") is True),
+                network=self._network_view(snap),
                 available_atoms=result.get("available_atoms"),
                 reservation_count=displayed_reserved_inputs(result),
+                reservation_lock_summary=result.get("reservation_lock_summary"),
                 core_alive=self.executor.state.core_alive,
                 busy=False)
             self.connection_pill.setText(classify(
@@ -1299,11 +1319,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
             if (action == "snapshot" and self._broadcast_complete
                     and type(txid) is str and len(txid) == 64):
                 self._pending_action = ("inspect_confirmed", txid)
-            elif (type(txid) is str and len(txid) == 64 and not self._broadcast_complete
-                    and self._last_review is None):
-                # Reopened wallet: the session re-identified its unconfirmed
-                # broadcast. Show it on Send too; display only, no auto-inspect.
-                self.send_result.setText(describe_broadcast_result(txid))
+            self._refresh_send_lock_result(result)
         elif action == "open":
             # Same owner, bounded read-only chain sync only after the explicit
             # backup acknowledgement; a refused create above stops with lock.
@@ -1316,10 +1332,40 @@ class Bip39FusionWindow(Bip39TrialWindow):
         elif action in ("lock", "quit", "core_restart", "quit_ack_unrecorded"):
             self._broadcast_complete = False
             self._clear_visuals()
+            if action in ("lock", "quit"):
+                self.send_result.setText(t('wallet.no_broadcast_result'))
         elif action == 'unlock':
-            if result.get('fusion_snapshot') is not None:
+            if isinstance(result, dict) and result.get('fusion_snapshot') is not None:
                 self._render_verified(result)
+                self._refresh_send_lock_result(result)
         self._set_actions()
+
+    def _refresh_send_lock_result(self, result):
+        """Re-evaluate Send copy from the latest lock summary.
+
+        An evicted, conflicted or unknown broadcast must not keep
+        "Confirmation is pending." Legacy snapshots without a summary keep
+        the reopen line only; they do not overwrite an inspect result.
+        """
+        summary = result.get("reservation_lock_summary") if isinstance(result, dict) else None
+        pending = self._pending_confirm_txid
+        current = self.send_result.text().replace("\u200b", "")
+        stale = (current.startswith(t('pages.submitted_pending'))
+                 or current.startswith(t('pages.mempool_pending')))
+        if type(pending) is str and re.fullmatch(r'[0-9a-f]{64}', pending):
+            txid = pending
+        elif stale:
+            shown = self.last_txid.text().strip().replace("\u200b", "")
+            txid = shown if re.fullmatch(r'[0-9a-f]{64}', shown) else None
+        else:
+            return
+        if not isinstance(summary, dict):
+            if not (type(pending) is str and re.fullmatch(r'[0-9a-f]{64}', pending)
+                    and not self._broadcast_complete and self._last_review is None):
+                return
+            self.send_result.setText(describe_broadcast_result(pending))
+            return
+        self.send_result.setText(describe_broadcast_result(txid, lock_summary=summary))
 
     def _on_denied(self, code):
         super()._on_denied(code)

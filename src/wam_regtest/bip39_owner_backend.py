@@ -376,11 +376,16 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                     session.scanner, balance, session._read_payment_evidence)
                 item = replace(item, pending_atoms=pending, pending_spent_atoms=spent,
                                pending_history=rows, available_atoms=balance["available_atoms"])
+            lock_summary = session.reservation_lock_summary(
+                reservation_count=item.reservation_count,
+                reservation_states=item.reservation_states,
+                reservation_state_counts=item.reservation_state_counts)
             return project_owned_spend_snapshot(
                 item, session,
                 profile=self._public["profile"],
                 account_id=self._public["account_id"],
-                available_atoms=balance["available_atoms"])
+                available_atoms=balance["available_atoms"],
+                lock_summary=lock_summary)
 
     def _confirm_spend_ci(self):
         """One explicit test-only block on the original owned REGTEST Core."""
@@ -499,6 +504,7 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
             )
             _owned(owner)
             guard.check()
+            from .domain.payment_state import read_only_reservation_lock_summary
             result = {
                 "status": "Q06_REGTEST_REAL_CORE_READ_ONLY_VERIFIED",
                 "profile": self._public["profile"],
@@ -515,6 +521,10 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                 "fusion_snapshot": fusion,
                 "signer_allowed": False, "broadcast_allowed": False,
                 "mainnet_allowed": False,
+                "reservation_count": None,
+                "reservation_states": None,
+                "reservation_state_counts": None,
+                "reservation_lock_summary": read_only_reservation_lock_summary(),
             }
             verified = True
             return result

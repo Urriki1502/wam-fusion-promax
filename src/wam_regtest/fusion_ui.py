@@ -1362,6 +1362,66 @@ def pending_amount_text(value, *, grouped=False):
     return ui_text('pending.unknown')
 
 
+def _lock_count(counts, key):
+    value = counts.get(key, 0) if isinstance(counts, dict) else 0
+    return value if type(value) is int and value > 0 else 0
+
+
+def reservation_lock_fund_lines(summary, reservation_count):
+    """Locked-input segments for Overview fund details. Never a verified zero."""
+    if isinstance(summary, dict) and summary.get('attention_level') == 'READ_ONLY' and summary.get('read_only') is True:
+        return [ui_text('fusion.locks_count_unknown')]
+    if isinstance(summary, dict) and summary.get('attention_level') == 'NONE' and summary.get('verified') is True:
+        return []
+    if isinstance(summary, dict):
+        counts = summary.get('counts') if isinstance(summary.get('counts'), dict) else {}
+        lines = []
+        unknown = _lock_count(counts, 'unknown')
+        if unknown:
+            lines.append(ui_text('fusion.broadcast_unknown_locked').format(count=unknown))
+        elif summary.get('attention_level') == 'UNKNOWN_UNVERIFIED' or summary.get('locked_inputs_total') is None:
+            lines.append(ui_text('fusion.locks_count_unknown'))
+        conflicted = _lock_count(counts, 'conflicted')
+        if conflicted:
+            lines.append(ui_text('fusion.broadcast_conflicted_locked').format(count=conflicted))
+        evicted = _lock_count(counts, 'evicted')
+        if evicted:
+            lines.append(ui_text('fusion.broadcast_evicted_locked').format(count=evicted))
+        mempool = _lock_count(counts, 'mempool')
+        if mempool:
+            lines.append(ui_text('fusion.broadcast_mempool_locked').format(count=mempool))
+        active = _lock_count(counts, 'non_broadcast')
+        if active:
+            lines.append(str(active) + ui_text('fusion.reserved_input_s_stay_unavailable'))
+        if lines:
+            return lines
+        return [ui_text('fusion.locks_count_unknown')]
+    # No summary: a positive legacy count stays visible, and the lock state
+    # is still unknown. Zero and None must not look like a verified empty lock set.
+    lines = []
+    if type(reservation_count) is int and reservation_count > 0:
+        lines.append(str(reservation_count) + ui_text('fusion.reserved_input_s_stay_unavailable'))
+    lines.append(ui_text('fusion.locks_count_unknown'))
+    return lines
+
+
+def reservation_lock_health(summary, reservation_count, *, operational, faulted):
+    """Overview health copy. A missing or unknown summary is never 'operating normally'."""
+    if faulted:
+        return ui_text('fusion.faulted'), ui_text('fusion.keep_reservations')
+    if (isinstance(summary, dict) and summary.get('attention_level') == 'READ_ONLY'
+            and summary.get('read_only') is True and operational is False):
+        return ui_text('fusion.read_only_regtest_wallet'), ui_text('fusion.send_disabled')
+    if isinstance(summary, dict) and summary.get('attention_level') == 'NONE' and summary.get('verified') is True:
+        return ui_text('fusion.operating_normally'), ui_text('fusion.snapshot_sources')
+    level = summary.get('attention_level') if isinstance(summary, dict) else 'UNKNOWN_UNVERIFIED'
+    if level == 'PENDING':
+        return ui_text('fusion.health_pending'), ui_text('fusion.health_pending_details')
+    if level == 'ATTENTION_REQUIRED':
+        return ui_text('fusion.health_attention'), ui_text('fusion.health_attention_details')
+    return ui_text('fusion.health_unknown'), ui_text('fusion.health_unknown_details')
+
+
 class FusionOverview(QScrollArea):
     transaction_selected = Signal(str)
 
@@ -1571,7 +1631,7 @@ class FusionOverview(QScrollArea):
 
     def render_snapshot(self, snap, *, locked=False, operational=False, network=None,
                         faulted=False, available_atoms=None, reservation_count=None,
-                        core_alive=None, busy=False):
+                        core_alive=None, busy=False, reservation_lock_summary=None):
         network = network or {}
         facts = dict(snap=None if (snap is None or locked) else snap, locked=locked,
                      operational=operational, faulted=faulted, core_alive=core_alive,
@@ -1619,8 +1679,8 @@ class FusionOverview(QScrollArea):
         funds = [ui_text('fusion.spendable') + ui_text('pending.available_value').format(amount=pending_amount_text(available_atoms, grouped=True)),
                  ui_text('pending.total_value').format(amount=pending_amount_text(snap.pending_atoms, grouped=True)),
                  ui_text('pending.spent_value').format(amount=pending_amount_text(snap.pending_spent_atoms, grouped=True))]
-        if type(reservation_count) is int and reservation_count > 0:
-            funds.append(str(reservation_count) + ui_text('fusion.reserved_input_s_stay_unavailable'))
+        funds.extend(reservation_lock_fund_lines(
+            reservation_lock_summary, reservation_count))
         self.fund_details.setText('  ·  '.join(funds))
         self.fund_details.setVisible(bool(funds))
         if busy:
@@ -1634,10 +1694,11 @@ class FusionOverview(QScrollArea):
         self.evidence_text.setToolTip(ui_text('fusion.core_sha_256') + snap.core_sha256 + ui_text('fusion.verified_tip_2') + snap.tip)
         self.network_summary.setText(network.get('summary') or (
             ui_text('fusion.mode_height').format(mode=ui_text('fusion.shared_regtest') if network.get('shared') else ui_text('fusion.isolated_regtest'), height=snap.height)))
-        self.health_value.setText(ui_text('fusion.operating_normally') if not faulted else ui_text('fusion.faulted'))
-        self.health_details.setText(
-            ui_text('fusion.snapshot_sources')
-            if not faulted else ui_text('fusion.keep_reservations'))
+        health_value, health_details = reservation_lock_health(
+            reservation_lock_summary, reservation_count, operational=operational,
+            faulted=faulted)
+        self.health_value.setText(health_value)
+        self.health_details.setText(health_details)
         self.wallet_profile.setText(ui_text('fusion.operational_regtest_wallet') if operational else ui_text('fusion.read_only_regtest_wallet'))
         self.environment_core.setText(core_compat.DISPLAY_NAME + ui_text('fusion.sha_256') + snap.core_sha256[:12] + '…')
         self.environment_core.setToolTip(ui_text('fusion.core_sha_256') + snap.core_sha256)

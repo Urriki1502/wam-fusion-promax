@@ -344,7 +344,11 @@ class RegtestWalletWindow(QMainWindow):
             (t('desktop.verified_disposable') if self.session is not None else t('desktop.verified_readonly')).format(
                 height=snap.height, tip=snap.tip[:14]))
         try:
-            self.dashboard.render_snapshot(snap, operational=self.session is not None)
+            from .domain.payment_state import read_only_reservation_lock_summary
+            self.dashboard.render_snapshot(
+                snap, operational=self.session is not None,
+                reservation_lock_summary=(
+                    None if self.session is not None else read_only_reservation_lock_summary()))
         except (TypeError, ValueError):
             self._sync_failed("FUSION_UNTRUSTED_HISTORY_DENIED")
             return
