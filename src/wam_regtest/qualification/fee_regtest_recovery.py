@@ -326,10 +326,29 @@ def run_recovery(fixture, *, app, request, restart, current_window, idle, wait,
     final = request("snapshot", timeout=240)
     from ..bip39_owner_gui import reservation_warning
     from ..bip39_fusion_gui import displayed_reserved_inputs
+    from ..domain.payment_state import reservations_need_attention, reserved_rows_needing_attention
+    # A snapshot that carries no lock summary keeps the W-TX-03 reopen rule:
+    # leftover broadcast rows are not a warning and display as 0 locked.
+    # Overview fail-closed for a missing summary stays in the UI helpers and
+    # is not this fee-recovery oracle. A summary that is present must itself
+    # be a verified confirmed-only lock set.
+    summary = final.get("reservation_lock_summary") if isinstance(final, dict) else None
+    if isinstance(summary, dict):
+        locks_clear = (not reservation_warning(final)
+                       and displayed_reserved_inputs(final) == 0)
+    else:
+        states = final.get("reservation_states")
+        count = final.get("reservation_count", 0)
+        warning = (count > 0 if states is None
+                   else count > 0 and reservations_need_attention(states))
+        counts = final.get("reservation_state_counts")
+        displayed = (final.get("reservation_count") if counts is None
+                     else reserved_rows_needing_attention(counts))
+        locks_clear = not warning and displayed == 0
     checks["reopen_clean"] = (reopen_clean_holds(final, expected_confirmed_atoms=after["confirmed_atoms"],
         expected_reservation_count=after["reservation_count"]) and history_holds(final)
         and not window.confirm.isEnabled() and not window.last_txid.text().strip()
-        and not reservation_warning(final) and displayed_reserved_inputs(final) == 0)
+        and locks_clear)
     events = observations["events"]
     checks["one_submission_no_resign"] = all(events.count(e) == 1 for e in ("SIGN", "MARK_SIGNED", "SENDRAWTRANSACTION"))
     checks["sign_order"] = (resume_order_holds(events, observations.get("submissions", []), original)

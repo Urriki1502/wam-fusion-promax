@@ -104,8 +104,19 @@ class OverviewState(unittest.TestCase):
                 self.assertEqual(pending_amount_text(invalid), t('pending.unknown'))
                 page.render_snapshot(snapshot(available_atoms=invalid, pending_atoms=invalid,
                                               pending_spent_atoms=invalid))
-                self.assertEqual(page.fund_details.text().count(t('pending.unknown')), 3)
-                self.assertNotIn('WAM', page.fund_details.text())
+                # SPEC-UX0102 §3.1.4 / §4.2.5: no lock summary appends
+                # fusion.locks_count_unknown as its own segment. The three
+                # amount segments stay one unitless pending.unknown.
+                text = page.fund_details.text()
+                unknown = t('pending.unknown')
+                parts = [part.strip() for part in text.split('  ·  ')]
+                self.assertEqual(len(parts), 4)
+                self.assertEqual(parts[-1], t('fusion.locks_count_unknown'))
+                for part in parts[:3]:
+                    self.assertEqual(part.count(unknown), 1)
+                    self.assertNotIn('WAM', part)
+                self.assertNotIn('WAM', text)
+                self.assertNotIn(unknown + ' WAM', text)
         page.render_snapshot(snapshot(confirmed_atoms=0, available_atoms=0,
                                       pending_atoms=0, pending_spent_atoms=0))
         self.assertIn('0.00000000', page.balance_value.text())

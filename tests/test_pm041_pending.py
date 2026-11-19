@@ -241,8 +241,18 @@ class PendingWidgets(unittest.TestCase):
                                        pending_change_atoms=None),))
                     overview.render_snapshot(snap, operational=True)
                     funds = overview.fund_details.text()
-                    self.assertEqual(funds.count(catalog['pending.unknown']), 3)
+                    # SPEC-UX0102 §3.1.4 / §4.2.5: no lock summary appends
+                    # fusion.locks_count_unknown as its own segment. The three
+                    # amount segments stay one unitless pending.unknown.
+                    unknown = catalog['pending.unknown']
+                    parts = [part.strip() for part in funds.split('  ·  ')]
+                    self.assertEqual(len(parts), 4)
+                    self.assertEqual(parts[-1], catalog['fusion.locks_count_unknown'])
+                    for part in parts[:3]:
+                        self.assertEqual(part.count(unknown), 1)
+                        self.assertNotIn('WAM', part)
                     self.assertNotIn('WAM', funds)
+                    self.assertNotIn(unknown + ' WAM', funds)
                     status = overview.activity_table.item(0, 2).text()
                     history.render_snapshot(snap)
                     history.table.selectRow(0)

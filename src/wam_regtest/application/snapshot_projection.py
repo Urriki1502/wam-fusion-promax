@@ -12,7 +12,7 @@ def project_owned_spend_snapshot(item, session, *, profile, account_id, availabl
     states the session already verified, so presentation can tell a confirmed
     payment's leftover 'broadcast' rows from rows that still need attention.
     """
-    return {
+    snapshot = {
         "status": "Q06_REGTEST_BIP39_OWNED_SPEND_VERIFIED",
         "profile": profile,
         "account_id": account_id,
@@ -35,7 +35,7 @@ def project_owned_spend_snapshot(item, session, *, profile, account_id, availabl
                                else tuple(item.reservation_states)),
         # PM-013 (W-TX-03b): rows per state from the same verified read, or None.
         "reservation_state_counts": getattr(item, 'reservation_state_counts', None),
-        "reservation_lock_summary": lock_summary,
+        **({} if lock_summary is None else {"reservation_lock_summary": lock_summary}),
         "payment_review": session.payment_review,
         "payment_signed": session.payment_signed,
         "recovered_unsigned_cancel_available": session.recovered_unsigned_cancel_available(),
@@ -46,3 +46,4 @@ def project_owned_spend_snapshot(item, session, *, profile, account_id, availabl
         "signer_allowed": True, "broadcast_allowed": True,
         "mainnet_allowed": False,
     }
+    return snapshot

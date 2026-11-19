@@ -376,10 +376,17 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                     session.scanner, balance, session._read_payment_evidence)
                 item = replace(item, pending_atoms=pending, pending_spent_atoms=spent,
                                pending_history=rows, available_atoms=balance["available_atoms"])
-            lock_summary = session.reservation_lock_summary(
-                reservation_count=item.reservation_count,
-                reservation_states=item.reservation_states,
-                reservation_state_counts=item.reservation_state_counts)
+            # Sessions that predate the lock classifier (activation fakes,
+            # snapshot characterization) keep the previous snapshot. Requiring
+            # the method would turn a successful activate into an AttributeError
+            # after the backup-ack gate has already passed.
+            summarize = getattr(session, "reservation_lock_summary", None)
+            lock_summary = None
+            if callable(summarize):
+                lock_summary = summarize(
+                    reservation_count=item.reservation_count,
+                    reservation_states=item.reservation_states,
+                    reservation_state_counts=item.reservation_state_counts)
             return project_owned_spend_snapshot(
                 item, session,
                 profile=self._public["profile"],
