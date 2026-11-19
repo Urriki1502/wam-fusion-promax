@@ -14,6 +14,7 @@ import os
 import sys
 
 from wam_regtest.external_core import ExternalAttachmentError
+from wam_regtest.public_token import public_token
 from wam_regtest.q04_runner import run_q04_scenario
 
 
@@ -126,7 +127,7 @@ def main() -> int:
                 evidence = run_q04_scenario(core_dir, report_path=Path("q04-frozen-evidence.json"),
                                             max_duration=180)
             except ExternalAttachmentError as exc:
-                raise BundleLaunchError("WAM_BUNDLE_Q04_EXTERNAL_MINER_" + str(exc)) from None
+                raise BundleLaunchError("WAM_BUNDLE_Q04_EXTERNAL_MINER_" + public_token(exc, 'DENIED')) from None
             if evidence.get("status") != "Q04_MINER_COEXISTENCE_PASS":
                 raise BundleLaunchError("WAM_BUNDLE_Q04_EXTERNAL_MINER_DENIED")
             print("MACOS_ARM64_PACKAGED_Q04_EXTERNAL_MINER_PASS")

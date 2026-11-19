@@ -10,6 +10,7 @@ from .core import CoreSmokeError
 from .qualification.real_core_smoke import smoke_real_core
 from .q04_runner import Q04RunnerError, run_q04_scenario
 from .external_core import ExternalAttachmentError
+from .public_token import public_token
 from .wallet_executor import WalletExecutorError
 
 
@@ -176,7 +177,7 @@ def main() -> int:
             return 0
         raise CoreSmokeError("CORE_COMMAND_DENIED")
     except (CoreSmokeError, Q04RunnerError, ExternalAttachmentError, WalletExecutorError) as error:
-        print(str(error), file=sys.stderr)
+        print(public_token(error, 'CLI_ERROR_UNPRINTABLE'), file=sys.stderr)
         return 2
     finally:
         desktop = sys.modules.get("wam_regtest.desktop")

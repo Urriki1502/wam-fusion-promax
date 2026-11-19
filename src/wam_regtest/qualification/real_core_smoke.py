@@ -17,6 +17,7 @@ from ..core import (
 from ..core_process import managed_core_argv
 from ..custody import private_temporary_directory
 from ..infrastructure import core_compat
+from ..public_token import public_token
 
 
 def _early_exit_category(datadir: Path) -> str:
@@ -213,7 +214,7 @@ def smoke_real_core(core_dir: Path, *, explicit_consent: bool, timeout: int = 12
                         mining_address=(mine_to if wsp_payment_e2e else None),
                     )
                 except RealWspScanError as exc:
-                    raise CoreSmokeError(str(exc)) from None
+                    raise CoreSmokeError(public_token(exc, 'CORE_SMOKE_WRAPPED_ERROR')) from None
             gui_receipt = None
             if gui_e2e:
                 # The REAL daemon remains running here. The native Qt worker
@@ -263,7 +264,7 @@ def smoke_real_core(core_dir: Path, *, explicit_consent: bool, timeout: int = 12
                     else:
                         security_receipt = probe_security(cli, datadir, wsp_source, mine_to)
                 except SecurityProbeError as exc:
-                    raise CoreSmokeError(str(exc)) from None
+                    raise CoreSmokeError(public_token(exc, 'CORE_SMOKE_WRAPPED_ERROR')) from None
             wallet_receipt = None
             if headless_callback is not None:
                 wallet_receipt=headless_callback(core_dir,datadir,wsp_source,mine_to)
@@ -272,14 +273,14 @@ def smoke_real_core(core_dir: Path, *, explicit_consent: bool, timeout: int = 12
                 try:
                     wallet_receipt = probe_wallet(core_dir,datadir,wsp_source,mine_to)
                 except WalletProbeError as exc:
-                    raise CoreSmokeError(str(exc)) from None
+                    raise CoreSmokeError(public_token(exc, 'CORE_SMOKE_WRAPPED_ERROR')) from None
             recovery_receipt = None
             if recovery_case is not None:
                 from ..reopen_probe import probe_reopened_wallet, ReopenProbeError
                 try:
                     recovery_receipt = probe_reopened_wallet(core_dir,datadir,wsp_source,mine_to,recovery_case)
                 except ReopenProbeError as exc:
-                    raise CoreSmokeError(str(exc)) from None
+                    raise CoreSmokeError(public_token(exc, 'CORE_SMOKE_WRAPPED_ERROR')) from None
             final_height = _read_cli(prefix + ["getblockcount"])
             final_tip = _read_cli(prefix + ["getbestblockhash"])
             if (type(final_height) is not int or not 101<=final_height<=1_000_000
