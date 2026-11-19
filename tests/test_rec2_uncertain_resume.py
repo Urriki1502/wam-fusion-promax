@@ -233,12 +233,12 @@ class UncertainResumePreflight(unittest.TestCase):
             return reply
         self.core.call = call
 
-    # ---- same preflight boundary for 'uncertain' (REC-2 §5 bullet 1) ------
+    # ---- 'uncertain' refused before any RPC (PM-088 REC-2) ---------------
     def test_uncertain_resume_policy_rejection_refuses_and_keeps_everything(self):
-        for reason, expected_token in (
-                ("min relay fee not met", "FEE_POLICY_REJECTED"),
-                ("dust", "POLICY_REJECTED"),
-                ("txn-already-in-mempool", "ALREADY_IN_MEMPOOL"),
+        for reason in (
+                "min relay fee not met",
+                "dust",
+                "txn-already-in-mempool",
         ):
             with self.subTest(reason=reason):
                 self.setUp()
@@ -260,9 +260,9 @@ class UncertainResumePreflight(unittest.TestCase):
                 with self.assertRaises(WalletSessionError) as caught:
                     restarted.resume_signed_intent(self.token, self.txid, approved=True)
                 self.assertEqual(caught.exception.args,
-                                 ("WALLET_BROADCAST_REJECTED_LOCK_RETAINED",))
-                self.assertEqual(caught.exception.preflight_rejection, expected_token)
-                self.assertEqual(self.core.calls, ["testmempoolaccept"])
+                                 ("REC2_UNCERTAIN_RESUBMIT_DEFERRED",))
+                self.assertFalse(hasattr(caught.exception, "preflight_rejection"))
+                self.assertEqual(self.core.calls, [])
                 # The ORIGINAL uncertain state, locks, bytes and provenance are kept.
                 self.assertEqual(_states(restarted.scanner), {"uncertain"})
                 self.assertEqual(_reservations(restarted.scanner), before_rows)
@@ -288,7 +288,7 @@ class UncertainResumePreflight(unittest.TestCase):
         self.assertEqual(self.core.calls, [])
         self.assertEqual(_states(restarted.scanner), {"uncertain"})
 
-    def test_uncertain_accepted_preflight_submits_exactly_once(self):
+    def test_uncertain_accepted_preflight_refuses_before_any_rpc(self):
         session, review = self._signed_session()
         self.core.send = Crash()
         with self.assertRaises(Crash):
@@ -296,15 +296,20 @@ class UncertainResumePreflight(unittest.TestCase):
         self.core.send = None
         restarted = self._restart()
         self.core.calls.clear()
-        result = restarted.resume_signed_intent(self.token, self.txid, approved=True)
-        self.assertEqual((result["txid"], result["resigned"], result["automatic"]),
-                         (self.txid, False, False))
-        # REC-2: product preflight runs first, then WSP's own preflight + send.
-        self.assertEqual(self.core.calls,
-                         ["testmempoolaccept", "testmempoolaccept", "sendrawtransaction"])
-        self.assertEqual(self.vault.saved[-1], {"broadcast"})
-        self.assertEqual(_states(restarted.scanner), {"broadcast"})
-        self.assertEqual(restarted._q06_pending_confirm, self.txid)
+        before_files = _evidence_files(restarted)
+        before_rows = _reservations(restarted.scanner)
+        before_saved = list(self.vault.saved)
+        from wam_regtest.wallet_session import WalletSessionError
+        with self.assertRaises(WalletSessionError) as caught:
+            restarted.resume_signed_intent(self.token, self.txid, approved=True)
+        self.assertEqual(caught.exception.args,
+                         ("REC2_UNCERTAIN_RESUBMIT_DEFERRED",))
+        self.assertEqual(self.core.calls, [])
+        self.assertEqual(_states(restarted.scanner), {"uncertain"})
+        self.assertEqual(_reservations(restarted.scanner), before_rows)
+        self.assertEqual(self.vault.saved, before_saved)
+        self.assertEqual(_evidence_files(restarted), before_files)
+        self.assertIsNone(restarted._q06_pending_confirm)
         self.assertFalse(restarted.faulted or restarted._q06_uncertain)
 
     def test_uncertain_malformed_preflight_latches_and_is_never_relabelled(self):
@@ -328,17 +333,15 @@ class UncertainResumePreflight(unittest.TestCase):
         from wam_regtest.wallet_session import WalletSessionError
         with self.assertRaises(WalletSessionError) as caught:
             restarted.resume_signed_intent(self.token, self.txid, approved=True)
-        # Trust refusal preserved; UNKNOWN is not a policy rejection.
         self.assertEqual(caught.exception.args,
-                         ("WALLET_BROADCAST_NOT_SUBMITTED_LOCK_RETAINED",))
+                         ("REC2_UNCERTAIN_RESUBMIT_DEFERRED",))
         self.assertFalse(hasattr(caught.exception, "preflight_rejection"))
-        self.assertNotIn("sendrawtransaction", self.core.calls)
+        self.assertEqual(self.core.calls, [])
         self.assertEqual(_states(restarted.scanner), {"uncertain"})
         self.assertEqual(_reservations(restarted.scanner), before_rows)
         self.assertEqual(self.vault.saved, before_saved)
         self.assertEqual(_evidence_files(restarted), before_files)
-        self.assertTrue(restarted.faulted)
-        # Nothing reached send, so no new submission uncertainty was created.
+        self.assertFalse(restarted.faulted)
         self.assertFalse(restarted._q06_uncertain)
 
     def test_uncertain_transport_and_untrusted_preflight_latch_never_relabelled(self):
@@ -359,13 +362,13 @@ class UncertainResumePreflight(unittest.TestCase):
                 with self.assertRaises(WalletSessionError) as caught:
                     restarted.resume_signed_intent(self.token, self.txid, approved=True)
                 self.assertEqual(caught.exception.args,
-                                 ("WALLET_BROADCAST_NOT_SUBMITTED_LOCK_RETAINED",))
+                                 ("REC2_UNCERTAIN_RESUBMIT_DEFERRED",))
                 self.assertFalse(hasattr(caught.exception, "preflight_rejection"))
-                self.assertNotIn("sendrawtransaction", self.core.calls)
+                self.assertEqual(self.core.calls, [])
                 self.assertEqual(_states(restarted.scanner), {"uncertain"})
                 self.assertEqual(self.vault.saved, before_saved)
                 self.assertEqual(_evidence_files(restarted), before_files)
-                self.assertTrue(restarted.faulted)
+                self.assertFalse(restarted.faulted)
                 self.assertFalse(restarted._q06_uncertain)
 
     # ---- the same boundary stays exact for 'signed' ------------------------
@@ -471,7 +474,7 @@ class UncertainResumePreflight(unittest.TestCase):
         before_rows = _reservations(session.scanner)
         with self.assertRaises(WalletSessionError) as caught:
             session.resume_signed_intent(token, txid, approved=True)
-        self.assertEqual(caught.exception.args, ("RBF_SIGNALLING_MISSING",))
+        self.assertEqual(caught.exception.args, ("REC2_UNCERTAIN_RESUBMIT_DEFERRED",))
         self.assertEqual(self.core.calls, [])
         self.assertEqual(_reservations(session.scanner), before_rows)
         self.assertEqual(self.vault.saved, before_saved)

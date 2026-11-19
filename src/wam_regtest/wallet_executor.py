@@ -134,9 +134,13 @@ class WalletExecutor:
                 # so the GUI can show it (locale copy lands in a later job).
                 # Untrusted exception text carrying the same string is denied.
                 from .wallet_session import WalletSessionError as _TrustedSessionError
-                from .domain.errors import Q06SpendSessionError as _TrustedQ06Error
+                from .domain.errors import (
+                    Q06ReadOnlyError as _TrustedQ06ReadOnlyError,
+                    Q06SpendSessionError as _TrustedQ06Error,
+                )
                 if code=='REC2_UNCERTAIN_RESUBMIT_DEFERRED' and type(failure) not in (
-                        _TrustedSessionError,_TrustedQ06Error,WalletExecutorError):
+                        _TrustedSessionError,_TrustedQ06Error,
+                        _TrustedQ06ReadOnlyError,WalletExecutorError):
                     code='WALLET_EXECUTOR_DENIED'
                 if type(code) is not str or not re.fullmatch('[A-Z][A-Z0-9_]{1,95}',code):
                     code='WALLET_EXECUTOR_DENIED'

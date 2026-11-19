@@ -72,9 +72,10 @@ class _Vault:
 def _session(rows, evidence=None, *, faulted=False, session_uncertain=False,
              locked=False):
     from wam_regtest.bip39_spend_session import Q06OwnedSpendSession
-    db = sqlite3.connect(":memory:")
+    db = sqlite3.connect(":memory:", check_same_thread=False)
     db.execute("CREATE TABLE reservations(txid TEXT, vout INT, token TEXT,"
                " state TEXT, created INT)")
+    db.execute("CREATE TABLE history(txid TEXT, height INT)")
     db.executemany("INSERT INTO reservations VALUES (?,?,?,?,0)", rows)
 
     @contextmanager
@@ -154,9 +155,21 @@ class SessionRefusal(_Patched):
         self.assertFalse(session.faulted or session._q06_uncertain)
 
     def test_mixed_reservation_states_refused(self):
-        session = _session([(IN_1[0], IN_1[1], TOKEN, "signed"),
-                            (IN_2[0], IN_2[1], TOKEN, "uncertain")],
-                           {(TOKEN, "signed"): _body()})
+        for rows in (
+                [(IN_1[0], IN_1[1], TOKEN, "signed"),
+                 (IN_2[0], IN_2[1], TOKEN, "uncertain")],
+                [(IN_1[0], IN_1[1], TOKEN, "signed"),
+                 (IN_2[0], IN_2[1], TOKEN, "broadcast")],
+                [(IN_1[0], IN_1[1], TOKEN, "signed"),
+                 (IN_2[0], IN_2[1], TOKEN, "draft")],
+                [(IN_1[0], IN_1[1], TOKEN, "manual")],
+        ):
+            with self.subTest(states=[r[3] for r in rows]):
+                session = _session(rows, {(TOKEN, "signed"): _body()})
+                self.assertRefused(session)
+
+    def test_missing_rows_with_uncertain_evidence_refused(self):
+        session = _session([], {(TOKEN, "uncertain"): _body()})
         self.assertRefused(session)
 
     def test_signed_rows_with_uncertain_write_ahead_refused(self):
@@ -173,11 +186,25 @@ class SessionRefusal(_Patched):
                             (TOKEN, "broadcast"): _body()})
         self.assertRefused(session)
 
-    def test_corrupt_uncertain_write_ahead_fails_closed(self):
+    def test_corrupt_uncertain_or_broadcast_write_ahead_fails_closed(self):
+        for stage in ("uncertain", "broadcast"):
+            with self.subTest(stage=stage):
+                session = _session([(IN_1[0], IN_1[1], TOKEN, "signed")],
+                                   {(TOKEN, "signed"): _body(),
+                                    (TOKEN, stage): ValueError("invalid")})
+                self.assertRefused(session)
+
+    def test_custody_failure_reading_write_ahead_propagates_global(self):
+        from wam_regtest.bip39_spend_session import Q06SpendSessionError
         session = _session([(IN_1[0], IN_1[1], TOKEN, "signed")],
                            {(TOKEN, "signed"): _body(),
-                            (TOKEN, "uncertain"): ValueError("invalid")})
-        self.assertRefused(session)
+                            (TOKEN, "uncertain"): Q06SpendSessionError("Q06_SPEND_CUSTODY_DENIED")})
+        with self.assertRaises(Q06SpendSessionError) as caught:
+            session.resume_signed_intent(TOKEN, TXID, approved=True)
+        self.assertEqual(caught.exception.args, ("Q06_SPEND_CUSTODY_DENIED",))
+        self.assertEqual(session._rpc_fake.calls, [])
+        self.assertEqual(session.vault.saves, [])
+        self.assertEqual(session._evidence_fake.writes, [])
 
     def test_locked_and_faulted_sessions_refused_without_rpc(self):
         from wam_regtest.bip39_spend_session import Q06SpendSessionError
@@ -194,6 +221,7 @@ class SessionRefusal(_Patched):
                              ("Q06_RESUME_SESSION_NOT_IDLE",))
             self.assertEqual(session._rpc_fake.calls, [])
             self.assertEqual(session.vault.saves, [])
+            self.assertEqual(session._evidence_fake.writes, [])
 
     def test_uncertain_resume_still_requires_explicit_approval_first(self):
         from wam_regtest.bip39_spend_session import Q06SpendSessionError
@@ -222,6 +250,9 @@ class SessionRefusal(_Patched):
         self.assertEqual(item["classification"],
                          "UNCERTAIN_NOT_OBSERVED_RESUMABLE")
         self.assertEqual(item["state"], "uncertain")
+        self.assertEqual(item["rec1_state"], "NOT_OBSERVED_LOCALLY")
+        self.assertEqual(item["rec1_reason"], "REBROADCAST_DEFERRED")
+        self.assertFalse(item["quarantined"])
         self.assertFalse(result["write_attempted"] or result["automatic_resume"])
         self.assertEqual(session._rows(), before)
         self.assertEqual(session.vault.saves, [])
@@ -240,6 +271,10 @@ class SignedResumeStillWorks(_Patched):
 
             def broadcast(self, signed, token, _rpc):
                 sent.append((signed, token))
+                with session.scanner.store.transaction():
+                    session.scanner.store.db.execute(
+                        "UPDATE reservations SET state='broadcast' WHERE token=?",
+                        (token,))
                 return TXID
 
         with patch("wam_sp.wallet.Wallet", _Wallet):
@@ -251,17 +286,18 @@ class SignedResumeStillWorks(_Patched):
         self.assertEqual([w[0] for w in session._evidence_fake.writes],
                          ["uncertain", "broadcast"])  # write-ahead, then record
         self.assertEqual(len(session.vault.saves), 2)
+        self.assertEqual(session._rows(), [(IN_1[0], IN_1[1], TOKEN, "broadcast")])
         self.assertEqual(session._q06_pending_confirm, TXID)
         self.assertFalse(session.faulted or session._q06_uncertain)
 
 
-class BackendRefusal(unittest.TestCase):
-    def _backend(self, session):
+class BackendRefusal(_Patched):
+    def _backend(self, session, *, control_fault=False):
         from wam_regtest.bip39_owner_backend import Bip39ReadOnlyBackend
         backend = object.__new__(Bip39ReadOnlyBackend)
         backend._spend_session = session
         backend.shared_profile = None
-        backend._control_fault = False
+        backend._control_fault = control_fault
         backend.owner = None
         backend._secret = None
         return backend
@@ -280,27 +316,38 @@ class BackendRefusal(unittest.TestCase):
         fake.resume_signed_intent = resume
         return fake
 
-    def test_backend_propagates_rec2_unchanged(self):
+    def test_backend_propagates_rec2_unchanged_with_zero_rpc_or_writes(self):
         from wam_regtest.wallet_session import WalletSessionError
-        fake = self._fake_session()
-        backend = self._backend(fake)
+        session = _session([(IN_1[0], IN_1[1], TOKEN, "uncertain")],
+                           {(TOKEN, "signed"): _body()})
+        before = session._rows()
+        backend = self._backend(session)
         with self.assertRaises(WalletSessionError) as caught:
             backend.execute("resume_intent", (TOKEN, TXID, True), {})
         self.assertEqual(caught.exception.args, (REC2,))
-        self.assertEqual(fake.calls, [(TOKEN, TXID, True)])
+        self.assertEqual(session._rpc_fake.calls, [])
+        self.assertEqual(session.vault.saves, [])
+        self.assertEqual(session._evidence_fake.writes, [])
+        self.assertEqual(session._rows(), before)
 
     def test_backend_locked_and_faulted_refuse_before_session(self):
         from wam_regtest.bip39_owner_backend import Q06ReadOnlyError
         with self.assertRaises(Q06ReadOnlyError):
             self._backend(None).execute("resume_intent", (TOKEN, TXID, True), {})
-        fake = self._fake_session(faulted=True)
-        with self.assertRaises(Q06ReadOnlyError):
-            self._backend(fake).execute("resume_intent", (TOKEN, TXID, True), {})
-        self.assertEqual(fake.calls, [])
+        for state, ctrl in (({"locked": True}, False),
+                            ({"faulted": True}, False),
+                            ({"_q06_uncertain": True}, False),
+                            ({}, True)):
+            with self.subTest(state=state, control_fault=ctrl):
+                fake = self._fake_session(**state)
+                with self.assertRaises(Q06ReadOnlyError):
+                    self._backend(fake, control_fault=ctrl).execute(
+                        "resume_intent", (TOKEN, TXID, True), {})
+                self.assertEqual(fake.calls, [])
 
 
-class ExecutorRefusal(unittest.TestCase):
-    def _run_resume(self, failure):
+class ExecutorRefusal(_Patched):
+    def _run_resume(self, failure, *, backend_factory=None):
         from wam_regtest.wallet_executor import WalletExecutor
 
         class _Backend:
@@ -313,7 +360,7 @@ class ExecutorRefusal(unittest.TestCase):
                 return {"locked": True, "faulted": False,
                         "reauthentication_required": False, "core_alive": False}
 
-        executor = WalletExecutor(_Backend)
+        executor = WalletExecutor(backend_factory or _Backend)
         try:
             with self.assertRaises(Exception) as caught:
                 executor.submit("resume_intent", TOKEN, TXID, True).result(timeout=30)
@@ -329,20 +376,77 @@ class ExecutorRefusal(unittest.TestCase):
         self.assertIs(type(error), WalletExecutorError)
         self.assertEqual(error.args, (REC2,))
 
+    def test_executor_end_to_end_backend_session_refuses_with_zero_rpc_or_writes(self):
+        from wam_regtest.bip39_owner_backend import Bip39ReadOnlyBackend
+        from wam_regtest.wallet_executor import WalletExecutorError
+        session = _session([(IN_1[0], IN_1[1], TOKEN, "uncertain")],
+                           {(TOKEN, "signed"): _body()})
+        before = session._rows()
+        backend = object.__new__(Bip39ReadOnlyBackend)
+        backend._spend_session = session
+        backend.shared_profile = None
+        backend._control_fault = False
+        backend.owner = None
+        backend._secret = None
+        backend._executor = None
+
+        class _Facade:
+            def attach_executor(self, executor):
+                backend.attach_executor(executor)
+
+            def execute(self, action, args, kwargs):
+                if action == "quit":
+                    return {}
+                return backend.execute(action, args, kwargs)
+
+            def public_state(self):
+                return backend.public_state()
+
+        error = self._run_resume(None, backend_factory=_Facade)
+        self.assertIs(type(error), WalletExecutorError)
+        self.assertEqual(error.args, (REC2,))
+        self.assertEqual(session._rpc_fake.calls, [])
+        self.assertEqual(session.vault.saves, [])
+        self.assertEqual(session._evidence_fake.writes, [])
+        self.assertEqual(session._rows(), before)
+
     def test_untrusted_rec2_text_never_crosses_executor(self):
         from wam_regtest.wallet_executor import WalletExecutorError
-        error = self._run_resume(ValueError(REC2))
-        self.assertIs(type(error), WalletExecutorError)
-        self.assertEqual(error.args, ("WALLET_EXECUTOR_DENIED",))
+        from wam_regtest.wallet_session import WalletSessionError
+
+        class HostileValueError(ValueError):
+            def __str__(self):
+                raise AssertionError("str() must not be called")
+
+        for untrusted in (
+                ValueError(REC2),
+                HostileValueError(REC2),
+                WalletSessionError(REC2, "extra"),
+        ):
+            with self.subTest(untrusted=type(untrusted).__name__):
+                error = self._run_resume(untrusted)
+                self.assertIs(type(error), WalletExecutorError)
+                self.assertEqual(error.args, ("WALLET_EXECUTOR_DENIED",))
 
 
-class ReopenNeverSubmits(unittest.TestCase):
+class ReopenNeverSubmits(_Patched):
     def test_open_recovers_pending_read_only_and_never_resumes(self):
         from wam_regtest import bip39_spend_session as module
         source = inspect.getsource(module.open_owned_spend_session)
         self.assertIn("_recover_pending_broadcast()", source)
         self.assertNotIn("resume_signed_intent", source)
         self.assertNotIn("sendrawtransaction", source)
+
+    def test_recover_pending_broadcast_ignores_uncertain_and_writes_nothing(self):
+        session = _session([(IN_1[0], IN_1[1], TOKEN, "uncertain")],
+                           {(TOKEN, "uncertain"): _body()})
+        before = session._rows()
+        self.assertIsNone(session._recover_pending_broadcast())
+        self.assertIsNone(session._q06_pending_confirm)
+        self.assertEqual(session._rpc_fake.calls, [])
+        self.assertEqual(session.vault.saves, [])
+        self.assertEqual(session._evidence_fake.writes, [])
+        self.assertEqual(session._rows(), before)
 
 
 if __name__ == "__main__":

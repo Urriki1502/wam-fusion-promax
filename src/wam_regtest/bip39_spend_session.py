@@ -334,37 +334,43 @@ class Q06OwnedSpendSession(WalletSession):
     def _refuse_uncertain_resubmit(self, token):
         """PM-088 REC-2: fail closed unless provably signed-and-never-submitted.
 
-        Why 'signed' with no write-ahead proves "never submitted": signing
-        makes the reservation durably 'signed' before any crypto
-        (wallet_session.py WalletSession.sign, mark_signed then _save), and
-        every submission attempt records its 'uncertain' write-ahead BEFORE
-        sendrawtransaction -- first the 'uncertain' evidence
-        (bip39_spend_session.py _before_broadcast_submission, called from
-        wallet_session.py WalletSession.broadcast before the reservation
-        mark and _save), then, on resume, evidence, mark and _save before
-        Wallet.broadcast. The native anchor is anti-rollback: _save only
-        advances the anchored generation by one from the expected record
-        (_Q06NativeScannerVault.save) and checkpoint advance refuses to
-        lose or downgrade an irreversible row
-        (require_irreversible_preserved), so a recorded write-ahead can
-        never silently revert to plain 'signed'. Durable all-'signed' rows
-        with no 'uncertain' (or 'broadcast') evidence therefore prove no
-        attempt ever passed the write-ahead; anything else -- an
-        'uncertain' or mixed reservation state, a recorded write-ahead, or
-        an unreadable one -- is ambiguous and is refused here, before any
-        RPC, write or state change. Status classification is untouched:
-        uncertain intents stay visible, never released or relabelled.
+        Why 'signed' with no write-ahead proves "never submitted":
+        - Signing marks every reservation durably 'signed' BEFORE crypto
+          (wallet_session.py:801-804: Wallet.mark_signed -> _save ->
+          Signer.sign; bip39_spend_session.py:163-166 retains 'signed'
+          evidence).
+        - Every submission attempt writes durable 'uncertain' write-ahead
+          BEFORE sendrawtransaction:
+          * fresh broadcast: wallet_session.py:833-843 runs preflight,
+            _before_broadcast_submission (bip39_spend_session.py:722-726
+            writes 'uncertain' evidence), then
+            mark_reservations_uncertain_before_submission
+            (wallet_session.py:839-840) and _save (wallet_session.py:841)
+            BEFORE Wallet.broadcast (wallet_session.py:843).
+          * resume broadcast: bip39_spend_session.py:475-491 writes
+            'uncertain' evidence, marks 'signed' rows 'uncertain', and
+            calls _save BEFORE Wallet.broadcast (bip39_spend_session.py:491).
+        - The native anchor is anti-rollback: _Q06NativeScannerVault.save
+          (bip39_spend_session.py:71-85) advances generation by exactly 1
+          from the expected anchor record, and checkpoint restore
+          (bip39_spend_session.py:953; bip39_scanner_checkpoint.py:123-147
+          require_irreversible_preserved) forbids losing or downgrading any
+          irreversible row ('signed'/'uncertain'/'broadcast').
+        Therefore durable all-'signed' rows with no 'uncertain' (or
+        'broadcast') evidence prove no submission ever passed the
+        write-ahead. Any 'uncertain', mixed, or unrecognized reservation
+        state, or any existing/unreadable 'uncertain'/'broadcast' evidence,
+        is ambiguous and refused here BEFORE any RPC, write or state change.
+        Status classification is untouched: uncertain intents stay visible.
         """
         with self.scanner.store.transaction():
             rows = self.scanner.store.db.execute(
                 "SELECT state FROM reservations WHERE token=?", (token,)).fetchall()
-        if not rows:
-            return  # No such intent: the caller's NOT_ELIGIBLE path decides.
         states = {row[0] for row in rows}
-        if states != {'signed'}:
-            if 'uncertain' in states or len(states) != 1:
-                raise WalletSessionError('REC2_UNCERTAIN_RESUBMIT_DEFERRED')
-            return  # Uniform draft/broadcast/other: NOT_ELIGIBLE decides.
+        if rows and states == {'broadcast'}:
+            return  # Already broadcast: caller's NOT_ELIGIBLE path decides.
+        if rows and states not in ({'signed'}, {'draft'}):
+            raise WalletSessionError('REC2_UNCERTAIN_RESUBMIT_DEFERRED')
         for stage in ('uncertain', 'broadcast'):
             try:
                 recorded = self._read_payment_evidence(token, stage)
