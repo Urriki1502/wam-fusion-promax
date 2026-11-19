@@ -110,30 +110,29 @@ def publish():
                 "    os.fsync(fd)\n",
             ),
             (
-                "from . import fullflush\n"
+                "from wam_regtest.fullflush import full_flush, flush_directory\n"
                 "import os\n"
                 "def publish():\n"
                 "    os.fchmod(1, 0o600)\n"
-                "    fullflush.full_flush(1)\n"
-                "    os.link('a', 'b')\n",
-                "import os, sys\n"
-                "def full_flush(fd):\n"
+                "    full_flush(1)\n"
+                "    os.link('a', 'b')\n"
+                "    flush_directory(1)\n",
+                "from __future__ import annotations\n"
+                "import os\n"
+                "from pathlib import Path\n"
+                "import sys\n"
+                "FULL_FLUSH_FAILED = 'FULL_FLUSH_FAILED'\n"
+                "_F_FULLFSYNC_DARWIN = 51\n"
+                "def full_flush(fd: int) -> None:\n"
                 "    if sys.platform == 'darwin':\n"
                 "        import fcntl\n"
                 "        fcntl.fcntl(fd, 51)\n"
                 "        return\n"
                 "    os.fsync(fd)\n"
-                "def flush_directory(fd):\n"
-                "    os.fsync(fd)\n",
-            ),
-            (
-                "from .fullflush import full_flush as ff\n"
-                "import os\n"
-                "def publish():\n"
-                "    os.fchmod(1, 0o600)\n"
-                "    ff(1)\n"
-                "    os.link('a', 'b')\n",
-                VALID_FULLFLUSH,
+                "def flush_directory(fd: int) -> None:\n"
+                "    os.fsync(fd)\n"
+                "def _helper(path: Path, flag: int = 0) -> None:\n"
+                "    os.close(os.open(path, flag))\n",
             ),
         ]
         for storage_src, ff_src in variants:
@@ -821,6 +820,304 @@ def publish():
             with self.subTest(limitation=label):
                 root = self._make_tree(storage_src, VALID_FULLFLUSH)
                 self.assertIs(audit.storage_contract(root), True)
+
+    def test_hermes_rereview_bypasses_fail(self):
+        """Hermes PEER-459 bypasses (a), (b), (c), (e), (f) and all decorators must FAIL."""
+        audit = _load_audit()
+        source_mutants = [
+            (
+                "a_decorator_on_full_flush",
+                "import os, sys\n"
+                "def _noop(fn):\n"
+                "    return os.fsync\n"
+                "@_noop\n"
+                "def full_flush(fd):\n"
+                "    if sys.platform == 'darwin':\n"
+                "        import fcntl\n"
+                "        fcntl.fcntl(fd, 51)\n"
+                "        return\n"
+                "    os.fsync(fd)\n"
+                "def flush_directory(fd):\n"
+                "    os.fsync(fd)\n",
+            ),
+            (
+                "a_decorator_on_flush_directory",
+                "import os, sys\n"
+                "def _noop(fn):\n"
+                "    return os.fsync\n"
+                "def full_flush(fd):\n"
+                "    if sys.platform == 'darwin':\n"
+                "        import fcntl\n"
+                "        fcntl.fcntl(fd, 51)\n"
+                "        return\n"
+                "    os.fsync(fd)\n"
+                "@_noop\n"
+                "def flush_directory(fd):\n"
+                "    os.fsync(fd)\n",
+            ),
+            (
+                "a_identity_lambda_decorator",
+                "import os, sys\n"
+                "@(lambda fn: fn)\n"
+                "def full_flush(fd):\n"
+                "    if sys.platform == 'darwin':\n"
+                "        import fcntl\n"
+                "        fcntl.fcntl(fd, 51)\n"
+                "        return\n"
+                "    os.fsync(fd)\n"
+                "def flush_directory(fd):\n"
+                "    os.fsync(fd)\n",
+            ),
+            (
+                "a_decorator_on_helper_function",
+                VALID_FULLFLUSH
+                + "def _id(fn):\n    return fn\n@_id\ndef _helper():\n    pass\n",
+            ),
+            (
+                "b_module_level_exec_rebind",
+                VALID_FULLFLUSH + "exec('full_flush = lambda fd: None')\n",
+            ),
+            (
+                "b_in_function_exec",
+                VALID_FULLFLUSH + "def _tamper():\n    exec('full_flush = lambda fd: None')\n",
+            ),
+            (
+                "c_module_level_eval_globals_update",
+                VALID_FULLFLUSH + "eval(\"globals().update({'full_flush': lambda fd: None})\")\n",
+            ),
+            (
+                "c_in_function_eval",
+                VALID_FULLFLUSH + "def _tamper():\n    eval('1')\n",
+            ),
+            (
+                "f_module_level_sys_modules_patch",
+                VALID_FULLFLUSH + "sys.modules[__name__].full_flush = lambda fd: None\n",
+            ),
+            (
+                "f_in_function_sys_modules_patch",
+                VALID_FULLFLUSH
+                + "def _tamper():\n    sys.modules[__name__].full_flush = lambda fd: None\n",
+            ),
+            (
+                "f_in_function_sys_modules_update",
+                VALID_FULLFLUSH
+                + "def _tamper():\n    sys.modules.update({'wam_regtest.fullflush': None})\n",
+            ),
+            (
+                "f_in_function_sys_modules_alias",
+                VALID_FULLFLUSH + "def _tamper():\n    m = sys.modules\n",
+            ),
+        ]
+        for label, ff_src in source_mutants:
+            with self.subTest(bypass=label):
+                root = self._make_tree(VALID_ENCRYPTED_STORAGE, ff_src)
+                self.assertIs(audit.storage_contract(root), False)
+
+        # (e) Shadowing on disk under src/wam_regtest/
+        shadow_cases = [
+            ("e_package_dir_with_init_and_py", VALID_FULLFLUSH, {"fullflush/__init__.py": "def full_flush(fd): pass\n"}, False),
+            ("e_empty_namespace_dir_with_py", VALID_FULLFLUSH, {}, True),
+            ("e_pyc_alongside_py", VALID_FULLFLUSH, {"fullflush.pyc": ""}, False),
+            ("e_so_alongside_py", VALID_FULLFLUSH, {"fullflush.cpython-312-darwin.so": ""}, False),
+            ("e_pyc_only_no_py", None, {"fullflush.pyc": ""}, False),
+            ("e_so_only_no_py", None, {"fullflush.so": ""}, False),
+        ]
+        for label, ff_src, extra_files, make_empty_dir in shadow_cases:
+            with self.subTest(bypass=label):
+                root = self._make_tree(VALID_ENCRYPTED_STORAGE, ff_src, extra_files)
+                if make_empty_dir:
+                    (root / "src/wam_regtest/fullflush").mkdir(parents=True, exist_ok=True)
+                self.assertIs(audit.storage_contract(root), False)
+
+    def test_fullflush_disallowed_module_level_constructs_fail(self):
+        audit = _load_audit()
+        mutants = [
+            ("expr_call_at_module_level", VALID_FULLFLUSH + "print('x')\n"),
+            ("trailing_string_expr_not_docstring", VALID_FULLFLUSH + "'not a docstring'\n"),
+            ("if_at_module_level", VALID_FULLFLUSH + "if True:\n    pass\n"),
+            ("try_at_module_level", VALID_FULLFLUSH + "try:\n    pass\nexcept Exception:\n    pass\n"),
+            ("for_at_module_level", VALID_FULLFLUSH + "for _ in (1,):\n    pass\n"),
+            ("with_at_module_level", VALID_FULLFLUSH + "with open('/dev/null'):\n    pass\n"),
+            ("while_at_module_level", VALID_FULLFLUSH + "while False:\n    pass\n"),
+            ("class_def_at_module_level", VALID_FULLFLUSH + "class Helper:\n    pass\n"),
+            ("async_def_at_module_level", VALID_FULLFLUSH + "async def helper():\n    pass\n"),
+            ("star_import", "from os import *\n" + VALID_FULLFLUSH),
+            ("other_import_ctypes", "import ctypes\n" + VALID_FULLFLUSH),
+            ("top_level_import_fcntl", "import fcntl\n" + VALID_FULLFLUSH),
+            ("from_os_import_fsync", "from os import fsync\n" + VALID_FULLFLUSH),
+            ("assign_non_constant", VALID_FULLFLUSH + "MY_CONST = os.fsync\n"),
+            ("assign_bool_constant", VALID_FULLFLUSH + "MY_FLAG = True\n"),
+            ("assign_float_constant", VALID_FULLFLUSH + "MY_FLOAT = 1.5\n"),
+            ("assign_lowercase_name", VALID_FULLFLUSH + "my_const = 1\n"),
+            ("assign_dunder_name", VALID_FULLFLUSH + "__ALL__ = 'x'\n"),
+            ("assign_tuple_target", VALID_FULLFLUSH + "A = B = 1\n"),
+            ("duplicate_constant_assign", VALID_FULLFLUSH + "_F_FULLFSYNC_DARWIN = 0\n"),
+            ("annassign_at_module_level", VALID_FULLFLUSH + "MY_CONST: int = 1\n"),
+            ("non_constant_default_arg", VALID_FULLFLUSH + "def _h(fn=os.fsync):\n    pass\n"),
+            ("non_constant_kw_default_arg", VALID_FULLFLUSH + "def _h(*, fn=os.fsync):\n    pass\n"),
+            ("nested_function_def", VALID_FULLFLUSH + "def _h():\n    def inner():\n        pass\n"),
+            ("nested_class_def", VALID_FULLFLUSH + "def _h():\n    class Inner:\n        pass\n"),
+            ("nested_lambda", VALID_FULLFLUSH + "def _h():\n    fn = lambda x: x\n"),
+            ("call_in_annotation", VALID_FULLFLUSH + "def _h(x: eval('1')) -> None:\n    pass\n"),
+            ("import_fcntl_outside_darwin_branch", VALID_FULLFLUSH + "def _h():\n    import fcntl\n"),
+            (
+                "import_fcntl_in_darwin_orelse",
+                VALID_FULLFLUSH
+                + "def _h():\n    if sys.platform == 'darwin':\n        pass\n    else:\n        import fcntl\n",
+            ),
+            (
+                "from_fcntl_import_inside_function",
+                VALID_FULLFLUSH
+                + "def _h():\n    if sys.platform == 'darwin':\n        from fcntl import F_FULLFSYNC\n",
+            ),
+        ]
+        for label, ff_src in mutants:
+            with self.subTest(construct=label):
+                root = self._make_tree(VALID_ENCRYPTED_STORAGE, ff_src)
+                self.assertIs(audit.storage_contract(root), False)
+
+    def test_fullflush_disallowed_in_function_calls_and_attrs_fail(self):
+        audit = _load_audit()
+        mutants = [
+            ("call_compile", VALID_FULLFLUSH + "def _h():\n    compile('1', 'x', 'eval')\n"),
+            ("call_globals", VALID_FULLFLUSH + "def _h():\n    globals()\n"),
+            ("call_locals", VALID_FULLFLUSH + "def _h():\n    locals()\n"),
+            ("call_vars", VALID_FULLFLUSH + "def _h():\n    vars()\n"),
+            ("call_setattr", VALID_FULLFLUSH + "def _h():\n    setattr(os, 'fsync', None)\n"),
+            ("call_delattr", VALID_FULLFLUSH + "def _h():\n    delattr(os, 'fsync')\n"),
+            ("call_dunder_import", VALID_FULLFLUSH + "def _h():\n    __import__('ctypes')\n"),
+            ("call_builtins_eval", VALID_FULLFLUSH + "def _h():\n    builtins.eval('1')\n"),
+            (
+                "call_getattr_non_constant_name",
+                VALID_FULLFLUSH + "def _h(attr_name):\n    getattr(os, attr_name, 0)\n",
+            ),
+            (
+                "call_getattr_keyword_arg",
+                VALID_FULLFLUSH + "def _h():\n    getattr(os, 'O_DIRECTORY', default=0)\n",
+            ),
+            ("call_importlib", VALID_FULLFLUSH + "def _h():\n    importlib.import_module('os')\n"),
+            ("attr_dunder_dict", VALID_FULLFLUSH + "def _h():\n    return os.__dict__\n"),
+            ("attr_dunder_globals", VALID_FULLFLUSH + "def _h():\n    return full_flush.__globals__\n"),
+            ("attr_dunder_code", VALID_FULLFLUSH + "def _h():\n    return full_flush.__code__\n"),
+            ("attr_dunder_builtins", VALID_FULLFLUSH + "def _h():\n    return os.__builtins__\n"),
+            ("name_dunder_builtins", VALID_FULLFLUSH + "def _h():\n    return __builtins__\n"),
+            ("attr_write_inside_function", VALID_FULLFLUSH + "def _h():\n    os.fsync = None\n"),
+        ]
+        for label, ff_src in mutants:
+            with self.subTest(call_or_attr=label):
+                root = self._make_tree(VALID_ENCRYPTED_STORAGE, ff_src)
+                self.assertIs(audit.storage_contract(root), False)
+
+    def test_disallowed_encrypted_storage_import_forms_fail(self):
+        audit = _load_audit()
+        mutants = [
+            (
+                "relative_module_import",
+                "from . import fullflush\n"
+                "import os\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    fullflush.full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "absolute_module_import",
+                "from wam_regtest import fullflush\n"
+                "import os\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    fullflush.full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "dotted_import",
+                "import os\n"
+                "import wam_regtest.fullflush\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    wam_regtest.fullflush.full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "relative_aliased_import",
+                "from .fullflush import full_flush as ff\n"
+                "import os\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    ff(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "absolute_aliased_import",
+                "from wam_regtest.fullflush import full_flush as ff\n"
+                "import os\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    ff(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "star_import_from_fullflush",
+                "from .fullflush import *\n"
+                "import os\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "non_primitive_import_from_fullflush",
+                "from .fullflush import FULL_FLUSH_FAILED, full_flush\n"
+                "import os\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "import_inside_function",
+                "import os\n"
+                "def publish():\n"
+                "    from .fullflush import full_flush\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "import_inside_if_block",
+                "import os\n"
+                "if True:\n"
+                "    from .fullflush import full_flush\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "exec_rebind_in_encrypted_storage",
+                "import os\n"
+                "from .fullflush import full_flush\n"
+                "exec('full_flush = lambda fd: None')\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "eval_rebind_in_encrypted_storage",
+                "import os\n"
+                "from .fullflush import full_flush\n"
+                "eval(\"globals().update({'full_flush': lambda fd: None})\")\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+        ]
+        for label, storage_src in mutants:
+            with self.subTest(import_form=label):
+                root = self._make_tree(storage_src, VALID_FULLFLUSH)
+                self.assertIs(audit.storage_contract(root), False)
 
 
 if __name__ == "__main__":

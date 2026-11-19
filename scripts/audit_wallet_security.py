@@ -4,7 +4,7 @@
 Review-derived AST contracts + crash-state exploration + direct byte identity.
 Not external human review, full formal verification or a second build witness.
 """
-import argparse,ast,hashlib,json,subprocess
+import argparse,ast,hashlib,json,re,subprocess
 from pathlib import Path
 
 PINS={'wamd':'fe04a61f17eb8047f1d2a537ebcb61b45cbde14c491bc332d2a2ab7ee18237ba',
@@ -176,57 +176,69 @@ def _has_dynamic_rebind(tree,targets,module_targets=()):
                     return True
     return False
 
+_ALL_CAPS_CONST_RE=re.compile(r'^_?[A-Z][A-Z0-9_]*$')
+_FORBIDDEN_FN_CALLS=frozenset({'exec','eval','compile','globals','locals','vars','setattr','delattr','__import__'})
+_FORBIDDEN_FN_ATTRS=frozenset({'__dict__','__globals__','__code__','__builtins__'})
+
+def _has_forbidden_runtime_ops(node,*,allow_dynamic_getattr=False):
+    for n in ast.walk(node):
+        if isinstance(n,ast.Call):
+            fn_name=name(n.func)
+            bare=fn_name[9:] if fn_name.startswith('builtins.') else fn_name
+            if bare in _FORBIDDEN_FN_CALLS: return True
+            if fn_name=='importlib' or fn_name.startswith('importlib.'): return True
+            if fn_name=='sys.modules' or fn_name.startswith('sys.modules.'): return True
+            if not allow_dynamic_getattr and bare=='getattr':
+                if n.keywords or len(n.args) not in (2,3): return True
+                attr_arg=n.args[1]
+                if not (isinstance(attr_arg,ast.Constant) and type(attr_arg.value) is str): return True
+                if attr_arg.value in _FORBIDDEN_FN_ATTRS or attr_arg.value=='modules' or attr_arg.value.startswith('__'):
+                    return True
+        elif isinstance(n,ast.Attribute):
+            if n.attr in _FORBIDDEN_FN_ATTRS: return True
+            if n.attr=='modules' and name(n.value)=='sys': return True
+            if isinstance(n.value,ast.Name) and n.value.id=='importlib': return True
+        elif isinstance(n,ast.Name):
+            if n.id in _FORBIDDEN_FN_CALLS or n.id in _FORBIDDEN_FN_ATTRS or n.id in ('importlib','builtins'):
+                return True
+    return False
+
 def _resolve_fullflush_calls(storage):
-    """Return local call names proven to resolve to fullflush.full_flush."""
-    direct,modules,skip_aliases=set(),set(),[]
-    imported_locals,pkg_imports,module_refs=set(),set(),set()
+    """Return local call names proven to resolve to top-level fullflush imports."""
+    imported_locals,skip_aliases=set(),[]
+    for node in storage.body:
+        if isinstance(node,ast.ImportFrom) and (
+            (node.level==1 and node.module=='fullflush')
+            or (node.level==0 and node.module=='wam_regtest.fullflush')
+        ):
+            for alias in node.names:
+                if alias.asname is not None or alias.name not in _FULLFLUSH_PRIMITIVES: return None
+                if alias.name in imported_locals: return None
+                imported_locals.add(alias.name)
+                skip_aliases.append(alias)
+    skip_tuple=tuple(skip_aliases)
     for node in ast.walk(storage):
         if isinstance(node,ast.ImportFrom):
-            if (node.level==1 and node.module=='fullflush') or (node.level==0 and node.module=='wam_regtest.fullflush'):
-                for alias in node.names:
-                    if alias.name=='*': return None
-                    local=alias.asname or alias.name
-                    if local in imported_locals: return None
-                    imported_locals.add(local)
-                    skip_aliases.append(alias)
-                    if alias.name=='full_flush': direct.add(local)
-            elif (node.level==1 and node.module is None) or (node.level==0 and node.module=='wam_regtest'):
-                for alias in node.names:
-                    if alias.name=='fullflush':
-                        local=alias.asname or 'fullflush'
-                        if local in imported_locals: return None
-                        imported_locals.add(local)
-                        skip_aliases.append(alias)
-                        modules.add(local)
-                        module_refs.add(local)
+            for alias in node.names:
+                if alias in skip_tuple: continue
+                if imported_locals and alias.name=='*': return None
+                if ((node.level==1 and node.module=='fullflush')
+                        or (node.level==0 and node.module=='wam_regtest.fullflush')
+                        or node.module=='fullflush'):
+                    return None
+                if ((node.level==1 and node.module is None)
+                        or (node.level==0 and node.module=='wam_regtest')) and alias.name=='fullflush':
+                    return None
         elif isinstance(node,ast.Import):
             for alias in node.names:
-                if alias.name=='wam_regtest.fullflush':
-                    skip_aliases.append(alias)
-                    if alias.asname:
-                        if alias.asname in imported_locals: return None
-                        imported_locals.add(alias.asname)
-                        modules.add(alias.asname)
-                        module_refs.add(alias.asname)
-                    else:
-                        pkg_imports.add('wam_regtest')
-                        modules.add('wam_regtest.fullflush')
-                        module_refs.add('wam_regtest.fullflush')
-                elif alias.asname is None and (alias.name=='wam_regtest' or alias.name.startswith('wam_regtest.')):
-                    skip_aliases.append(alias)
-    skip_tuple=tuple(skip_aliases)
-    if imported_locals or pkg_imports:
-        for node in ast.walk(storage):
-            if isinstance(node,ast.ImportFrom) and any(a not in skip_tuple and a.name=='*' for a in node.names):
-                return None
+                if alias.name=='wam_regtest.fullflush' or alias.name.startswith('wam_regtest.fullflush.'):
+                    return None
     shadowed=_assigned_names(storage,skip_aliases=skip_tuple,allow_stdlib=('os',))
     if 'os' in shadowed: return None
-    watched=imported_locals|pkg_imports
-    if watched&shadowed: return None
-    if watched and _has_dynamic_rebind(storage,watched,module_targets=module_refs): return None
-    calls=set(direct)
-    calls.update(f'{m}.full_flush' for m in modules)
-    return calls
+    if imported_locals&shadowed: return None
+    if imported_locals and _has_dynamic_rebind(storage,imported_locals): return None
+    if imported_locals and _has_forbidden_runtime_ops(storage,allow_dynamic_getattr=True): return None
+    return imported_locals
 
 def _is_darwin_platform_check(test):
     if not (isinstance(test,ast.Compare) and len(test.ops)==1 and isinstance(test.ops[0],ast.Eq)
@@ -338,19 +350,102 @@ def _has_fcntl_before_return(stmts,env,imported_attr):
         if isinstance(stmt,(ast.Return,ast.Raise)): return False
     return False
 
+def _is_safe_annotation(node):
+    if node is None or isinstance(node,ast.Constant): return True
+    if isinstance(node,ast.Name):
+        return (node.id not in _FORBIDDEN_FN_CALLS
+                and node.id not in _FORBIDDEN_FN_ATTRS
+                and node.id not in ('importlib','builtins'))
+    return False
+
+def _check_fullflush_fn_node(node,in_darwin_branch=False):
+    if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef,
+                        ast.Lambda,ast.Global,ast.Nonlocal,ast.ImportFrom)):
+        return False
+    if isinstance(node,ast.Import):
+        return (in_darwin_branch and len(node.names)==1
+                and node.names[0].name=='fcntl' and node.names[0].asname is None)
+    if isinstance(node,ast.If):
+        if not _check_fullflush_fn_node(node.test,in_darwin_branch): return False
+        is_darwin=_is_darwin_platform_check(node.test)
+        body_darwin=in_darwin_branch or is_darwin
+        orelse_darwin=False if is_darwin else in_darwin_branch
+        return (all(_check_fullflush_fn_node(s,body_darwin) for s in node.body)
+                and all(_check_fullflush_fn_node(s,orelse_darwin) for s in node.orelse))
+    return all(_check_fullflush_fn_node(child,in_darwin_branch) for child in ast.iter_child_nodes(node))
+
+def _is_allowlisted_fullflush_function(fn):
+    if fn.decorator_list or getattr(fn,'type_params',()): return False
+    if not all(isinstance(d,ast.Constant) for d in fn.args.defaults): return False
+    if not all(d is None or isinstance(d,ast.Constant) for d in fn.args.kw_defaults): return False
+    all_args=[*fn.args.posonlyargs,*fn.args.args,*fn.args.kwonlyargs]
+    if fn.args.vararg is not None: all_args.append(fn.args.vararg)
+    if fn.args.kwarg is not None: all_args.append(fn.args.kwarg)
+    blocked_names=({'os','sys','fcntl','Path','importlib','builtins'}
+                   |_FULLFLUSH_PRIMITIVES|_FORBIDDEN_FN_CALLS|_FORBIDDEN_FN_ATTRS)
+    if any(a.arg in blocked_names or not _is_safe_annotation(a.annotation) for a in all_args): return False
+    if not _is_safe_annotation(fn.returns): return False
+    if not all(_check_fullflush_fn_node(stmt,False) for stmt in fn.body): return False
+    if _has_forbidden_runtime_ops(fn,allow_dynamic_getattr=False): return False
+    for node in ast.walk(fn):
+        if isinstance(node,ast.Attribute) and isinstance(node.ctx,(ast.Store,ast.Del)): return False
+        if isinstance(node,ast.Name) and isinstance(node.ctx,(ast.Store,ast.Del)) and node.id in blocked_names:
+            return False
+    return True
+
+def _is_allowlisted_fullflush_module(tree):
+    seen_consts,seen_funcs=set(),set()
+    for idx,stmt in enumerate(tree.body):
+        if idx==0 and isinstance(stmt,ast.Expr) and isinstance(stmt.value,ast.Constant) and type(stmt.value.value) is str:
+            continue
+        if isinstance(stmt,ast.Import):
+            if stmt.names and all(a.name in ('os','sys') and a.asname is None for a in stmt.names):
+                continue
+            return False
+        if isinstance(stmt,ast.ImportFrom):
+            if (stmt.level==0 and stmt.module=='__future__' and len(stmt.names)==1
+                    and stmt.names[0].name=='annotations' and stmt.names[0].asname is None):
+                continue
+            if (stmt.level==0 and stmt.module=='pathlib' and len(stmt.names)==1
+                    and stmt.names[0].name=='Path' and stmt.names[0].asname is None):
+                continue
+            return False
+        if isinstance(stmt,ast.Assign):
+            if (len(stmt.targets)==1 and isinstance(stmt.targets[0],ast.Name)
+                    and _ALL_CAPS_CONST_RE.fullmatch(stmt.targets[0].id)
+                    and isinstance(stmt.value,ast.Constant) and type(stmt.value.value) in (int,str)
+                    and stmt.targets[0].id not in seen_consts):
+                seen_consts.add(stmt.targets[0].id)
+                continue
+            return False
+        if isinstance(stmt,ast.FunctionDef):
+            if stmt.name in seen_funcs or not _is_allowlisted_fullflush_function(stmt):
+                return False
+            seen_funcs.add(stmt.name)
+            continue
+        return False
+    return True
+
 def _verify_fullflush(root):
-    """Independently verify fullflush.py darwin F_FULLFSYNC and non-darwin os.fsync."""
-    path=root/'src/wam_regtest/fullflush.py'
-    if not path.is_file(): return False
+    """Independently verify fullflush.py structure allowlist and darwin F_FULLFSYNC contract."""
+    pkg=root/'src/wam_regtest'
+    if not pkg.is_dir(): return False
+    if (pkg/'fullflush').exists() or (pkg/'fullflush').is_symlink(): return False
+    ff_entries=[p for p in pkg.iterdir() if p.name=='fullflush' or p.name.startswith('fullflush.')]
+    if len(ff_entries)!=1 or ff_entries[0].name!='fullflush.py': return False
+    path=ff_entries[0]
+    if not path.is_file() or path.is_symlink(): return False
     try: tree=ast.parse(path.read_text())
     except (OSError,SyntaxError): return False
+    if not _is_allowlisted_fullflush_module(tree): return False
     if {'os','sys','fcntl'}&_assigned_names(tree,allow_stdlib=('os','sys','fcntl')): return False
     counts,invalid=_count_module_bindings(tree,_FULLFLUSH_PRIMITIVES)
     if invalid or any(counts.get(n)!=1 for n in _FULLFLUSH_PRIMITIVES): return False
     if _has_dynamic_rebind(tree,_FULLFLUSH_PRIMITIVES): return False
-    funcs={n.name:n for n in tree.body if isinstance(n,ast.FunctionDef)}
-    full_flush_fn,flush_dir_fn=funcs.get('full_flush'),funcs.get('flush_directory')
-    if full_flush_fn is None or flush_dir_fn is None: return False
+    full_flush_defs=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='full_flush']
+    flush_dir_defs=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='flush_directory']
+    if len(full_flush_defs)!=1 or len(flush_dir_defs)!=1: return False
+    full_flush_fn,flush_dir_fn=full_flush_defs[0],flush_dir_defs[0]
     if not _has_call(flush_dir_fn.body,'os.fsync'): return False
     located=_find_darwin_if(full_flush_fn.body)
     if located is None: return False
