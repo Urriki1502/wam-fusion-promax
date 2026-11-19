@@ -1,4 +1,4 @@
-"""Normal WAM Fusion V1 entry: one welcome, Q06 default, Q05 compatibility.
+"""Normal WAM Fusion V1 entry: one welcome, Q06 default, no legacy route.
 
 This source test does NOT claim physical Core or end-to-end human acceptance.
 The exact bundled executable must also exercise the native dialog and wallet.
@@ -20,13 +20,32 @@ from wam_regtest.managed_onboarding import (
 )
 
 
+_RETIRED_WELCOME_KEYS = (
+    "welcome.legacy_wallet_compatibility",
+    "welcome.show_legacy_q05_wallet_options",
+    "welcome.legacy_notice",
+    "welcome.open_legacy_wallet",
+    "welcome.create_legacy_test_wallet",
+)
+
+
 class UnifiedWelcomeContracts(unittest.TestCase):
+    def test_retired_welcome_copy_is_absent_from_every_catalog(self):
+        from wam_regtest.presentation.strings import CATALOG
+        self.assertGreaterEqual(len(CATALOG), 6)
+        for language, entries in CATALOG.items():
+            for key in _RETIRED_WELCOME_KEYS:
+                self.assertNotIn(key, entries, language)
+
     def test_primary_actions_all_route_to_q06_owned_bip39(self):
         self.assertEqual(wallet_route("create"), (True, "create", True))
         self.assertEqual(wallet_route("open"), (True, "reopen", False))
         self.assertEqual(wallet_route("restore"), (True, "restore", True))
-        self.assertEqual(wallet_route("legacy_open"), (False, None, False))
-        self.assertEqual(wallet_route("legacy_create"), (False, None, True))
+        for choice in ("legacy_open", "legacy_create"):
+            with self.subTest(choice=choice):
+                with self.assertRaises(ValueError) as caught:
+                    wallet_route(choice)
+                self.assertEqual(caught.exception.args, ("LEGACY_Q05_RETIRED",))
         for choice in (None, "", "q05", "q06", "import_seed", 7, True):
             with self.subTest(choice=choice):
                 with self.assertRaisesRegex(
@@ -57,14 +76,14 @@ class UnifiedWelcomeContracts(unittest.TestCase):
         self.assertIn("welcome_dialog()", code)
         self.assertIn("wallet_route(choice)", code)
         self.assertIn("launch_bip39_trial(", code)
-        self.assertIn("launch_managed(", code)
+        self.assertNotIn("launch_managed(", code)
         self.assertNotIn("QInputDialog.getItem(", code)
         self.assertNotIn("Choose wallet engine", code)
 
     @unittest.skipUnless(importlib.util.find_spec("PySide6") is not None,
                          "Live Qt widgets tested on native Qt-capable runners")
     def test_real_qt_buttons_default_bip39_and_hide_legacy(self):
-        from PySide6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication, QWidget
         from wam_regtest.managed_onboarding import (
             assert_unified_welcome_qt, welcome_dialog)
         app = QApplication.instance() or QApplication([])
@@ -72,11 +91,19 @@ class UnifiedWelcomeContracts(unittest.TestCase):
         dialog = welcome_dialog()
         try:
             self.assertEqual(dialog.selection, None)
-            self.assertFalse(dialog.legacy_toggle.isChecked())
-            self.assertFalse(dialog.legacy_panel.isVisible())
-            self.assertEqual(
-                tuple(dialog.buttons),
-                ("create", "open", "restore", "legacy_open", "legacy_create"))
+            self.assertFalse(hasattr(dialog, "legacy_toggle"))
+            self.assertFalse(hasattr(dialog, "legacy_panel"))
+            self.assertIsNone(dialog.findChild(QWidget, "FusionAdvanced"))
+            self.assertEqual(tuple(dialog.buttons), ("create", "open", "restore"))
+            chain = []
+            widget = dialog.buttons["create"]
+            seen = set()
+            while widget is not None and widget not in seen and len(chain) < 40:
+                seen.add(widget)
+                chain.append(widget)
+                widget = widget.nextInFocusChain()
+            positions = [chain.index(dialog.buttons[key]) for key in ("create", "open", "restore")]
+            self.assertEqual(positions, sorted(positions))
             self.assertIn("12 words", dialog.buttons["restore"].text())
             self.assertTrue(dialog.buttons["create"].isEnabled())
         finally:

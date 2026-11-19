@@ -130,10 +130,6 @@
       "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
     },
     {
-      "key": "welcome.legacy_notice",
-      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
-    },
-    {
       "key": "fusion.credit_debit_activity",
       "reason": "Block or balance confirmation. Do not translate this as payment approval."
     },

@@ -54,7 +54,6 @@ class OnboardingRecovery(unittest.TestCase):
     def test_expanded_legacy_buttons_remain_inside_their_panels(self):
         dialog=onboarding.welcome_dialog()
         dialog.resize(540,550);dialog.show();self.app.processEvents()
-        dialog.legacy_toggle.click();self.app.processEvents()
         try:
             for button in dialog.buttons.values():
                 self.assertTrue(button.parentWidget().rect().contains(button.geometry()))

@@ -136,8 +136,6 @@
       "welcome.explicit_separate_profile_rpc_stays_on_this_computer_no_automatic": "Explicit separate profile. RPC stays on this computer. No automatic peer discovery.",
       "welcome.your_wallet": "Your wallet",
       "welcome.one_wallet_experience_bip39_12_word_recovery": "One wallet experience · BIP39 12-word recovery",
-      "welcome.legacy_wallet_compatibility": "Legacy wallet compatibility  ▾",
-      "welcome.show_legacy_q05_wallet_options": "Show legacy Q05 wallet options",
       "welcome.wam_fusion": "WAM FUSION",
       "welcome.welcome_to_your_wallet": "Welcome to your wallet",
       "welcome.choose_how_to_begin_your_keys_stay_on_this_device_no_account_or_c": "Choose how to begin. Your keys stay on this device; no account or cloud connection is required.",
@@ -148,9 +146,6 @@
       "welcome.unlock_a_wallet_on_this_device": "Unlock a wallet on this device",
       "welcome.restore_from_12_words": "Restore from 12 words",
       "welcome.start_a_new_profile_from_your_existing_recovery_phrase": "Start a new profile from your existing recovery phrase",
-      "welcome.for_existing_q05_test_profiles_only_legacy_files_are_never_conver": "For existing Q05 test profiles only. Legacy files are never converted or used as BIP39 seed material.",
-      "welcome.open_legacy_wallet": "Open legacy wallet",
-      "welcome.create_legacy_test_wallet": "Create legacy test wallet",
       "welcome.choose_a_parent_folder_for_the_new_regtest_wallet_profile": "Choose a parent folder for the NEW REGTEST wallet profile",
       "welcome.choose_the_exact_existing_regtest_wallet_profile": "Choose the exact EXISTING REGTEST wallet profile",
       "welcome.shared_regtest": "Shared REGTEST",
@@ -346,14 +341,14 @@
     }
   },
   "source_fingerprints": {
-    "managed_onboarding": "2e1b29ea32b86a7b83ece39c2f8db60cb69ae1211da14e0a72b5baa2c599b15c",
+    "managed_onboarding": "910dc00b34fa9454f8540006604775218f1d099e8463983ae23486cf4182261d",
     "fusion_ui": "15191a755f24ec7ed594787d9e6a474b45913767234998ca9f7e1acac7f61a14",
     "fusion_pages": "9c48a171e2004a7dd2be527f682f1202a32850cf94195d07847f1fbbeaa9802b"
   },
   "source_proven": {
     "managed_onboarding": {
-      "proven_blob": "12795003e1634e1ae832284ef2001b2cdef8e817",
-      "proven_source_sha256": "5850db901a6e4d9010b7abe4295257a195791720acd4f7da4d40ecf76fc29909"
+      "proven_blob": "e9e8d93c8de0c0e988941780cb5fc3f9e983d6b8",
+      "proven_source_sha256": "8b219195c34ec808ef216b69b3452da0c2f501e7952ae7b8d9f3dc8435c6b1dc"
     },
     "fusion_ui": {
       "proven_blob": "1801f92731799840cebf2e659624b128f772b05f",

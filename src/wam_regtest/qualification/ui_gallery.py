@@ -368,6 +368,14 @@ def _render_window(language, width, height, theme_index, theme, shoot, settle, f
             scene(name, dialog)
             dialog.reject()
             dialog.deleteLater()
+        from ..managed_onboarding import welcome_dialog
+        welcome = welcome_dialog()
+        welcome.setWindowModality(Qt.WindowModality.NonModal)
+        welcome.resize(width, height)
+        welcome.show()
+        scene('20-welcome', welcome)
+        welcome.reject()
+        welcome.deleteLater()
     finally:
         window._closed = True
         window.hide()
