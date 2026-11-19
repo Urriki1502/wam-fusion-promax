@@ -113,8 +113,9 @@ def qualify(core, source):
         app.processEvents()
     def idle():
         return window._worker is None and not executor.busy and not window._delivering_result
-    def approve_click(button, caption, done):
+    def approve_click(button, caption, done, barrier=None):
         from .shared_network_probe import click_visible_approval
+        from .qualification.broadcast_close_barrier import observe_deferred_close
         timer = QTimer()
         timer.setInterval(150)
         def approve():
@@ -125,6 +126,18 @@ def qualify(core, source):
         timer.start()
         try:
             button.click()
+            if barrier is not None:
+                wait_for(lambda: barrier.entered.is_set(), 'BROADCAST_BARRIER', timeout=60)
+                observed = observe_deferred_close(app, window, executor, barrier.original)
+                barrier.release.set()
+                wait_for(lambda: idle() and done(), 'OPERATOR_APPROVAL')
+                if (barrier.submissions != 1
+                        or executor._backend.owner.process is not barrier.original
+                        or barrier.original.poll() is not None):
+                    raise ValueError('Q06_GUI_BROADCAST_SUBMISSIONS_DENIED')
+                data.update(observed)
+                data['wallet_submissions'] = barrier.submissions
+                return
             wait_for(lambda: idle() and done(), 'OPERATOR_APPROVAL')
         finally:
             timer.stop()
@@ -237,8 +250,12 @@ def qualify(core, source):
             if signed.commitment != prepared.commitment:
                 raise ValueError("Q06_SPEND_SIGNED_INTENT_DENIED")
             stage("SIGNED_ANCHORED_PASS")
+            from .qualification.broadcast_close_barrier import install_broadcast_barrier
+            barrier = install_broadcast_barrier(executor._backend)
+            barrier.original = executor._backend.owner.process
             approve_click(window.broadcast, 'Approve Broadcast',
-                          lambda: window._pending_confirm_txid is not None)
+                          lambda: window._pending_confirm_txid is not None,
+                          barrier=barrier)
             broadcast = window._pending_confirm_txid
             data['normal_gui_delayed_sign_broadcast'] = True
             data['public_txid'] = broadcast
@@ -559,6 +576,11 @@ def qualify(core, source):
             data['empty_owned_core_loss_gui'] = _qualify_empty_core_loss(
                 core, source, adapter, data['source_sha'])
             stage('EMPTY_OWNED_CORE_LOSS_GUI_PASS')
+            if (data.get('close_during_approved_broadcast_deferred') is not True
+                    or data.get('qt_timer_alive_during_operation') is not True
+                    or data.get('wallet_close_reopen_same_core') is not True
+                    or data.get('wallet_submissions') != 1):
+                raise ValueError('Q06_GUI_BROADCAST_SUBMISSIONS_DENIED')
             data["status"] = "Q06_NATIVE_BIP39_SEND_CONFIRM_REOPEN_PASS"
             data['timestamp_utc'] = datetime.now(timezone.utc).isoformat()
             good = True
@@ -938,7 +960,10 @@ _PUBLIC_FAILURE_CODES = frozenset((
     'Q06_FUSION_AFTER_SEND_RECEIVE_DENIED',
     'Q06_FUSION_NAVIGATION_DENIED',
     'Q06_FUSION_VERIFIED_SNAPSHOT_NOT_RENDERED',
+    'Q06_BROADCAST_CLOSE_BARRIER_TIMEOUT',
     'Q06_GUI_BACKUP_VERIFICATION_DENIED',
+    'Q06_GUI_BROADCAST_SUBMISSIONS_DENIED',
+    'Q06_GUI_CLOSE_CHANGED_CORE',
     'Q06_GUI_DENIED_BACKUP_SYNC',
     'Q06_GUI_DENIED_CREATE_BACKUP',
     'Q06_GUI_DENIED_INITIAL_PASSWORD_REFUSAL',
@@ -949,6 +974,8 @@ _PUBLIC_FAILURE_CODES = frozenset((
     'Q06_GUI_DENIED_SEED_ONLY_UNLOCK',
     'Q06_GUI_DENIED_UNLOCK',
     'Q06_GUI_TXID_PERSISTENT_COPY_DENIED',
+    'Q06_GUI_UNSAFE_INFLIGHT_CLOSE',
+    'Q06_GUI_WAIT_BROADCAST_BARRIER',
     'Q06_GUI_WAIT_BACKUP_SYNC',
     'Q06_GUI_WAIT_CREATE_BACKUP',
     'Q06_GUI_WAIT_INITIAL_PASSWORD_REFUSAL',

@@ -257,6 +257,10 @@ else:
                 and restored.get("status")=="FRESH_PROFILE_SAME_CHAIN_HISTORY_RESTORE_PASS"
                 and restored.get("all_original_owners_shutdown_verified") is True
                 and restored.get("mnemonic_does_not_restore_signed_reservations") is True
+                and data.get("close_during_approved_broadcast_deferred") is True
+                and data.get("qt_timer_alive_during_operation") is True
+                and data.get("wallet_close_reopen_same_core") is True
+                and data.get("wallet_submissions") == 1
                 and _valid_exc(restored))
         shutil.copyfile(report,out/'q06-frozen-spend-evidence.json')
         # PM-080-SPEND-RECEIPT-CHECK-END

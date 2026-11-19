@@ -9,6 +9,7 @@ from unittest.mock import Mock,patch
 from types import SimpleNamespace
 
 from wam_regtest import q05_checkpoint_scenario as checkpoint
+from wam_regtest import q05_crash_scenario as crash
 from wam_regtest import q05_security_scenario as security
 from wam_regtest.q05_packaged import run
 
@@ -93,7 +94,7 @@ class QualificationContracts(unittest.TestCase):
     def test_frozen_scenarios_pass_only_bundled_resources_and_explicit_flags(self):
         args=['--root',str(self.root),'--receipt',str(self.directory/'receipt.json'),
               '--confirm-disposable-regtest']
-        for scenario,module in (('checkpoint',checkpoint),('security',security)):
+        for scenario,module in (('checkpoint',checkpoint),('security',security),('crash',crash)):
             with patch.object(sys,'frozen',True,create=True),patch.object(sys,'platform','darwin'), \
                     patch.object(module,'main',return_value=0) as execute:
                 self.assertEqual(run(self.directory,self.directory,[*args,'--scenario',scenario]),0)

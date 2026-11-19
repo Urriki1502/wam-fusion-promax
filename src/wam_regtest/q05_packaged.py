@@ -11,7 +11,7 @@ import sys
 
 def run(core,source,argv):
     p=argparse.ArgumentParser()
-    p.add_argument('--scenario',choices=('gui','checkpoint','security'),default='gui')
+    p.add_argument('--scenario',choices=('gui','checkpoint','security','crash'),default='gui')
     p.add_argument('--root',type=Path,required=True)
     p.add_argument('--receipt',type=Path,required=True)
     p.add_argument('--confirm-disposable-regtest',action='store_true')
@@ -33,8 +33,12 @@ def run(core,source,argv):
                 del forwarded[i];break
         if a.scenario=='checkpoint':
             from .q05_checkpoint_scenario import main
-        else:
+        elif a.scenario=='security':
             from .q05_security_scenario import main
+        elif a.scenario=='crash':
+            from .q05_crash_scenario import main
+        else:
+            raise ValueError('Q05_FROZEN_EXPLICIT_SCOPE_REQUIRED')
         return main(forwarded,core=core,source=source,frozen=True)
     from .q05_gui_scenario import run_scenario
     record=run_scenario(core,source,a.root,a.receipt,confirmed=True,

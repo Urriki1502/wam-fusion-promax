@@ -41,6 +41,10 @@ def _valid_spend_receipt():
         "fresh_same_chain_profile_full_history_recovered": True,
         "q06_post_reopen_txid_readonly_reconciliation": True,
         "q06_bip39_fresh_mnemonic_full_history_recovery": False,
+        "close_during_approved_broadcast_deferred": True,
+        "qt_timer_alive_during_operation": True,
+        "wallet_close_reopen_same_core": True,
+        "wallet_submissions": 1,
         "source_sha": "a" * 40,
         "fresh_profile_same_chain_history": _valid_nested_restore(),
     }
@@ -198,6 +202,22 @@ class MacosBundleConsumerContractTests(unittest.TestCase):
                     nested.pop("mnemonic_does_not_restore_signed_reservations")
                 else:
                     nested["mnemonic_does_not_restore_signed_reservations"] = value
+                rc, _, published = self._run_bundle_check_via_bash(payload)
+                self.assertNotEqual(rc, 0)
+                self.assertFalse(published)
+
+    def test_bundle_builder_refuses_a_spend_receipt_without_the_close_fields(self):
+        for key, bad in (
+                ("close_during_approved_broadcast_deferred", False),
+                ("qt_timer_alive_during_operation", None),
+                ("wallet_close_reopen_same_core", "true"),
+                ("wallet_submissions", 2)):
+            with self.subTest(key=key):
+                payload = _valid_spend_receipt()
+                if bad is None:
+                    payload.pop(key)
+                else:
+                    payload[key] = bad
                 rc, _, published = self._run_bundle_check_via_bash(payload)
                 self.assertNotEqual(rc, 0)
                 self.assertFalse(published)

@@ -1,8 +1,9 @@
 """Genuine-Core Q05 D-QUIT-1 acceptance harness (S-Q05-A and S-Q05-B).
 
-Qualification-only module; never imported by production code. Exercises real
-CoreSupervisor, ManagedWalletBackend, WalletExecutor, quit_notice, and pinned
-WSP against signed Core v0.1.13 on fresh disposable regtest profiles.
+Qualification-only module; never imported by production code. Create, prepare,
+sign, mine, and recover call WalletSession and wallet_recovery on the owner
+thread. Quit, notices, acknowledgement, and an existing-profile reopen stay on
+ManagedWalletBackend. There is no product flag that re-enables a retired action.
 """
 from __future__ import annotations
 
@@ -43,7 +44,14 @@ _PUBLIC_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]{2,95}\Z")
 _HEX40_RE = re.compile(r"^[0-9a-f]{40}\Z")
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}\Z")
 _PASSWORD = b"public-disposable-q05-dquit1-only"
-_QUALIFICATION_COMMANDS = frozenset(("fixture_fund",))
+_QUALIFICATION_COMMANDS = frozenset((
+    "fixture_fund",
+    "engine_open_owned",
+    "engine_prepare_auto",
+    "engine_sign",
+    "engine_mine",
+    "engine_recover",
+))
 
 
 class _AfterPublicationCut(ValueError):
@@ -124,41 +132,85 @@ class QualificationQ05Backend(ManagedWalletBackend):
         self.events.append("PUBLISH_NOTICE")
         return notice
 
-    def execute(self, action, args, kwargs):
-        if action == "fixture_fund":
-            from ..managed_wallet_session import check_session
-            from ..wallet_session import WalletCoreCli
-            from ..wsp_live import public_regtest_mining_address, _public_fixture_payment
-            from wam_sp.keystore import Keyring
+    def _engine_open_owned(self, password, create=False):
+        from ..wallet_session import WalletSession
+        if create is not True:
+            raise ValueError("Q05_DQUIT1_ENGINE_CREATE_REQUIRED")
+        if type(password) is not bytes or not 12 <= len(password) <= 1024:
+            raise ValueError("WALLET_MANAGED_INPUT_DENIED")
+        owner = self._core()
+        if self._anchor_factory is not None and not self._anchor_ready:
+            self.keychain = self._anchor_factory(self.root)
+            self._anchor_ready = True
+        self.session = WalletSession.open_owned(
+            owner, self.source, password, authorized=True, create=True,
+            keychain=self.keychain, mining_address=self.mining_address)
+        return self.session.snapshot()
 
-            check_session(self.session)
-            address = self.mining_address or public_regtest_mining_address(self.source)
-            rpc = WalletCoreCli(self.owner.cli, self.owner.directory)
-            try:
-                rpc.attest()
-                rpc._call("generatetoaddress", ["101", address])
-                txid, atoms, height = _public_fixture_payment(
-                    rpc, self.session.ring.accounts()[0], address
-                )
-            finally:
-                if getattr(rpc, "_transport", None) is not None:
-                    rpc._transport.close()
-            recipient = Keyring()
-            try:
-                recipient_code = recipient.accounts()[0].payment_code()
-            finally:
-                recipient.close()
-            return {
-                "txid": txid,
-                "atoms": atoms,
-                "height": height,
-                "recipient": recipient_code,
-            }
-        if action == "quit":
-            self.quit_count += 1
-            self.events.append("ACTION_QUIT")
-            self._wrap_owner_release_close()
+    def _engine_prepare_auto(self, code, atoms):
+        return self.session.prepare_auto(code, atoms)
+
+    def _engine_sign(self, commitment):
+        return self.session.sign(commitment)
+
+    def _engine_mine(self):
+        return self.session.mine()
+
+    def _engine_recover(self, password):
+        from ..wallet_recovery import recover_checkpoint
+        self._lock()
+        owner = self.owner if self.owner is not None else self._core()
+        if self.keychain is None and self._anchor_factory is not None and not self._anchor_ready:
+            self.keychain = self._anchor_factory(self.root)
+            self._anchor_ready = True
+        return recover_checkpoint(
+            owner, self.source, password, authorized=True, keychain=self.keychain)
+
+    def execute(self, action, args, kwargs):
         try:
+            if action == "fixture_fund":
+                from ..managed_wallet_session import check_session
+                from ..wallet_session import WalletCoreCli
+                from ..wsp_live import public_regtest_mining_address, _public_fixture_payment
+                from wam_sp.keystore import Keyring
+
+                check_session(self.session)
+                address = self.mining_address or public_regtest_mining_address(self.source)
+                rpc = WalletCoreCli(self.owner.cli, self.owner.directory)
+                try:
+                    rpc.attest()
+                    rpc._call("generatetoaddress", ["101", address])
+                    txid, atoms, height = _public_fixture_payment(
+                        rpc, self.session.ring.accounts()[0], address
+                    )
+                finally:
+                    if getattr(rpc, "_transport", None) is not None:
+                        rpc._transport.close()
+                recipient = Keyring()
+                try:
+                    recipient_code = recipient.accounts()[0].payment_code()
+                finally:
+                    recipient.close()
+                return {
+                    "txid": txid,
+                    "atoms": atoms,
+                    "height": height,
+                    "recipient": recipient_code,
+                }
+            if action == "engine_open_owned":
+                return self._engine_open_owned(*args, **kwargs)
+            if action == "engine_prepare_auto":
+                return self._engine_prepare_auto(*args, **kwargs)
+            if action == "engine_sign":
+                return self._engine_sign(*args, **kwargs)
+            if action == "engine_mine":
+                return self._engine_mine()
+            if action == "engine_recover":
+                return self._engine_recover(*args, **kwargs)
+            if action == "quit":
+                self.quit_count += 1
+                self.events.append("ACTION_QUIT")
+                self._wrap_owner_release_close()
             return super().execute(action, args, kwargs)
         finally:
             self._record_popen()
@@ -401,7 +453,7 @@ def _run_scenario_a(
                 mining_address=mining_address, _anchor_factory=adapter.make_anchor,
             )
         )
-        initial = executor1.request("open", _PASSWORD, create=True, timeout=120)
+        initial = executor1.request("engine_open_owned", _PASSWORD, create=True, timeout=120)
         backend1 = executor1._backend
         popen1, pid1 = backend1.spawned_popens[0]
         if initial.height != 0 or popen1.poll() is not None:
@@ -412,7 +464,7 @@ def _run_scenario_a(
         snap = executor1.request("snapshot", timeout=120)
         if snap.confirmed_atoms != funded["atoms"] or snap.height < funded["height"]:
             raise ValueError("Q05_DQUIT1_FUNDING_MISMATCH")
-        review = executor1.request("prepare_auto", funded["recipient"], 100_000, timeout=120)
+        review = executor1.request("engine_prepare_auto", funded["recipient"], 100_000, timeout=120)
 
         record["stage"] = "FAULT_INJECT_SIGNER_CRYPTO_FAILURE"
         def fault_sign(*_args, **_kwargs):
@@ -420,7 +472,7 @@ def _run_scenario_a(
 
         with patch.object(Signer, "sign", fault_sign):
             try:
-                executor1.request("sign", review.commitment, timeout=120)
+                executor1.request("engine_sign", review.commitment, timeout=120)
                 raise ValueError("Q05_DQUIT1_FAULT_NOT_TRIGGERED")
             except WalletExecutorError as error:
                 sign_refusal = map_refusal_code(error)
@@ -487,7 +539,7 @@ def _run_scenario_a(
         if refused_prior_runtime != "WALLET_MANAGED_OPEN_DENIED":
             raise ValueError("Q05_DQUIT1_UNEXPECTED_PRIOR_RUNTIME_REFUSAL")
 
-        recovered = plain_value(executor2.request("recover", _PASSWORD, timeout=120))
+        recovered = plain_value(executor2.request("engine_recover", _PASSWORD, timeout=120))
         reopened = executor2.request("open", _PASSWORD, create=False, timeout=120)
         if (reopened.confirmed_atoms != funded["atoms"]
                 or list(reopened.reservation_states or ()) != ["signed"]):
@@ -573,7 +625,7 @@ def _run_scenario_b(
                 mining_address=mining_address, _anchor_factory=adapter.make_anchor,
             )
         )
-        initial = executor1.request("open", _PASSWORD, create=True, timeout=120)
+        initial = executor1.request("engine_open_owned", _PASSWORD, create=True, timeout=120)
         backend1 = executor1._backend
         popen1, pid1 = backend1.spawned_popens[0]
         if initial.height != 0 or popen1.poll() is not None:
@@ -592,7 +644,7 @@ def _run_scenario_b(
 
         with patch.object(store, "publish", cut_after_publish):
             try:
-                executor1.request("mine", timeout=120)
+                executor1.request("engine_mine", timeout=120)
                 raise ValueError("Q05_DQUIT1_CHECKPOINT_CUT_NOT_TRIGGERED")
             except WalletExecutorError as error:
                 save_refusal = map_refusal_code(error)

@@ -88,7 +88,7 @@ def qualify(core, source, root, receipt, *, confirmed=False,
             time.sleep(.01)
         app.processEvents()
 
-    def gui_approval(button, caption, done, *, duplicate=False):
+    def gui_approval(button, caption, done, *, duplicate=False, close_barrier=None):
         from PySide6.QtCore import QTimer, Qt
         from .fusion_pages import PaymentApproval
         from .qualification_gui import click_visible_approval
@@ -127,7 +127,19 @@ def qualify(core, source, root, receipt, *, confirmed=False,
             button.click()
             if duplicate:
                 button.click()  # A busy/disabled Send must not prepare twice.
+            if close_barrier is not None:
+                from .qualification.broadcast_close_barrier import observe_deferred_close
+                wait_gui(lambda: close_barrier.entered.is_set(), "BROADCAST_BARRIER")
+                observed = observe_deferred_close(app, window, executor, close_barrier.original)
+                close_barrier.release.set()
             wait_gui(lambda: clicked[0] and idle() and done(), "APPROVAL")
+            if close_barrier is not None:
+                if (close_barrier.submissions != 1
+                        or executor._backend.owner.process is not close_barrier.original
+                        or close_barrier.original.poll() is not None):
+                    raise Q06PlatformQualificationError("Q06_PLATFORM_BROADCAST_SUBMISSIONS_DENIED")
+                record.update(observed)
+                record["wallet_submissions"] = close_barrier.submissions
         finally:
             timer.stop()
 
@@ -303,8 +315,12 @@ def qualify(core, source, root, receipt, *, confirmed=False,
             gui_approval(window.broadcast, "Cancel", lambda: window._signed_ready)
             if window._pending_confirm_txid is not None or dispatch_counts.get("broadcast", 0) != 0:
                 raise Q06PlatformQualificationError("Q06_PLATFORM_CANCEL_BROADCAST_DENIED")
+            from .qualification.broadcast_close_barrier import install_broadcast_barrier
+            close_barrier = install_broadcast_barrier(executor._backend)
+            close_barrier.original = executor._backend.owner.process
             gui_approval(window.broadcast, "Approve Broadcast",
-                         lambda: window._pending_confirm_txid is not None)
+                         lambda: window._pending_confirm_txid is not None,
+                         close_barrier=close_barrier)
             txid = window._pending_confirm_txid
             if dispatch_counts.get("broadcast", 0) != 1:
                 raise Q06PlatformQualificationError("Q06_PLATFORM_BROADCAST_DISPATCH_COUNT_DENIED")
@@ -406,6 +422,12 @@ def qualify(core, source, root, receipt, *, confirmed=False,
                 or not valid_optional_failure_exception(restored_history)):
             raise Q06PlatformQualificationError("Q06_PLATFORM_FRESH_SAME_CHAIN_RESTORE_DENIED")
         record["fresh_same_chain_profile_full_history_recovered"] = True
+        if window is not None and (
+                record.get("close_during_approved_broadcast_deferred") is not True
+                or record.get("qt_timer_alive_during_operation") is not True
+                or record.get("wallet_close_reopen_same_core") is not True
+                or record.get("wallet_submissions") != 1):
+            raise Q06PlatformQualificationError("Q06_PLATFORM_BROADCAST_SUBMISSIONS_DENIED")
         good = True
         record["status"] = "Q06_NATIVE_FROZEN_REAL_CORE_PASS"
         record["failure_stage"] = None

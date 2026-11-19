@@ -90,6 +90,10 @@ def main():
                 "gui_cancel_sign":data.get("gui_cancel_does_not_sign") is True,
                 "gui_duplicate_send":data.get("gui_duplicate_send_one_reservation") is True,
                 "gui_sign_broadcast":data.get("normal_gui_separate_sign_broadcast") is True,
+                "close_during_approved_broadcast_deferred":data.get("close_during_approved_broadcast_deferred") is True,
+                "qt_timer_alive_during_operation":data.get("qt_timer_alive_during_operation") is True,
+                "wallet_close_reopen_same_core":data.get("wallet_close_reopen_same_core") is True,
+                "wallet_submissions":data.get("wallet_submissions") == 1,
             })
         expected_source = os.environ.get("WAM_SOURCE_HEAD") or subprocess.check_output(
             ['git','rev-parse','HEAD'],text=True).strip()

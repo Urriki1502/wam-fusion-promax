@@ -30,6 +30,27 @@ def require_receipt(record,executable,source):
         raise ValueError('Q05_FINAL_FROZEN_RECEIPT_DENIED')
 
 
+def require_crash_receipt(record, executable, source):
+    observations = record.get('observations') or []
+    flush = next((item for item in observations
+                  if item.get('owned_Core_flush_before_cold_crash') is True), None)
+    crashed = next((item for item in observations
+                    if item.get('crash_scope') == 'after-owned-Core-flush-without-clean-shutdown'), None)
+    history = None if flush is None else flush.get('history_sha256')
+    reservation = None if flush is None else flush.get('reservation_sha256')
+    if (record.get('status') != 'PASS' or record.get('owner_shutdown_verified') is not True
+            or record.get('frozen') is not True or record.get('synthetic_rpc') is not False
+            or record.get('mainnet_allowed') is not False or record.get('source_sha') != source
+            or record.get('wsp_source_commit') != 'ac55f13423620252bdbf848c7e8a280c3b84721e'
+            or record.get('source_provenance', {}).get('frozen_executable_sha256') != sha256(executable.read_bytes()).hexdigest()
+            or flush is None or crashed is None
+            or crashed.get('automatic_wallet_replay') is not False
+            or type(history) is not str or type(reservation) is not str
+            or crashed.get('history_sha256') != history
+            or crashed.get('reservation_sha256') != reservation):
+        raise ValueError('Q05_FINAL_FROZEN_CRASH_RECEIPT_DENIED')
+
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('--executable',type=Path,required=True)
     p.add_argument('--output',type=Path,required=True)
@@ -77,6 +98,7 @@ def main():
             '--interrupt-publication','--recover-after-interruption',
             '--interrupt-recovery-reference','--complete-pending-recovery']
         cases=[] if a.headless else [('security','security',[])]
+        cases += [('cold-crash','crash',[])]
         cases += [('signed-completion','checkpoint',[*completion,'--reservation','signed']),
             ('uncertain-completion','checkpoint',[*completion,'--reservation','uncertain'])]
         divergence=['--owned-session','--fund-disposable-wallet','--interrupt-publication',
@@ -100,7 +122,10 @@ def main():
             safe=False
             subprocess.run(command,env=env,cwd=parent,check=True,timeout=420)
             item=json.loads(result.read_text())
-            require_supplement(item,base,binary,scenario,options)
+            if scenario=='crash':
+                require_crash_receipt(item,binary,source)
+            else:
+                require_supplement(item,base,binary,scenario,options)
             safe=True
             print('Q05_FINAL_FROZEN_'+name.upper().replace('-','_')+'_PASS',flush=True)
         with receipt.with_name(receipt.stem+'-commands.json').open('x') as out:
