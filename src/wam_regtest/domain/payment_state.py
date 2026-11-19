@@ -252,3 +252,105 @@ def summarize_reservation_locks(broadcast, non_broadcast, *, verified_fingerprin
         'tokens_needing_attention': len(attention_tokens),
         'observation_refused_reason': observation_refused_reason,
     }
+
+
+# REC-1a (UAT, PM-087): read-only broadcast-state classification. Derived
+# only from durable reservation rows, payment evidence and an OBS-01a
+# observation. UAT produces no rebroadcast-eligible state: a token that
+# would be eligible is NOT_OBSERVED_LOCALLY with REBROADCAST_DEFERRED.
+REC1_CONFIRMED = 'CONFIRMED'
+REC1_IN_LOCAL_MEMPOOL = 'IN_LOCAL_MEMPOOL'
+REC1_NOT_OBSERVED_LOCALLY = 'NOT_OBSERVED_LOCALLY'
+REC1_CONFLICTED = 'CONFLICTED'
+REC1_REJECTED_BY_POLICY = 'REJECTED_BY_POLICY'
+REC1_BROADCAST_OUTCOME_UNCERTAIN = 'BROADCAST_OUTCOME_UNCERTAIN'
+REC1_CORRUPTED_EVIDENCE = 'CORRUPTED_EVIDENCE'
+REC1_QUARANTINED = 'QUARANTINED'
+
+REC1_STATES = frozenset((
+    REC1_CONFIRMED, REC1_IN_LOCAL_MEMPOOL, REC1_NOT_OBSERVED_LOCALLY,
+    REC1_CONFLICTED, REC1_REJECTED_BY_POLICY,
+    REC1_BROADCAST_OUTCOME_UNCERTAIN, REC1_CORRUPTED_EVIDENCE))
+
+REC1_REASON_REBROADCAST_DEFERRED = 'REBROADCAST_DEFERRED'
+REC1_REASON_EVIDENCE_READ_FAILED = 'EVIDENCE_READ_FAILED'
+REC1_REASON_EVIDENCE_MISSING = 'EVIDENCE_MISSING'
+REC1_REASON_EVIDENCE_INVALID = 'EVIDENCE_INVALID'
+REC1_REASON_EVIDENCE_INPUT_MISMATCH = 'EVIDENCE_INPUT_MISMATCH'
+REC1_REASON_LINKED = 'LINKED_TO_CORRUPTED_EVIDENCE'
+REC1_REASON_MIXED = 'MIXED_TOKEN_STATES'
+
+_REC1_RECORDED_REJECTIONS = frozenset((
+    'FEE_POLICY_REJECTED', 'POLICY_REJECTED', 'ALREADY_IN_MEMPOOL',
+    'ALREADY_IN_CHAIN', 'DUST_REJECTED', 'INPUT_SPENT_OR_CONFLICTED',
+    'CONFLICT_REJECTED', 'TXN_ALREADY_IN_CHAIN'))
+
+_REC1_CORRUPT_EVIDENCE = frozenset((
+    'invalid', 'missing', 'mismatch', 'mixed', 'corrupted', 'unavailable'))
+
+
+def linked_quarantine_closure(token_inputs, corrupted):
+    """Tokens quarantined by linkage to a corrupted token. Pure.
+
+    ``token_inputs`` maps each token to its outpoints (reserved rows plus,
+    when decoded, evidence inputs). Two tokens are linked when they share
+    an outpoint; the closure is every token reachable from a corrupted one.
+    """
+    by_outpoint = {}
+    for token, outpoints in token_inputs.items():
+        for outpoint in outpoints or ():
+            by_outpoint.setdefault(outpoint, set()).add(token)
+    quarantined = set(corrupted)
+    queue = list(quarantined)
+    while queue:
+        token = queue.pop()
+        neighbours = set()
+        for outpoint in token_inputs.get(token) or ():
+            neighbours.update(by_outpoint.get(outpoint, ()))
+        for other in neighbours:
+            if other not in quarantined:
+                quarantined.add(other)
+                queue.append(other)
+    return quarantined
+
+
+def classify_rec1_token(*, reservation_state=None, evidence='verified',
+                        observation_state=None, recorded_rejection=None,
+                        quarantined=False, quarantine_reason=None):
+    """One REC-1a classification. Pure; never spendable or recovered."""
+    if quarantined or evidence in _REC1_CORRUPT_EVIDENCE:
+        reason = quarantine_reason or {
+            'invalid': REC1_REASON_EVIDENCE_INVALID,
+            'missing': REC1_REASON_EVIDENCE_MISSING,
+            'mismatch': REC1_REASON_EVIDENCE_INPUT_MISMATCH,
+            'mixed': REC1_REASON_MIXED,
+        }.get(evidence, REC1_REASON_EVIDENCE_READ_FAILED)
+        return {'rec1_state': REC1_CORRUPTED_EVIDENCE, 'rec1_reason': reason,
+                'quarantined': True, 'spendable': False, 'recovered': False}
+    if observation_state == 'CONFIRMED':
+        return {'rec1_state': REC1_CONFIRMED, 'rec1_reason': None,
+                'quarantined': False, 'spendable': False, 'recovered': False}
+    if observation_state == 'IN_MEMPOOL':
+        return {'rec1_state': REC1_IN_LOCAL_MEMPOOL, 'rec1_reason': None,
+                'quarantined': False, 'spendable': False, 'recovered': False}
+    if observation_state in ('BLOCK_CONFLICTED', 'INPUT_UNAVAILABLE'):
+        return {'rec1_state': REC1_CONFLICTED, 'rec1_reason': observation_state,
+                'quarantined': False, 'spendable': False, 'recovered': False}
+    if (type(recorded_rejection) is str
+            and recorded_rejection in _REC1_RECORDED_REJECTIONS):
+        # Only an existing recorded typed rejection yields this state.
+        return {'rec1_state': REC1_REJECTED_BY_POLICY,
+                'rec1_reason': recorded_rejection,
+                'quarantined': False, 'spendable': False, 'recovered': False}
+    if observation_state in ('NOT_SEEN_LOCALLY', 'NOT_OBSERVED_LOCALLY',
+                             'NOT_FOUND_LOCALLY'):
+        return {'rec1_state': REC1_NOT_OBSERVED_LOCALLY,
+                'rec1_reason': REC1_REASON_REBROADCAST_DEFERRED,
+                'quarantined': False, 'spendable': False, 'recovered': False}
+    if observation_state == 'UNKNOWN' or reservation_state == UNCERTAIN:
+        return {'rec1_state': REC1_BROADCAST_OUTCOME_UNCERTAIN,
+                'rec1_reason': observation_state,
+                'quarantined': False, 'spendable': False, 'recovered': False}
+    return {'rec1_state': REC1_BROADCAST_OUTCOME_UNCERTAIN,
+            'rec1_reason': observation_state,
+            'quarantined': False, 'spendable': False, 'recovered': False}

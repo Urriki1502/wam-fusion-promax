@@ -192,6 +192,7 @@ class Q06OwnedSpendSession(WalletSession):
 
     def _intent_status_unlocked(self):
         from wam_sp.psbt import PSBT
+        from .domain.payment_state import classify_rec1_token, linked_quarantine_closure
         snapshot = self.snapshot()  # Original owner, native generation, live tip.
         rpc = self._rpc()
         with self.scanner.store.transaction():
@@ -203,33 +204,81 @@ class Q06OwnedSpendSession(WalletSession):
             groups.setdefault(token, []).append(((txid, vout), state))
         items = []
         eligible = {}
+        rec1_inputs = {}
+        rec1_corrupt = {}
+        rec1_recorded = {}
         for token, members in groups.items():
             states = {state for _, state in members}
             outpoints = {coin for coin, _ in members}
+            rec1_inputs[token] = set(outpoints)
             item = {'token': token, 'state': states.pop() if len(states) == 1 else 'mixed',
                     'input_count': len(outpoints), 'txid': None, 'evidence': 'missing',
                     'observation': None}
             try:
                 body = self._read_payment_evidence(token, 'signed')
+            except Q06SpendSessionError:
+                raise  # Profile-level custody/owner failure stays global.
             except Exception:
                 body, item['evidence'] = None, 'invalid'
+                rec1_corrupt[token] = 'EVIDENCE_READ_FAILED'
             # The per-item branches run FIRST and unchanged; tokens decided
             # here never reach observation (OBS-01a Contract I scope).
             if item['state'] == 'mixed':
                 item['classification'] = 'OPERATOR_REVIEW_MIXED_STATE'
+                rec1_corrupt[token] = 'MIXED_TOKEN_STATES'
             elif body is None:
                 item['classification'] = ('OPERATOR_REVIEW_EVIDENCE_INVALID'
                                           if item['evidence'] == 'invalid'
                                           else 'OPERATOR_REVIEW_SIGNED_EVIDENCE_MISSING')
+                rec1_corrupt.setdefault(
+                    token, 'EVIDENCE_READ_FAILED' if item['evidence'] == 'invalid'
+                    else 'EVIDENCE_MISSING')
             else:
                 item['evidence'] = 'verified'
                 item['txid'] = body['txid']
                 item.update(recipient=body['recipient'], atoms=body['atoms'], fee=body['fee'])
-                if set(PSBT.decode(bytes.fromhex(body['signed_psbt'])).tx.inputs) != outpoints:
+                if isinstance(body, dict):
+                    recorded = body.get('preflight_rejection') or body.get('recorded_rejection')
+                    rec1_recorded[token] = recorded if type(recorded) is str else None
+                try:
+                    evidence_inputs = set(
+                        PSBT.decode(bytes.fromhex(body['signed_psbt'])).tx.inputs)
+                except Exception:
+                    evidence_inputs = None
+                if evidence_inputs is not None:
+                    rec1_inputs[token] = set(outpoints) | evidence_inputs
+                if evidence_inputs is None:
+                    item['classification'] = 'OPERATOR_REVIEW_EVIDENCE_INVALID'
+                    rec1_corrupt[token] = 'EVIDENCE_INVALID'
+                elif evidence_inputs != outpoints:
                     item['classification'] = 'OPERATOR_REVIEW_EVIDENCE_INPUT_MISMATCH'
+                    rec1_corrupt[token] = 'EVIDENCE_INPUT_MISMATCH'
                 else:
                     eligible[token] = (body['txid'], outpoints, item)
             items.append(item)
+        # REC-1a: a corrupted token quarantines every linked token too.
+        quarantined = linked_quarantine_closure(rec1_inputs, set(rec1_corrupt))
+        quarantine_reasons = {}
+        for item in items:
+            token = item['token']
+            if token not in quarantined:
+                continue
+            reason = rec1_corrupt.get(token, 'LINKED_TO_CORRUPTED_EVIDENCE')
+            quarantine_reasons[token] = reason
+            if token in eligible:
+                del eligible[token]
+                item['classification'] = 'OPERATOR_REVIEW_CORRUPTED_EVIDENCE_QUARANTINED'
+            rec1 = classify_rec1_token(quarantined=True, quarantine_reason=reason)
+            item.update(rec1_state=rec1['rec1_state'], rec1_reason=rec1['rec1_reason'],
+                        quarantined=True)
+        for item in items:
+            if item['token'] in quarantined or item['token'] in eligible:
+                continue
+            rec1 = classify_rec1_token(
+                reservation_state=item['state'] if item['state'] != 'mixed' else None,
+                recorded_rejection=rec1_recorded.get(item['token']))
+            item.update(rec1_state=rec1['rec1_state'], rec1_reason=rec1['rec1_reason'],
+                        quarantined=False)
         if eligible:
             # One read-only observation for every remaining token. A
             # whole-acquisition UNKNOWN refuses the status call; transport
@@ -263,10 +312,17 @@ class Q06OwnedSpendSession(WalletSession):
                         else 'UNCERTAIN_NOT_OBSERVED_RESUMABLE')
                 else:  # UNKNOWN: CONTRADICTION or INPUTS_UNVERIFIED
                     item['classification'] = 'OPERATOR_REVIEW_OBSERVATION_CONTRADICTION'
+                rec1 = classify_rec1_token(
+                    reservation_state=item['state'], observation_state=state,
+                    recorded_rejection=rec1_recorded.get(token))
+                item.update(rec1_state=rec1['rec1_state'],
+                            rec1_reason=rec1['rec1_reason'], quarantined=False)
         return {'status': 'Q06_SIGNED_INTENT_STATUS', 'height': snapshot.height,
                 'tip': snapshot.tip, 'intents': items, 'write_attempted': False,
                 'automatic_resume': False, 'abandon_available': False,
-                'mainnet_allowed': False}
+                'mainnet_allowed': False,
+                'rec1_quarantined_tokens': sorted(quarantined),
+                'rec1_quarantine': dict(sorted(quarantine_reasons.items()))}
 
     def signed_intent_status(self):
         """Stage A: read-only reconstruction of every irreversible intent."""
@@ -521,12 +577,19 @@ class Q06OwnedSpendSession(WalletSession):
         Authority stays with the native-anchored 'broadcast' reservation rows
         and the create-only encrypted 'broadcast' evidence of the same token.
         This only restores the existing confirm_pending precondition. It never
-        re-signs, resubmits, releases a reservation or mines. Any ambiguity
-        (several tokens, unreadable or mismatched evidence, already confirmed,
-        absent from the mempool) leaves nothing pending.
+        re-signs, resubmits, releases a reservation or mines. REC-1a: an
+        evidence failure or input mismatch quarantines only that token and
+        every token linked to it through a shared input (typed reason in
+        ``_q06_rec1_quarantine``; evidence and reservations untouched, never
+        recovered); independent healthy tokens are still classified and a
+        single healthy unconfirmed candidate is still recovered. Several
+        healthy candidates, an already-confirmed candidate, or absence from
+        the mempool leaves nothing pending. Profile-level custody/owner
+        failures (Q06SpendSessionError) stay global and propagate.
         """
         import re
         from wam_sp.psbt import PSBT
+        from .domain.payment_state import classify_rec1_token, linked_quarantine_closure
         with self._lock:
             if (self._q06_uncertain or self.faulted
                     or self._q06_pending_confirm is not None):
@@ -540,18 +603,44 @@ class Q06OwnedSpendSession(WalletSession):
             groups = {}
             for txid, vout, token in rows:
                 groups.setdefault(token, set()).add((txid, vout))
-            pending = []
+            corrupt = {}
+            token_inputs = {token: set(outpoints)
+                            for token, outpoints in groups.items()}
+            healthy = {}
             for token, outpoints in groups.items():
                 try:
                     body = self._read_payment_evidence(token, 'broadcast')
-                    inputs = (None if body is None else
-                              set(PSBT.decode(bytes.fromhex(body['signed_psbt'])).tx.inputs))
+                except Q06SpendSessionError:
+                    raise  # Profile-level failure: never per-token.
                 except Exception:
-                    return None
-                if body is None or inputs != outpoints:
-                    return None
-                if body['txid'] not in confirmed:
-                    pending.append((body['txid'], outpoints))
+                    corrupt[token] = 'EVIDENCE_READ_FAILED'
+                    continue
+                if body is None:
+                    corrupt[token] = 'EVIDENCE_MISSING'
+                    continue
+                try:
+                    inputs = set(PSBT.decode(
+                        bytes.fromhex(body['signed_psbt'])).tx.inputs)
+                except Exception:
+                    corrupt[token] = 'EVIDENCE_INVALID'
+                    continue
+                token_inputs[token] = set(outpoints) | inputs
+                if inputs != outpoints:
+                    corrupt[token] = 'EVIDENCE_INPUT_MISMATCH'
+                    continue
+                healthy[token] = (body['txid'], outpoints)
+            quarantined = linked_quarantine_closure(token_inputs, set(corrupt))
+            self._q06_rec1_quarantine = {
+                token: corrupt.get(token, 'LINKED_TO_CORRUPTED_EVIDENCE')
+                for token in sorted(quarantined)}
+            self._q06_rec1_classifications = {
+                token: classify_rec1_token(
+                    quarantined=True,
+                    quarantine_reason=self._q06_rec1_quarantine[token])
+                for token in sorted(quarantined)}
+            pending = [healthy[token] for token in healthy
+                       if token not in quarantined
+                       and healthy[token][0] not in confirmed]
             if len(pending) != 1:
                 return None
             # Contract I for the one candidate. A whole-acquisition UNKNOWN

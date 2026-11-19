@@ -173,6 +173,9 @@ class PendingBroadcastRecovery(unittest.TestCase):
         self.assertEqual(self.recover(s), TX_A)
 
     def test_unreadable_historical_evidence_suppresses_recovery(self):
+        # REC-1a (PM-087) supersedes the old global suppression: the
+        # unreadable token is quarantined with a typed reason and the
+        # independent healthy broadcast is still recovered.
         s = _session([(IN_2[0], IN_2[1], "t0", "broadcast"), (IN_1[0], IN_1[1], "t1", "broadcast")],
                      history=((TX_B, 103),), evidence={"t1": _body(TX_A, "01")})
         def reader(token, stage):
@@ -180,8 +183,10 @@ class PendingBroadcastRecovery(unittest.TestCase):
                 raise ValueError("Q06_PAYMENT_EVIDENCE_INVALID")
             return _body(TX_A, "01")
         s._read_payment_evidence = reader
-        self.assertNothingPending(s)
-        self.assertEqual(s._rpc_calls, [])
+        self.assertEqual(self.recover(s), TX_A)
+        self.assertEqual(s._q06_pending_confirm, TX_A)
+        self.assertEqual(s._q06_rec1_quarantine, {"t0": "EVIDENCE_READ_FAILED"})
+        self.assertNotEqual(s._rpc_calls, [])
 
     def test_malformed_mempool_reply_fails_closed(self):
         from wam_regtest.bip39_spend_session import Q06SpendSessionError

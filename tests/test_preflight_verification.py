@@ -225,6 +225,38 @@ class PreflightVerification(unittest.TestCase):
         self.assert_latched_both(self.reply)
 
 
+class Rec1aTypedPreflightKeys(unittest.TestCase):
+    """PM-087 REC-1a: typed keys live beside, not inside, the shared contract."""
+
+    def test_already_in_chain_and_dust_get_their_own_typed_keys(self):
+        from wam_regtest.preflight import (
+            TYPED_PREFLIGHT_KEYS, typed_preflight_key, verify_preflight_typed)
+        self.assertEqual(TYPED_PREFLIGHT_KEYS['txn-already-in-chain'], 'ALREADY_IN_CHAIN')
+        self.assertEqual(TYPED_PREFLIGHT_KEYS['dust'], 'DUST_REJECTED')
+        self.assertEqual(typed_preflight_key('txn-already-in-chain'), 'ALREADY_IN_CHAIN')
+        self.assertEqual(typed_preflight_key('dust'), 'DUST_REJECTED')
+        for reason, key in (('dust', 'DUST_REJECTED'),
+                            ('txn-already-in-chain', 'ALREADY_IN_CHAIN'),
+                            ('txn-already-in-mempool', 'ALREADY_IN_MEMPOOL'),
+                            ('min relay fee not met', 'FEE_POLICY_REJECTED'),
+                            ('non-final', 'POLICY_REJECTED'),
+                            ('unseen private reason', 'POLICY_REJECTED')):
+            with self.subTest(reason=reason):
+                self.assertEqual(
+                    verify_preflight_typed(
+                        [{'allowed': False, 'reject-reason': reason}],
+                        txid=None, wtxid=None, vsize=None, fee_atoms=None), key)
+
+    def test_shared_domain_mapping_and_fee_behaviour_unchanged(self):
+        from wam_regtest.domain.preflight import PREFLIGHT_REJECT_REASONS
+        self.assertNotIn('dust', PREFLIGHT_REJECT_REASONS)
+        self.assertNotIn('txn-already-in-chain', PREFLIGHT_REJECT_REASONS)
+        reply = [{'allowed': False, 'reject-reason': 'dust'}]
+        self.assertEqual(verify_preflight(reply, txid=None, wtxid=None,
+                                          vsize=None, fee_atoms=None),
+                         'POLICY_REJECTED')
+
+
 class FE007CapturedReplies(unittest.TestCase):
     """Replay exact Core stdout with independently captured transaction facts.
 
