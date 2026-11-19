@@ -5,7 +5,8 @@ and create-only evidence files, and a fake Core. No product change.
 
 Pins the transitions the app relies on today: draft cancel, signed evidence,
 write-ahead uncertain before submission, broadcast failure with no retry,
-explicit resume of a signed or uncertain intent without re-signing, confirm
+explicit resume of a provably never-submitted signed intent without re-signing,
+refusal of an uncertain re-submission before any further send, confirm
 success and ambiguity, and exactly-one pending-broadcast recovery.
 """
 from preflight_fixtures import accepted_reply
@@ -358,7 +359,7 @@ class PaymentStateMachine(unittest.TestCase):
             'payment_signed': False, 'pending_confirm_txid': self.txid,
         })
 
-    def test_resume_uncertain_intent_requires_approval_and_never_resigns(self):
+    def test_resume_uncertain_intent_requires_approval_and_is_never_resent(self):
         from wam_regtest.bip39_spend_session import Q06SpendSessionError
         from wam_regtest.wallet_session import WalletSessionError
         session, review = self._sign()
@@ -366,6 +367,7 @@ class PaymentStateMachine(unittest.TestCase):
         with self.assertRaisesRegex(WalletSessionError, 'UNCERTAIN_LOCK_RETAINED'):
             session.broadcast(review.commitment)
         self.core.send = None
+        self.assertEqual(self.core.submit_attempts, 1)
         restarted = self._restart()
         before = self._picture(restarted, self.token)
         self.assertEqual(before['states'], ('uncertain',))
@@ -376,17 +378,13 @@ class PaymentStateMachine(unittest.TestCase):
         self.assertEqual(self._picture(restarted, self.token), before)
         signs = self.sign_calls
         self._arm_submit(restarted)
-        result = restarted.resume_signed_intent(self.token, self.txid, approved=True)
-        self.assertEqual((result['txid'], result['resigned'], result['automatic']),
-                         (self.txid, False, False))
+        with self.assertRaises(WalletSessionError) as caught:
+            restarted.resume_signed_intent(self.token, self.txid, approved=True)
+        self.assertEqual(caught.exception.args, ('REC2_UNCERTAIN_RESUBMIT_DEFERRED',))
         self.assertEqual(self.sign_calls, signs)
-        self.assertEqual(self.core.submit_attempts, 2)
-        self.assertEqual(self.core.at_submit[0]['states'], ('uncertain',))
-        self.assertNotIn('broadcast', self.core.at_submit[0]['evidence'])
-        self.assertEqual(self._picture(restarted, self.token)['states'], ('broadcast',))
-        self.assertEqual(self._picture(restarted, self.token)['evidence'],
-                         ('signed', 'uncertain', 'broadcast'))
-        self.assertEqual(self._picture(restarted, self.token)['pending'], self.txid)
+        self.assertEqual(self.core.submit_attempts, 1)
+        self.assertEqual(self.core.at_submit, [])
+        self.assertEqual(self._picture(restarted, self.token), before)
         self.assertFalse(restarted.faulted or restarted._q06_uncertain)
 
     def test_confirm_pending_success_mines_once_and_keeps_broadcast(self):

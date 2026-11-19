@@ -4,6 +4,9 @@ Real pinned-WSP scanner/PSBT/signer/reservations and real encrypted
 create-only payment evidence (macOS native storage); synthetic Core RPC and
 anchored-vault doubles. Crash cuts use BaseException so no handler runs.
 No path re-signs, retries automatically, or releases a signed/uncertain row.
+PM-088: an 'uncertain' write-ahead refuses resume with
+REC2_UNCERTAIN_RESUBMIT_DEFERRED before any RPC. A provably never-submitted
+'signed' intent can still be submitted once.
 """
 from preflight_fixtures import accepted_reply
 from contextlib import nullcontext
@@ -36,6 +39,17 @@ class Crash(BaseException):
 
 def _states(scanner):
     return {r[0] for r in scanner.store.db.execute("SELECT state FROM reservations")}
+
+
+def _reservations(scanner):
+    return tuple(scanner.store.db.execute(
+        "SELECT txid,vout,token,state,created FROM reservations ORDER BY token,txid,vout"
+    ).fetchall())
+
+
+def _evidence_files(session):
+    directory = session._evidence_store()._folder()
+    return {p.name: p.read_bytes() for p in sorted(directory.iterdir())}
 
 
 class _Chain:
@@ -198,6 +212,40 @@ class SignedIntentRecovery(unittest.TestCase):
                          or status["abandon_available"])
         return status["intents"]
 
+    def _assert_uncertain_resume_refused(self, session, evidence):
+        """Owner UAT: resume raises REC2 before any RPC, write, or relabel."""
+        from wam_regtest.wallet_session import WalletSessionError
+        seen = []
+        call, private = self.core.call, self.core._call
+
+        def record_call(method, params=None):
+            seen.append(("call", method))
+            return call(method, params)
+
+        def record_private(method, params=None):
+            seen.append(("_call", method))
+            return private(method, params)
+
+        self.core.call = record_call
+        self.core._call = record_private
+        before_rows = _reservations(session.scanner)
+        before_saved = list(self.vault.saved)
+        sends = self.core.calls.count("sendrawtransaction")
+        try:
+            with self.assertRaises(WalletSessionError) as caught:
+                session.resume_signed_intent(self.token, self.txid, approved=True)
+        finally:
+            self.core.call, self.core._call = call, private
+        self.assertEqual(caught.exception.args, ("REC2_UNCERTAIN_RESUBMIT_DEFERRED",))
+        self.assertEqual(seen, [])
+        self.assertEqual(self.core.calls.count("sendrawtransaction"), sends)
+        self.assertEqual(_reservations(session.scanner), before_rows)
+        self.assertEqual(self.vault.saved, before_saved)
+        self.assertEqual(_evidence_files(session), evidence)
+        self.assertEqual(_states(session.scanner), {"uncertain"})
+        self.assertFalse(session.faulted)
+        self.assertIsNone(session._q06_pending_confirm)
+
     # ---- crash-cut matrix -------------------------------------------------
     def test_crash_before_signed_publication_leaves_only_a_draft(self):
         self.vault = _Vault(self.keys, crash_on=2)  # 1=draft save, 2=signed save
@@ -265,20 +313,30 @@ class SignedIntentRecovery(unittest.TestCase):
         [item] = self._item(restarted)
         self.assertEqual(item["classification"], "SIGNED_NOT_SUBMITTED_RESUMABLE")
 
-    def test_crash_during_submission_before_core_is_uncertain_and_resumable(self):
+    def test_crash_during_submission_before_core_is_uncertain_and_resubmit_refused(self):
         session, review = self._signed_session()
         self.core.send = Crash()
         with self.assertRaises(Crash):
             session.broadcast(review.commitment)
+        self.assertNotIn(self.txid, self.core.mempool)
         self.core.send = None
         restarted = self._restart()
+        # Write-ahead checkpoint is 'uncertain'; the earlier 'signed'
+        # publication remains in the history.
+        self.assertIn({"signed"}, self.vault.saved[:-1])
         self.assertEqual(self.vault.saved[-1], {"uncertain"})
+        self.assertEqual(_states(restarted.scanner), {"uncertain"})
+        evidence = _evidence_files(restarted)
+        self.assertIn(self.token + "-signed.enc", evidence)
+        self.assertIn(self.token + "-uncertain.enc", evidence)
+        self.assertNotIn(self.token + "-broadcast.enc", evidence)
         [item] = self._item(restarted)
-        self.assertEqual(item["classification"], "UNCERTAIN_NOT_OBSERVED_RESUMABLE")
-        restarted.resume_signed_intent(self.token, self.txid, approved=True)
-        self.assertEqual(self.vault.saved[-1], {"broadcast"})
+        self.assertEqual((item["state"], item["classification"]),
+                         ("uncertain", "UNCERTAIN_NOT_OBSERVED_RESUMABLE"))
+        self._assert_uncertain_resume_refused(restarted, evidence)
+        self.assertNotIn(self.txid, self.core.mempool)
 
-    def test_response_lost_after_submission_is_observed_not_resent(self):
+    def test_response_lost_after_submission_is_never_resent(self):
         session, review = self._signed_session()
         lost = RuntimeError("PUBLIC_RESPONSE_LOST")
         lost.reached_core = True
@@ -286,14 +344,17 @@ class SignedIntentRecovery(unittest.TestCase):
         from wam_regtest.wallet_session import WalletSessionError
         with self.assertRaisesRegex(WalletSessionError, "UNCERTAIN"):
             session.broadcast(review.commitment)
+        self.assertEqual(self.core.calls.count("sendrawtransaction"), 1)
+        self.assertIn(self.txid, self.core.mempool)
         restarted = self._restart()
+        self.assertEqual(self.vault.saved[-1], {"uncertain"})
+        self.assertEqual(_states(restarted.scanner), {"uncertain"})
         [item] = self._item(restarted)
         self.assertEqual(item["classification"], "IN_MEMPOOL_AWAITING_CONFIRMATION")
-        from wam_regtest.bip39_spend_session import Q06SpendSessionError
-        with self.assertRaisesRegex(Q06SpendSessionError, "NOT_ELIGIBLE"):
-            restarted.resume_signed_intent(self.token, self.txid, approved=True)
+        evidence = _evidence_files(restarted)
+        self._assert_uncertain_resume_refused(restarted, evidence)
         self.assertEqual(self.core.calls.count("sendrawtransaction"), 1)
-        self.assertEqual(_states(restarted.scanner), {"uncertain"})
+        self.assertIn(self.txid, self.core.mempool)
 
     def test_reorg_or_conflict_spending_an_input_is_never_resumable(self):
         session, review = self._signed_session()

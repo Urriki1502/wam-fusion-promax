@@ -8,6 +8,7 @@ from threading import RLock
 from types import SimpleNamespace
 import ast
 import json
+import sqlite3
 import unittest
 from unittest.mock import patch
 
@@ -73,9 +74,30 @@ class PreflightVerification(unittest.TestCase):
         session._intent_status_unlocked = lambda: {'intents': [dict(
             token='a' * 32, txid=self.txid, state='signed',
             classification='SIGNED_NOT_SUBMITTED_RESUMABLE')]}
-        session._read_payment_evidence = lambda *args: dict(
+        signed_body = dict(
             signed_psbt=b'signed'.hex(), commitment='c' * 64, recipient='r', atoms=9000, fee=1000)
+
+        def read_evidence(*args):
+            # Signed evidence only. An 'uncertain' or 'broadcast' record is the
+            # PM-088 write-ahead and is refused before this fixture's preflight.
+            stage = args[1] if len(args) > 1 else None
+            if stage in ('uncertain', 'broadcast'):
+                return None
+            return signed_body
+
+        session._read_payment_evidence = read_evidence
         if resume:
+            # resume_signed_intent reads locked (ring) and the reservation
+            # rows before any preflight RPC. This fixture is a provably
+            # never-submitted 'signed' intent.
+            session.ring = SimpleNamespace()
+            db = sqlite3.connect(':memory:')
+            db.execute("CREATE TABLE reservations(txid TEXT, vout INT, token TEXT,"
+                       " state TEXT, created INT)")
+            db.execute("INSERT INTO reservations VALUES (?,?,?,?,0)",
+                       ('11' * 32, 0, 'a' * 32, 'signed'))
+            session.scanner = SimpleNamespace(
+                store=SimpleNamespace(db=db, transaction=nullcontext))
             invoke = lambda: session.resume_signed_intent('a' * 32, self.txid, approved=True)
         else:
             session._signed, session._review = b'signed', self.review

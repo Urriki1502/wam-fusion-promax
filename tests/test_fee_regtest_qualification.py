@@ -1655,6 +1655,7 @@ class RecoveryRefusalExecution(unittest.TestCase):
         session._lock = threading.RLock()
         session._q06_uncertain = session.faulted = False
         session._prepared = session._signed = session._review = session._q06_pending_confirm = None
+        session.ring = SimpleNamespace()
         session.vault = SimpleNamespace(anchor=SimpleNamespace(lease=lambda: nullcontext()))
         session.scanner = SimpleNamespace(store=SimpleNamespace(db=db, transaction=lambda: nullcontext()))
         session.snapshot = lambda: SimpleNamespace(height=102, tip="d"*64)
@@ -1664,9 +1665,13 @@ class RecoveryRefusalExecution(unittest.TestCase):
             self.assertEqual(method, "getrawmempool")
             return []
         session._rpc = lambda: SimpleNamespace(_call=raw)
-        def missing(*args):
+        def missing(token, stage):
             return None
-        def corrupt(*args):
+        def corrupt(token, stage):
+            # The reservation is still 'signed'. Only the signed record is
+            # corrupt; there is no 'uncertain' or 'broadcast' write-ahead.
+            if stage in ("uncertain", "broadcast"):
+                return None
             raise ValueError("Q06_PAYMENT_EVIDENCE_INVALID")
         for reader, classification in ((missing, "OPERATOR_REVIEW_SIGNED_EVIDENCE_MISSING"),
                                        (corrupt, "OPERATOR_REVIEW_EVIDENCE_INVALID")):
