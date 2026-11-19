@@ -678,16 +678,16 @@ class ProductionPrepare(unittest.TestCase):
         try:
             managed = ManagedWalletBackend.__new__(ManagedWalletBackend)
             owner = Bip39ReadOnlyBackend.__new__(Bip39ReadOnlyBackend)
-            with self.assertRaisesRegex(WalletExecutorError, "FEE_EXPLICIT_PREPARE_DENIED"):
+            with self.assertRaisesRegex(WalletExecutorError, "LEGACY_Q05_RETIRED"):
                 managed.execute("prepare", ("code", 1_000, 155), {})
             with self.assertRaisesRegex(WalletExecutorError, "FEE_EXPLICIT_PREPARE_DENIED"):
                 owner.execute("prepare", ("code", 1_000, 155), {})
         finally:
             ui_settings._native = previous
         self.assertFalse(ui_settings.native_store_enabled())
-        managed = ManagedWalletBackend.__new__(ManagedWalletBackend)
+        owner = Bip39ReadOnlyBackend.__new__(Bip39ReadOnlyBackend)
         with self.assertRaises(Exception) as caught:
-            managed.execute("prepare", ("code", 1_000, 155), {})
+            owner.execute("prepare", ("code", 1_000, 155), {})
         self.assertNotEqual(caught.exception.args[:1], ("FEE_EXPLICIT_PREPARE_DENIED",))
 
 

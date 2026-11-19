@@ -6,6 +6,7 @@ The welcome screen only chooses an explicit route. Every actual profile is
 authenticated by its existing native owner.
 """
 from .bip39_locale import t as ui_text
+import os
 from pathlib import Path
 import re
 import secrets
@@ -38,28 +39,106 @@ _ROUTES = {
 _RETIRED_WELCOME = frozenset(("legacy_open", "legacy_create"))
 
 
-def _layout_entry(directory, name, want_directory):
-    path = directory / name
+class LegacyQ05InspectionError(ValueError):
+    """Typed fail-closed error when Q05 layout preflight cannot be verified."""
+
+
+_Q05_ROOT_EXACT = ("supervisor.wallet",)
+_Q05_ROOT_PREFIXES = ("supervisor.recovery.",)
+_Q05_CHAIN_EXACT = (
+    "wallet-vault",
+    "wallet-runtime.sqlite",
+    "wallet-runtime.sqlite-journal",
+    "wallet-runtime.sqlite-wal",
+    "wallet-runtime.sqlite-shm",
+    "wallet-runtime.sqlite.scan.lock",
+)
+_Q05_CHAIN_PREFIXES = ("wallet-recovery-",)
+
+
+def _entry_exists_nofollow(path):
+    """Conservative lstat check: any entry (dir, file, symlink, dangling link) is present.
+
+    Returns False ONLY on FileNotFoundError (ENOENT). Any other OSError
+    (permission, I/O, ENOTDIR, ELOOP) fails closed with LegacyQ05InspectionError.
+    """
     try:
-        info = path.lstat()
+        path.lstat()
+    except FileNotFoundError:
+        return False
     except OSError:
-        return False
-    if stat.S_ISLNK(info.st_mode):
-        return False
-    return stat.S_ISDIR(info.st_mode) if want_directory else stat.S_ISREG(info.st_mode)
+        raise LegacyQ05InspectionError("LEGACY_Q05_PREFLIGHT_UNVERIFIED") from None
+    return True
 
 
-def legacy_q05_layout(directory):
-    """Read-only no-follow check. A symlink is not this folder's layout."""
+def _scan_dir_for_markers(directory, exact_names, prefixes):
+    """Inspect a real directory without following symlinks for Q05 markers."""
+    for name in exact_names:
+        if _entry_exists_nofollow(directory / name):
+            return True
+    fd = None
+    try:
+        if hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"):
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+            fd = os.open(directory, flags)
+            with os.scandir(fd) as entries:
+                for entry in entries:
+                    if entry.name in exact_names or entry.name.startswith(prefixes):
+                        return True
+        else:
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    if entry.name in exact_names or entry.name.startswith(prefixes):
+                        return True
+    except OSError:
+        raise LegacyQ05InspectionError("LEGACY_Q05_PREFLIGHT_UNVERIFIED") from None
+    finally:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+    return False
+
+
+def inspect_legacy_q05_layout(directory):
+    """Read-only conservative no-follow preflight for Q05 supervisor markers.
+
+    Returns 'legacy' if any Q05 marker exists in any form (dir, file, symlink,
+    or dangling symlink), 'absent' if the directory is missing or verified free
+    of Q05 markers, and raises LegacyQ05InspectionError on any inspection error
+    or symlinked/non-directory root or chain path.
+    """
+    if not isinstance(directory, (str, os.PathLike)):
+        raise LegacyQ05InspectionError("LEGACY_Q05_PREFLIGHT_UNVERIFIED")
     directory = Path(directory)
     try:
         info = directory.lstat()
+    except FileNotFoundError:
+        return "absent"
     except OSError:
-        return False
+        raise LegacyQ05InspectionError("LEGACY_Q05_PREFLIGHT_UNVERIFIED") from None
     if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
-        return False
-    return (_layout_entry(directory, "wallet-vault", True)
-            or _layout_entry(directory, "supervisor.wallet", False))
+        raise LegacyQ05InspectionError("LEGACY_Q05_PREFLIGHT_UNVERIFIED")
+    if _scan_dir_for_markers(directory, _Q05_ROOT_EXACT, _Q05_ROOT_PREFIXES):
+        return "legacy"
+    chain = directory / "chain"
+    try:
+        chain_info = chain.lstat()
+    except FileNotFoundError:
+        return "absent"
+    except OSError:
+        raise LegacyQ05InspectionError("LEGACY_Q05_PREFLIGHT_UNVERIFIED") from None
+    if stat.S_ISLNK(chain_info.st_mode) or not stat.S_ISDIR(chain_info.st_mode):
+        raise LegacyQ05InspectionError("LEGACY_Q05_PREFLIGHT_UNVERIFIED")
+    if _scan_dir_for_markers(chain, _Q05_CHAIN_EXACT, _Q05_CHAIN_PREFIXES):
+        return "legacy"
+    return "absent"
+
+
+def legacy_q05_layout(directory):
+    """Return True iff Q05 markers exist; raise LegacyQ05InspectionError on errors."""
+    return inspect_legacy_q05_layout(directory) == "legacy"
 
 
 def wallet_route(choice):
@@ -221,12 +300,12 @@ def launch(core, source):
         if not selected:
             continue
         chosen = Path(selected).absolute()
-        if mode in ("reopen", "restore") and legacy_q05_layout(chosen):
-            QMessageBox.warning(
-                None, ui_text("welcome.wallet_folder_not_accepted"),
-                ui_text("welcome.legacy_q05_preserved"))
-            continue
         try:
+            if mode in ("reopen", "restore") and legacy_q05_layout(chosen):
+                QMessageBox.warning(
+                    None, ui_text("welcome.wallet_folder_not_accepted"),
+                    ui_text("welcome.legacy_q05_preserved"))
+                continue
             root = selected_profile(chosen, create)
         except ValueError:
             QMessageBox.warning(

@@ -115,9 +115,21 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
         return ack_authenticated(
             self.root, folder, self._secret, self._core, self.source, self.keychain)
 
+    def _require_no_q05_layout(self):
+        from .managed_onboarding import LegacyQ05InspectionError, inspect_legacy_q05_layout
+        try:
+            status = inspect_legacy_q05_layout(self.root)
+        except LegacyQ05InspectionError:
+            raise Q06ReadOnlyError("LEGACY_Q05_PREFLIGHT_UNVERIFIED") from None
+        if status == "legacy":
+            raise Q06ReadOnlyError("Q06_GUI_Q05_PROFILE_CONFLICT")
+        if status != "absent":
+            raise Q06ReadOnlyError("LEGACY_Q05_PREFLIGHT_UNVERIFIED")
+
     def _only_seed(self, owner):
         from .bip39_seed_vault import _folder
-        if (owner.directory / "wallet-vault").exists() or (owner.root / "supervisor.wallet").exists():
+        if any(p.exists() or p.is_symlink()
+               for p in (owner.directory / "wallet-vault", owner.root / "supervisor.wallet")):
             raise Q06ReadOnlyError("Q06_GUI_Q05_PROFILE_CONFLICT")
         matches = [p for p in owner.directory.iterdir()
                    if p.name.startswith("bip39-12-") and
@@ -135,6 +147,7 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
             raise Q06ReadOnlyError("Q06_GUI_INPUT_DENIED")
         if self._secret is not None:
             raise Q06ReadOnlyError("Q06_GUI_ALREADY_OPEN")
+        self._require_no_q05_layout()
         owner = self._core()
         # The ORIGINAL CoreSupervisor must initialize its fresh owner-only
         # namespace before the disposable macOS Keychain file is created.
@@ -202,6 +215,7 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
         clears partial in-memory custody on refusal.
         """
         self._invalidate_backup_challenge()
+        self._require_no_q05_layout()
         owner = self._core()
         unresolved = _read_unresolved_quit_notices(owner)
         from .bip39_seed_vault import open_owned_seed_container
@@ -580,6 +594,7 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                 raise Q06ReadOnlyError('Q06_SHARED_RECONCILIATION_DENIED')
             from .bip39_seed_vault import open_owned_seed_container
             from .bip39_reconciliation import reconcile_shared
+            self._require_no_q05_layout()
             owner=self._core();folder=self._only_seed(owner);password=args[0]
             # Authenticate backup/profile BEFORE closing any current custody.
             with open_owned_seed_container(owner,folder,self.source,password,

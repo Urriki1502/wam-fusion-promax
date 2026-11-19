@@ -396,9 +396,9 @@ class ManagedWalletBackend:
             'codes':tuple(sorted(codes))})
 
     def execute(self,action,args,kwargs):
-        refuse_explicit_prepare(action)
         if legacy_q05_mutation(self._session_kind, action, args, kwargs):
             raise WalletExecutorError('LEGACY_Q05_RETIRED')
+        refuse_explicit_prepare(action)
         if action in ('network_status','network_active'):
             from .shared_regtest import SharedRegtestProfile, peer_status, block_magic
             from .managed_wallet_checkpoint import _owned
