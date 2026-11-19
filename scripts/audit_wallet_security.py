@@ -17,6 +17,225 @@ def name(node):
     if isinstance(node,ast.Attribute): return name(node.value)+'.'+node.attr
     if isinstance(node,ast.Call): return name(node.func)
     return ''
+
+_OSERROR_CATCHERS=frozenset({
+    'OSError','IOError','EnvironmentError','Exception','BaseException',
+    'builtins.OSError','builtins.IOError','builtins.EnvironmentError',
+    'builtins.Exception','builtins.BaseException',
+})
+_TRY_NODES=(ast.Try,getattr(ast,'TryStar',ast.Try))
+
+def _target_names(target):
+    if isinstance(target,ast.Name): yield target.id
+    elif isinstance(target,(ast.Tuple,ast.List)):
+        for elt in target.elts: yield from _target_names(elt)
+    elif isinstance(target,ast.Starred): yield from _target_names(target.value)
+
+def _assigned_names(tree,*,skip_imports=(),allow_stdlib=()):
+    bound=set()
+    for node in ast.walk(tree):
+        if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef)): bound.add(node.name)
+        elif isinstance(node,ast.Assign):
+            for t in node.targets: bound.update(_target_names(t))
+        elif isinstance(node,(ast.AnnAssign,ast.AugAssign)): bound.update(_target_names(node.target))
+        elif isinstance(node,(ast.For,ast.AsyncFor)): bound.update(_target_names(node.target))
+        elif isinstance(node,(ast.With,ast.AsyncWith)):
+            for item in node.items:
+                if item.optional_vars is not None: bound.update(_target_names(item.optional_vars))
+        elif isinstance(node,ast.ExceptHandler) and isinstance(node.name,str): bound.add(node.name)
+        elif isinstance(node,ast.Import) and node not in skip_imports:
+            for alias in node.names:
+                if alias.name in allow_stdlib and alias.asname is None: continue
+                bound.add((alias.asname or alias.name).split('.')[0])
+        elif isinstance(node,ast.ImportFrom) and node not in skip_imports:
+            for alias in node.names:
+                bound.add((alias.asname or alias.name).split('.')[0])
+    return bound
+
+def _resolve_fullflush_calls(storage):
+    """Return local call names proven to resolve to fullflush.full_flush."""
+    direct,modules,valid_imports=set(),set(),[]
+    for node in ast.walk(storage):
+        if isinstance(node,ast.ImportFrom):
+            if (node.level==1 and node.module=='fullflush') or (node.level==0 and node.module=='wam_regtest.fullflush'):
+                valid_imports.append(node)
+                for alias in node.names:
+                    if alias.name=='full_flush': direct.add(alias.asname or 'full_flush')
+            elif (node.level==1 and node.module is None) or (node.level==0 and node.module=='wam_regtest'):
+                if any(a.name=='fullflush' for a in node.names):
+                    valid_imports.append(node)
+                for alias in node.names:
+                    if alias.name=='fullflush': modules.add(alias.asname or 'fullflush')
+        elif isinstance(node,ast.Import):
+            if any(a.name=='wam_regtest.fullflush' for a in node.names):
+                valid_imports.append(node)
+            for alias in node.names:
+                if alias.name=='wam_regtest.fullflush':
+                    modules.add(alias.asname or 'wam_regtest.fullflush')
+    shadowed=_assigned_names(storage,skip_imports=tuple(valid_imports),allow_stdlib=('os',))
+    if 'os' in shadowed: return None
+    calls={n for n in direct if n not in shadowed}
+    calls.update(f'{m}.full_flush' for m in modules if m.split('.')[0] not in shadowed)
+    return calls
+
+def _is_darwin_platform_check(test):
+    if not (isinstance(test,ast.Compare) and len(test.ops)==1 and isinstance(test.ops[0],ast.Eq)
+            and len(test.comparators)==1):
+        return False
+    left,right=test.left,test.comparators[0]
+    return ((name(left)=='sys.platform' and isinstance(right,ast.Constant) and right.value=='darwin')
+            or (isinstance(left,ast.Constant) and left.value=='darwin' and name(right)=='sys.platform'))
+
+def _single_bindings(stmts,full_scope):
+    counts={}
+    for node in ast.walk(full_scope):
+        if isinstance(node,ast.Assign):
+            for t in node.targets:
+                for k in _target_names(t): counts[k]=counts.get(k,0)+1
+        elif isinstance(node,ast.AnnAssign):
+            for k in _target_names(node.target): counts[k]=counts.get(k,0)+1
+        elif isinstance(node,ast.AugAssign):
+            for k in _target_names(node.target): counts[k]=counts.get(k,0)+1
+    env={}
+    for stmt in stmts:
+        if isinstance(stmt,ast.Assign) and len(stmt.targets)==1 and isinstance(stmt.targets[0],ast.Name):
+            k=stmt.targets[0].id
+            if counts.get(k)==1: env[k]=stmt.value
+        elif isinstance(stmt,ast.AnnAssign) and isinstance(stmt.target,ast.Name) and stmt.value is not None:
+            k=stmt.target.id
+            if counts.get(k)==1: env[k]=stmt.value
+    return env
+
+def _is_51_expr(node,env,seen=()):
+    if isinstance(node,ast.Constant): return type(node.value) is int and node.value==51
+    if isinstance(node,ast.Name) and node.id in env and node.id not in seen:
+        return _is_51_expr(env[node.id],env,seen+(node.id,))
+    return False
+
+def _is_fullfsync_expr(node,env,imported_attr=False,seen=()):
+    if node is None: return False
+    if isinstance(node,ast.Constant): return type(node.value) is int and node.value==51
+    if isinstance(node,ast.Attribute): return name(node)=='fcntl.F_FULLFSYNC'
+    if isinstance(node,ast.Name):
+        if imported_attr and node.id=='F_FULLFSYNC': return True
+        if node.id in env and node.id not in seen:
+            return _is_fullfsync_expr(env[node.id],env,imported_attr,seen+(node.id,))
+        return False
+    if isinstance(node,ast.Call) and name(node.func)=='getattr' and not node.keywords:
+        if len(node.args) in (2,3) and name(node.args[0])=='fcntl':
+            arg1=node.args[1]
+            if isinstance(arg1,ast.Constant) and arg1.value=='F_FULLFSYNC':
+                return len(node.args)==2 or _is_51_expr(node.args[2],env)
+    return False
+
+def _is_fcntl_fullfsync_call(call,env,imported_attr=False):
+    if not (isinstance(call,ast.Call) and name(call.func)=='fcntl.fcntl'): return False
+    cmd=call.args[1] if len(call.args)>=2 else next(
+        (kw.value for kw in call.keywords if kw.arg in ('cmd','op')),None)
+    return _is_fullfsync_expr(cmd,env,imported_attr=imported_attr)
+
+def _catches_oserror_type(expr):
+    if expr is None: return True
+    if name(expr) in _OSERROR_CATCHERS: return True
+    if isinstance(expr,ast.Tuple): return any(_catches_oserror_type(elt) for elt in expr.elts)
+    return False
+
+def _handler_always_reraises(stmts):
+    if not stmts: return False
+    last=stmts[-1]
+    if isinstance(last,ast.Raise) and last.exc is None: return True
+    if isinstance(last,ast.If) and last.orelse:
+        return _handler_always_reraises(last.body) and _handler_always_reraises(last.orelse)
+    return False
+
+def _always_returns(stmts):
+    if not stmts: return False
+    last=stmts[-1]
+    if isinstance(last,ast.Return): return True
+    if isinstance(last,ast.If) and last.orelse:
+        return _always_returns(last.body) and _always_returns(last.orelse)
+    if isinstance(last,_TRY_NODES) and not last.handlers:
+        return _always_returns(last.body) or _always_returns(last.finalbody)
+    return False
+
+def _iter_exec_calls(node):
+    if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef,ast.Lambda)): return
+    if isinstance(node,ast.Call): yield node
+    for child in ast.iter_child_nodes(node): yield from _iter_exec_calls(child)
+
+def _has_call(nodes,target,*,exec_only=True):
+    if exec_only:
+        return any(name(c.func)==target for stmt in nodes for c in _iter_exec_calls(stmt))
+    mod=ast.Module(body=list(nodes),type_ignores=[])
+    return any(isinstance(n,ast.Call) and name(n.func)==target for n in ast.walk(mod))
+
+def _find_darwin_if(stmts,enclosing_tries=()):
+    for idx,stmt in enumerate(stmts):
+        if isinstance(stmt,ast.If) and _is_darwin_platform_check(stmt.test):
+            return stmts,idx,stmt,enclosing_tries
+        if isinstance(stmt,_TRY_NODES):
+            found=_find_darwin_if(stmt.body,enclosing_tries+(stmt,))
+            if found is not None: return found
+    return None
+
+def _has_fcntl_before_return(stmts,env,imported_attr):
+    for stmt in stmts:
+        calls=[n for n in _iter_exec_calls(stmt) if _is_fcntl_fullfsync_call(n,env,imported_attr)]
+        if isinstance(stmt,_TRY_NODES):
+            if _has_fcntl_before_return(stmt.body,env,imported_attr): return True
+        elif calls and not isinstance(stmt,(ast.If,ast.For,ast.AsyncFor,ast.While)):
+            return True
+        if isinstance(stmt,(ast.Return,ast.Raise)): return False
+    return False
+
+def _verify_fullflush(root):
+    """Independently verify fullflush.py darwin F_FULLFSYNC and non-darwin os.fsync."""
+    path=root/'src/wam_regtest/fullflush.py'
+    if not path.is_file(): return False
+    try: tree=ast.parse(path.read_text())
+    except (OSError,SyntaxError): return False
+    if {'os','sys','fcntl'}&_assigned_names(tree,allow_stdlib=('os','sys','fcntl')): return False
+    funcs={n.name:n for n in tree.body if isinstance(n,ast.FunctionDef)}
+    full_flush_fn,flush_dir_fn=funcs.get('full_flush'),funcs.get('flush_directory')
+    if full_flush_fn is None or flush_dir_fn is None: return False
+    if not _has_call(flush_dir_fn.body,'os.fsync'): return False
+    located=_find_darwin_if(full_flush_fn.body)
+    if located is None: return False
+    container_stmts,idx,darwin_if,enclosing_tries=located
+    if _has_call(container_stmts[:idx],'os.fsync',exec_only=False): return False
+    if _has_call(darwin_if.body,'os.fsync',exec_only=False): return False
+    inner_tries=[n for n in ast.walk(ast.Module(body=darwin_if.body,type_ignores=[]))
+                 if isinstance(n,_TRY_NODES)]
+    for try_node in (*enclosing_tries,*inner_tries):
+        if any(_catches_oserror_type(h.type) and not _handler_always_reraises(h.body)
+               for h in try_node.handlers):
+            return False
+    if not _always_returns(darwin_if.body): return False
+    module_env=_single_bindings(tree.body,tree)
+    branch_env=_single_bindings(darwin_if.body,full_flush_fn)
+    env={**module_env,**branch_env}
+    imported_attr=any(isinstance(n,ast.ImportFrom) and n.module=='fcntl'
+                      and any(a.name=='F_FULLFSYNC' and a.asname is None for a in n.names)
+                      for n in (*tree.body,*ast.walk(full_flush_fn)))
+    if not _has_fcntl_before_return(darwin_if.body,env,imported_attr): return False
+    return _has_call(darwin_if.orelse,'os.fsync') or _has_call(container_stmts[idx+1:],'os.fsync')
+
+def storage_contract(root):
+    """Verify encrypted_storage publication custody and flush durability contract."""
+    root=Path(root)
+    path=root/'src/wam_regtest/encrypted_storage.py'
+    if not path.is_file(): return False
+    try: storage=ast.parse(path.read_text())
+    except (OSError,SyntaxError): return False
+    primitive_calls=_resolve_fullflush_calls(storage)
+    if primitive_calls is None: return False
+    storage_calls={name(n.func) for n in ast.walk(storage) if isinstance(n,ast.Call)}
+    if not {'os.link','os.fchmod'}<=storage_calls: return False
+    uses_fsync='os.fsync' in storage_calls
+    uses_primitive=bool(primitive_calls&storage_calls)
+    if not (uses_fsync or uses_primitive): return False
+    if uses_primitive and not _verify_fullflush(root): return False
+    return True
 def method(tree,label):
     cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='WalletSession')
     return next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name==label)
@@ -105,9 +324,7 @@ def evaluate(root,core,app=None):
     vault=ast.parse((root/'src/wam_regtest/vault.py').read_text())
     results['stale_writer_anchor_comparison']=any(isinstance(n,ast.Compare) and name(n.left)=='previous'
         and any(name(x)=='self._expected' for x in n.comparators) for n in ast.walk(vault))
-    storage=ast.parse((root/'src/wam_regtest/encrypted_storage.py').read_text())
-    storage_calls={name(n.func) for n in ast.walk(storage) if isinstance(n,ast.Call)}
-    results['backup_create_only_publication_and_fsync']={'os.link','os.fsync','os.fchmod'}<=storage_calls
+    results['backup_create_only_publication_and_fsync']=storage_contract(root)
     results['both_core_hashes_independently_pinned']=all(sha(core/n)==h for n,h in PINS.items())
     if app is not None:
         import plistlib

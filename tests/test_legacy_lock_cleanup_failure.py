@@ -114,6 +114,7 @@ class LegacyLockCleanup(unittest.TestCase):
         self.assertTrue(all(audit.contracts(tree).values()))
         calls = {label for _, label, _ in audit.events(audit.method(tree, "lock"))}
         self.assertTrue({"self.ring.close", "self.scanner.close", "self.runtime.unlink"} <= calls)
+        self.assertIs(audit.storage_contract(root), True)
 
 if __name__ == "__main__":
     unittest.main()
