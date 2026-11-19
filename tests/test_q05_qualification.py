@@ -123,18 +123,30 @@ class QualificationContracts(unittest.TestCase):
         binary=self.directory/'bootloader';binary.write_bytes(b'public-test-bootloader')
         base={k:'public-fixture' for k in
               ('source_sha','checkout_sha','core_sha256','wsp_source_commit','platform','core_trust')}
+        uncertain_obs={'reservation_state':'uncertain','runtime_preserved':True,
+                       'notice_reviewed':sys.platform!='win32',
+                       'prior_runtime_refused_before_recovery':True,
+                       'explicit_checkpoint_recovery_after_uncertain_broadcast':True}
+        other_obs=[{'explicit_pending_commit_completed':True},
+                   {'live_session_runtime_retained_on_checkpoint_failure':True},
+                   {'reopened_same_wallet_live_resync':True}]
         good={**base,'status':'PASS','owner_shutdown_verified':True,'frozen':True,
             'synthetic_rpc':False,'mainnet_allowed':False,'recovery_completed':True,
             'qualification_scope':'EXPLICIT_PENDING_RECOVERY_COMPLETION',
             'automatic_wallet_transaction_replay':False,'wallet_broadcast_calls_total':1,
             'source_provenance':{'frozen_executable_sha256':sha256(binary.read_bytes()).hexdigest()},
-            'observations':[{'explicit_pending_commit_completed':True},
-                            {'live_session_runtime_retained_on_checkpoint_failure':True},
-                            {'reopened_same_wallet_live_resync':True}]}
+            'observations':[uncertain_obs,*other_obs]}
         require(good,base,binary,'checkpoint',['uncertain'])
-        for changes in ({'wallet_broadcast_calls_total':0},{'wallet_broadcast_calls_total':2},
-                        {'recovery_completed':False},{'automatic_wallet_transaction_replay':True},
-                        {'qualification_scope':'CLEAN_OWNER_REOPEN'}):
+        bad_changes=[{'wallet_broadcast_calls_total':0},{'wallet_broadcast_calls_total':2},
+                     {'recovery_completed':False},{'automatic_wallet_transaction_replay':True},
+                     {'qualification_scope':'CLEAN_OWNER_REOPEN'},
+                     {'observations':other_obs},
+                     {'observations':[{**uncertain_obs,'runtime_preserved':False},*other_obs]},
+                     {'observations':[{**uncertain_obs,'prior_runtime_refused_before_recovery':False},*other_obs]},
+                     {'observations':[{**uncertain_obs,'explicit_checkpoint_recovery_after_uncertain_broadcast':False},*other_obs]}]
+        if sys.platform!='win32':
+            bad_changes.append({'observations':[{**uncertain_obs,'notice_reviewed':False},*other_obs]})
+        for changes in bad_changes:
             with self.subTest(changes=changes),self.assertRaises(ValueError):
                 require({**good,**changes},base,binary,'checkpoint',['uncertain'])
 
@@ -216,3 +228,73 @@ class QualificationContracts(unittest.TestCase):
                 **({'cli_code':expected} if expected else {})}})
             rpc._transport.close.assert_called_once();payment.assert_not_called()
             rpc._call.assert_called_once_with('generatetoaddress',['101','public-address'])
+
+    def test_active_container_resolves_recovery_location_only_when_supervisor_exists(self):
+        self.root.mkdir(mode=0o700)
+        owner=SimpleNamespace(directory=self.root/'chain',root=self.root)
+        self.assertEqual(checkpoint._active_container(owner,'a'*32),
+                         (self.root/'chain'/'wallet-vault','wallet-runtime.sqlite'))
+        (self.root/'supervisor.token').write_bytes(b'x'*32)
+        recovered_dir=self.root/'chain'/'wallet-recovery-0123456789abcdef'
+        with patch('wam_regtest.wallet_recovery.active_location',
+                   return_value=(recovered_dir,'wallet-runtime-recovery-0123456789abcdef.sqlite',(2,'b'*64))) as active:
+            self.assertEqual(checkpoint._active_container(owner,'a'*32),
+                             (recovered_dir,'wallet-runtime-recovery-0123456789abcdef.sqlite'))
+            active.assert_called_once_with(owner,'a'*32)
+
+    def test_preserved_runtime_refusal_requires_prior_runtime_and_existing_runtime_errors(self):
+        from wam_regtest.wallet_session import WalletSessionError
+        owner=SimpleNamespace(directory=self.root,root=self.root)
+        def open_fail(*args,**kwargs):
+            try:raise checkpoint.ManagedWalletError('MANAGED_WALLET_PRIOR_RUNTIME_PRESERVED')
+            except checkpoint.ManagedWalletError as inner:
+                raise WalletSessionError('WALLET_MANAGED_OPEN_DENIED') from inner
+        def checkpoint_fail(*args,**kwargs):
+            raise checkpoint.ManagedWalletError('MANAGED_WALLET_EXISTING_RUNTIME_DENIED')
+        with patch('wam_regtest.wallet_session.WalletSession.open_owned',side_effect=open_fail),\
+                patch.object(checkpoint,'checkpoint',side_effect=checkpoint_fail):
+            checkpoint._assert_preserved_runtime_refused(owner,self.directory,b'public-password',None)
+        with patch('wam_regtest.wallet_session.WalletSession.open_owned',return_value=Mock()),\
+                self.assertRaisesRegex(ValueError,'Q05_PRESERVED_RUNTIME_OPEN_ACCEPTED'):
+            checkpoint._assert_preserved_runtime_refused(owner,self.directory,b'public-password',None)
+        with patch('wam_regtest.wallet_session.WalletSession.open_owned',side_effect=open_fail),\
+                patch.object(checkpoint,'checkpoint',return_value={}),\
+                self.assertRaisesRegex(ValueError,'Q05_PRESERVED_RUNTIME_CHECKPOINT_ACCEPTED'):
+            checkpoint._assert_preserved_runtime_refused(owner,self.directory,b'public-password',None)
+
+    def test_quit_notice_review_after_preserved_runtime_stops_publishes_reopens_and_acks(self):
+        from wam_regtest.wallet_session import WalletSessionError
+        events=[]
+        owner=SimpleNamespace(root=self.root,directory=self.root/'chain',cli=Path('/cli'),
+            profile={'profile_id':'a'*32},journal=SimpleNamespace(events=[{'seq':3}]),process=None)
+        reopened=SimpleNamespace(root=self.root,directory=self.root/'chain',cli=Path('/cli'),
+            profile={'profile_id':'a'*32},process=None)
+        owner.recover_stop=lambda:events.append('recover_stop')
+        owner.release=lambda:events.append('release')
+        owner.close=lambda:events.append('close')
+        reopened.start=lambda timeout=30:events.append(('start',timeout))
+        notice={'notice':{'wallet_outcome':'RUNTIME_PRESERVED','core_stop':'CLEAN',
+                          'codes':['WALLET_MANAGED_RUNTIME_PRESERVED']}}
+        args=SimpleNamespace(root=self.root,core_dir=self.directory,wsp_source=self.directory)
+        def publish(root,**kwargs):events.append(('publish',kwargs))
+        def unack(root,**kwargs):
+            return (notice,) if not any(e=='ack' for e in events) else ()
+        def ack(root,**kwargs):
+            events.append('ack')
+            return ({'kind':'notice','seq':1},)
+        with patch.object(checkpoint,'CoreSupervisor',return_value=reopened),\
+                patch('wam_regtest.core._read_cli',return_value=['txid-1']),\
+                patch('wam_regtest.quit_notice.publish_notice',side_effect=publish),\
+                patch('wam_regtest.quit_notice.unacknowledged',side_effect=unack),\
+                patch('wam_regtest.quit_notice.acknowledge_unresolved',side_effect=ack),\
+                patch('wam_regtest.wallet_session.WalletSession.open_owned',
+                      side_effect=WalletSessionError('QUIT_NOTICE_REVIEW_REQUIRED')):
+            got=checkpoint._review_quit_notice_after_preserved_runtime(
+                owner,args,b'public-password',None,'txid-1')
+        self.assertIs(got,reopened)
+        self.assertEqual(events[0],'recover_stop')
+        self.assertEqual(events[1][0],'publish')
+        self.assertEqual(events[1][1]['wallet_outcome'],'RUNTIME_PRESERVED')
+        self.assertEqual(events[1][1]['codes'],('WALLET_MANAGED_RUNTIME_PRESERVED',))
+        self.assertEqual(events[2:5],['release','close',('start',30)])
+        self.assertEqual(events[5],'ack')

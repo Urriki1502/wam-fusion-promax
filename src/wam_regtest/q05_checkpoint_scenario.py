@@ -140,6 +140,81 @@ def negative_checkpoint(owner,source,password,keychain,initial,mode):
             'fault_model':'constructed native residue; genuine Core and anchor; not physical power loss'}
 
 
+def _active_container(owner,wallet_id):
+    """Return active (vault_dir, runtime_name); unit owners without supervisor files use defaults."""
+    if (owner.root/'supervisor.token').exists():
+        from .wallet_recovery import active_location
+        folder,runtime_name,_=active_location(owner,wallet_id)
+        return folder,runtime_name
+    return owner.directory/'wallet-vault','wallet-runtime.sqlite'
+
+
+def _assert_preserved_runtime_refused(owner,wsp_source,password,keychain):
+    """Verify both open_owned and checkpoint refuse while an unrecovered runtime exists."""
+    from wam_regtest.wallet_session import WalletSession,WalletSessionError
+    try:
+        WalletSession.open_owned(owner,wsp_source,password,authorized=True,keychain=keychain)
+        raise ValueError('Q05_PRESERVED_RUNTIME_OPEN_ACCEPTED')
+    except WalletSessionError as error:
+        if (error.args!=('WALLET_MANAGED_OPEN_DENIED',)
+                or type(error.__context__) is not ManagedWalletError
+                or error.__context__.args!=('MANAGED_WALLET_PRIOR_RUNTIME_PRESERVED',)):
+            raise
+    try:
+        checkpoint(owner,wsp_source,password,authorized=True,keychain=keychain)
+        raise ValueError('Q05_PRESERVED_RUNTIME_CHECKPOINT_ACCEPTED')
+    except ManagedWalletError as error:
+        if error.args!=('MANAGED_WALLET_EXISTING_RUNTIME_DENIED',):raise
+
+
+def _review_quit_notice_after_preserved_runtime(owner,a,password,keychain,submitted_txid):
+    """Exercise D-QUIT-1 faulted stop, notice publication, reopen refusal, and ack."""
+    from wam_regtest.core import _read_cli
+    from wam_regtest.quit_notice import acknowledge_unresolved,publish_notice,unacknowledged
+    from wam_regtest.wallet_session import WalletSession,WalletSessionError
+    profile_id=owner.profile['profile_id']
+    owner.recover_stop()
+    journal_seq=owner.journal.events[-1]['seq'] if owner.journal.events else 0
+    publish_notice(
+        owner.root,
+        profile_id=profile_id,
+        session_kind='Q05',
+        wallet_outcome='RUNTIME_PRESERVED',
+        core_stop='CLEAN',
+        codes=('WALLET_MANAGED_RUNTIME_PRESERVED',),
+        journal_seq=journal_seq,
+    )
+    owner.release();owner.close()
+    reopened=CoreSupervisor(a.root,a.core_dir,authorized=True)
+    reopened.start(timeout=30)
+    try:
+        mempool=_read_cli([str(reopened.cli),f'-datadir={reopened.directory}','getrawmempool'])
+        if submitted_txid not in mempool:
+            raise ValueError('Q05_MEMPOOL_NOT_PRESERVED_ACROSS_STOP')
+        try:
+            WalletSession.open_owned(reopened,a.wsp_source,password,authorized=True,keychain=keychain)
+            raise ValueError('Q05_QUIT_NOTICE_REOPEN_ACCEPTED')
+        except WalletSessionError as error:
+            if error.args!=('QUIT_NOTICE_REVIEW_REQUIRED',):raise
+        notices=unacknowledged(reopened.root,expected_profile_id=profile_id)
+        if (len(notices)!=1
+                or notices[0]['notice']['wallet_outcome']!='RUNTIME_PRESERVED'
+                or notices[0]['notice']['core_stop']!='CLEAN'
+                or 'WALLET_MANAGED_RUNTIME_PRESERVED' not in notices[0]['notice']['codes']):
+            raise ValueError('Q05_QUIT_NOTICE_UNEXPECTED')
+        acks=acknowledge_unresolved(reopened.root,expected_profile_id=profile_id)
+        if len(acks)!=1 or unacknowledged(reopened.root,expected_profile_id=profile_id)!=():
+            raise ValueError('Q05_QUIT_NOTICE_ACK_FAILED')
+        return reopened
+    except Exception:
+        if reopened.process is not None and reopened.process.poll() is None:
+            try:reopened.recover_stop()
+            except (OSError,ValueError,RuntimeError):pass
+        try:reopened.close()
+        except (OSError,ValueError,RuntimeError):pass
+        raise
+
+
 def interrupted_publication(owner,source,password,keychain,initial,*,live=False,transition='none'):
     """Real fsynced ciphertext cut before anchor, retaining unknown runtime."""
     from wam_regtest import custody
@@ -152,6 +227,8 @@ def interrupted_publication(owner,source,password,keychain,initial,*,live=False,
     # anchor object must contend (especially with Linux's root witness), even
     # on the same thread. Observe through the exact original session anchor.
     anchor=session.vault.anchor if session is not None else custody.anchor(initial['wallet_id'],keychain)
+    folder,runtime_name=_active_container(owner,initial['wallet_id'])
+    runtime=owner.directory/runtime_name
     try:
         if transition!='none':
             from wam_sp.keystore import Keyring
@@ -162,7 +239,7 @@ def interrupted_publication(owner,source,password,keychain,initial,*,live=False,
             if transition=='uncertain':session.sign(review.commitment)
             from .managed_wallet_checkpoint import _snapshot
             initial.update(_snapshot(session.ring,session.scanner,session._rpc(),session.vault))
-        before=anchor.read();folder=owner.directory/'wallet-vault'
+        before=anchor.read()
         initial['checkpoint']=list(before)
         reference=(owner.root/'supervisor.wallet').read_bytes()
         files={p.name:sha256(p.read_bytes()).hexdigest() for p in folder.glob('snapshot-*.enc')}
@@ -198,9 +275,9 @@ def interrupted_publication(owner,source,password,keychain,initial,*,live=False,
             or (owner.root/'supervisor.wallet').read_bytes()!=reference
             or any(sha256((folder/name).read_bytes()).hexdigest()!=digest for name,digest in files.items())
             or sha256(store.read(folder,next_name)).hexdigest()!=published['sha256']
-            or not (owner.directory/'wallet-runtime.sqlite').exists()):
+            or not runtime.exists()):
         raise ValueError('Q05_INTERRUPTED_CHECKPOINT_STATE_NOT_PRESERVED')
-    runtime=owner.directory/'wallet-runtime.sqlite';runtime_digest=sha256(runtime.read_bytes()).hexdigest()
+    runtime_digest=sha256(runtime.read_bytes()).hexdigest()
     try:
         checkpoint(owner,source,password,authorized=True,keychain=keychain)
         raise ValueError('Q05_AMBIGUOUS_RUNTIME_ADOPTED')
@@ -325,7 +402,8 @@ def main(argv=None, *, core=None, source=None, frozen=False):
             'src/wam_regtest/core_supervisor.py','src/wam_regtest/supervisor_journal.py',
             'src/wam_regtest/supervisor_identity.py','src/wam_regtest/supervisor_store.py',
             'src/wam_regtest/supervisor_protocol.py','src/wam_regtest/managed_wallet_checkpoint.py',
-            'src/wam_regtest/wallet_recovery.py','src/wam_regtest/managed_wallet_session.py','src/wam_regtest/history_pages.py',
+            'src/wam_regtest/quit_notice.py','src/wam_regtest/wallet_recovery.py',
+            'src/wam_regtest/managed_wallet_session.py','src/wam_regtest/history_pages.py',
             'src/wam_regtest/probe_source.py',
             'src/wam_regtest/vault.py','src/wam_regtest/wallet_session.py',
             'src/wam_regtest/rpc_scope.py','src/wam_regtest/json_rpc.py',
@@ -460,16 +538,51 @@ def main(argv=None, *, core=None, source=None, frozen=False):
                 raise ValueError('Q05_IRREVERSIBLE_RESERVATION_RELEASED')
             except ValueError as error:
                 if error.args!=('RESERVATION_NOT_DRAFT',):raise
-            session.lock();session=None
+            runtime_preserved=False;notice_reviewed=False
+            if a.owned_session and a.reservation=='uncertain':
+                stage='DQUIT1_RUNTIME_PRESERVATION_AND_REOPEN'
+                preserved_runtime=owner.directory/'wallet-runtime.sqlite'
+                try:
+                    session.lock()
+                    raise ValueError('Q05_FAULTED_LOCK_DID_NOT_PRESERVE_RUNTIME')
+                except WalletSessionError as error:
+                    if (error.args!=('WALLET_MANAGED_RUNTIME_PRESERVED',) or not session.locked
+                            or not session.faulted or session._password is not None
+                            or not preserved_runtime.exists()):
+                        raise
+                session=None;runtime_preserved=True
+                _assert_preserved_runtime_refused(owner,a.wsp_source,password,keychain)
+                if sys.platform!='win32':
+                    owner=_review_quit_notice_after_preserved_runtime(
+                        owner,a,password,keychain,submitted_txid)
+                    notice_reviewed=True
+                    _assert_preserved_runtime_refused(owner,a.wsp_source,password,keychain)
+                from wam_regtest.wallet_recovery import recover_checkpoint
+                recovered_uncertain=recover_checkpoint(
+                    owner,a.wsp_source,password,authorized=True,keychain=keychain)
+                if (recovered_uncertain.get('explicit_checkpoint_recovery') is not True
+                        or recovered_uncertain['reservation_count']!=1
+                        or recovered_uncertain['reservation_states']!=[a.reservation]
+                        or recovered_uncertain['reserved_atoms']!=recovered_uncertain['confirmed_atoms']
+                        or recovered_uncertain['available_atoms']!=0
+                        or not preserved_runtime.exists()):
+                    raise ValueError('Q05_UNCERTAIN_RECOVERY_DENIED')
+            else:
+                session.lock();session=None
             initial=checkpoint(owner,a.wsp_source,password,authorized=True,keychain=keychain)
             if (initial['reservation_count']!=1 or initial['reservation_states']!=[a.reservation]
                     or initial['reserved_atoms']!=initial['confirmed_atoms']
                     or initial['available_atoms']!=0):
                 raise ValueError('Q05_RESERVATION_RESTORE_DENIED')
-            record['observations'].append({'genuine_wallet_signature':True,
+            observation={'genuine_wallet_signature':True,
                 'reservation_state':a.reservation,'reservation_sha256':initial['reservation_sha256'],
                 'irreversible_draft_release_refused':True,'actual_wallet_broadcast_calls':len(send_calls),
-                'core_acceptance_before_caller_loss':a.reservation=='uncertain'})
+                'core_acceptance_before_caller_loss':a.reservation=='uncertain'}
+            if runtime_preserved:
+                observation.update({'runtime_preserved':True,'notice_reviewed':notice_reviewed,
+                    'prior_runtime_refused_before_recovery':True,
+                    'explicit_checkpoint_recovery_after_uncertain_broadcast':True})
+            record['observations'].append(observation)
         if a.interrupt_publication:
             stage='INTERRUPTED_PUBLICATION_SAFE_REFUSAL'
             record['observations'].append(interrupted_publication(owner,a.wsp_source,
@@ -478,10 +591,15 @@ def main(argv=None, *, core=None, source=None, frozen=False):
             if a.recover_after_interruption:
                 stage='EXPLICIT_SAME_OWNER_CHECKPOINT_RECOVERY'
                 from wam_regtest.wallet_recovery import recover_checkpoint
+                active_folder,active_runtime=_active_container(owner,initial['wallet_id'])
                 original=[*(owner.directory/'wallet-vault').glob('snapshot-*.enc'),
-                          owner.root/'supervisor.wallet']
-                original.extend(p for suffix in ('','-journal','-wal','-shm')
-                    if (p:=owner.directory/('wallet-runtime.sqlite'+suffix)).exists())
+                          *(active_folder.glob('snapshot-*.enc')
+                            if active_folder!=owner.directory/'wallet-vault' else ()),
+                          owner.root/'supervisor.wallet',
+                          *owner.root.glob('supervisor.recovery.*')]
+                for name in {'wallet-runtime.sqlite',active_runtime}:
+                    original.extend(p for suffix in ('','-journal','-wal','-shm')
+                        if (p:=owner.directory/(name+suffix)).exists())
                 preserved={p:sha256(p.read_bytes()).hexdigest() for p in original}
                 if a.transition_cut!='none':
                     stage='DIVERGENT_RESERVATION_RECOVERY_REFUSAL'
@@ -511,8 +629,11 @@ def main(argv=None, *, core=None, source=None, frozen=False):
                         from wam_regtest.wallet_recovery import complete_recovery,_records
                         from wam_regtest import custody
                         rows,_=_records(owner,initial['wallet_id']);action=rows[-1]['action']
+                        begin_seq=rows[-1]['seq']
+                        begin_record=owner.root/f'supervisor.recovery.{begin_seq:06d}'
+                        commit_record=owner.root/f'supervisor.recovery.{begin_seq+1:06d}'
                         anchor=custody.anchor(initial['wallet_id'],keychain);before=anchor.read()
-                        reference=(owner.root/'supervisor.recovery.000001').read_bytes()
+                        reference=begin_record.read_bytes()
                         try:
                             complete_recovery(owner,a.wsp_source,b'wrong-public-test-password',
                                 authorized=True,keychain=keychain,action=action)
@@ -520,17 +641,17 @@ def main(argv=None, *, core=None, source=None, frozen=False):
                         except ManagedWalletError:
                             pass
                         if (anchor.read()!=before or
-                                (owner.root/'supervisor.recovery.000001').read_bytes()!=reference):
+                                begin_record.read_bytes()!=reference):
                             raise ValueError('Q05_COMPLETION_WRONG_PASSWORD_MUTATED_STATE')
                         recovered=complete_recovery(owner,a.wsp_source,password,authorized=True,
                             keychain=keychain,action=action)
-                        reference=(owner.root/'supervisor.recovery.000002').read_bytes()
+                        reference=commit_record.read_bytes()
                         repeated=complete_recovery(owner,a.wsp_source,password,authorized=True,
                             keychain=keychain,action=action)
                         if (recovered['completion_already_committed'] is not False
                                 or repeated['completion_already_committed'] is not True
                                 or anchor.read()!=before or recovered['checkpoint']!=list(before)
-                                or (owner.root/'supervisor.recovery.000002').read_bytes()!=reference
+                                or commit_record.read_bytes()!=reference
                                 or any(recovered[k]!=initial[k] for k in ('wallet_id','payment_code',
                                     'history_sha256','reservation_sha256','reserved_atoms'))
                                 or any(sha256(p.read_bytes()).hexdigest()!=digest for p,digest in preserved.items())):

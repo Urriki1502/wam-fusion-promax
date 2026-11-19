@@ -162,7 +162,14 @@ def require_supplement(item,base,binary,scenario,options):
             or item.get('wallet_broadcast_calls_total')!=(1 if 'uncertain' in options else 0)
             or not any(o.get('live_session_runtime_retained_on_checkpoint_failure') is True for o in observations)
             or not any(o.get('explicit_pending_commit_completed') is True for o in observations)
-            or not any(o.get('reopened_same_wallet_live_resync') is True for o in observations)):
+            or not any(o.get('reopened_same_wallet_live_resync') is True for o in observations)
+            or ('uncertain' in options and not any(
+                o.get('reservation_state')=='uncertain'
+                and o.get('runtime_preserved') is True
+                and o.get('prior_runtime_refused_before_recovery') is True
+                and o.get('explicit_checkpoint_recovery_after_uncertain_broadcast') is True
+                and (sys.platform=='win32' or o.get('notice_reviewed') is True)
+                for o in observations))):
         raise ValueError('Q05_FINAL_FROZEN_SUPPLEMENT_DENIED')
 
 
