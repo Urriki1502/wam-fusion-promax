@@ -1,11 +1,14 @@
 """PM-086 step 2: Q05 read-only gate B denies mutations before any side effect."""
 import hashlib
 import io
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from wam_regtest.bip39_owner_backend import Bip39ReadOnlyBackend
 from wam_regtest.cli import main
@@ -169,6 +172,97 @@ class LegacyQ05ReadOnlyGate(unittest.TestCase):
         with self.assertRaises(Exception) as caught:
             backend.execute("prepare_auto", (), {})
         self.assertNotEqual(caught.exception.args[:1], ("LEGACY_Q05_RETIRED",))
+
+
+class LegacyQ05FolderPreflight(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_layout_check_is_read_only_and_does_not_follow_links(self):
+        from wam_regtest.managed_onboarding import legacy_q05_layout
+        vault = self.root / "with-vault"
+        vault.mkdir()
+        (vault / "wallet-vault").mkdir()
+        (vault / "canary").write_bytes(b"keep")
+        before = _digest(vault)
+        self.assertTrue(legacy_q05_layout(vault))
+        self.assertEqual(_digest(vault), before)
+        wallet = self.root / "with-wallet"
+        wallet.mkdir()
+        (wallet / "supervisor.wallet").write_bytes(b"envelope")
+        self.assertTrue(legacy_q05_layout(wallet))
+        linked = self.root / "linked"
+        linked.mkdir()
+        (linked / "wallet-vault").symlink_to(vault / "wallet-vault", target_is_directory=True)
+        (linked / "supervisor.wallet").symlink_to(wallet / "supervisor.wallet")
+        self.assertFalse(legacy_q05_layout(linked))
+        self.assertFalse(legacy_q05_layout(self.root / "missing"))
+        plain = self.root / "plain"
+        plain.mkdir()
+        self.assertFalse(legacy_q05_layout(plain))
+
+    def test_open_and_restore_refuse_a_q05_folder_before_core(self):
+        from PySide6.QtCore import QTimer
+        from wam_regtest import managed_onboarding as onboarding
+        from wam_regtest.presentation.strings import CATALOG
+        message = CATALOG["en"]["welcome.legacy_q05_preserved"]
+        for language, entries in CATALOG.items():
+            text = entries["welcome.legacy_q05_preserved"]
+            self.assertIn("V1", text, language)
+            self.assertTrue(text.strip(), language)
+        for choice in ("open", "restore"):
+            with self.subTest(choice=choice):
+                folder = self.root / choice
+                folder.mkdir()
+                (folder / "wallet-vault").mkdir()
+                (folder / "canary").write_bytes(b"keep")
+                before = _digest(folder)
+                dialogs = []
+                original = onboarding.welcome_dialog
+
+                def welcome():
+                    dialog = original()
+                    dialogs.append(dialog)
+                    QTimer.singleShot(0, dialog.buttons[choice].click if len(dialogs) == 1 else dialog.reject)
+                    return dialog
+
+                with patch.object(onboarding, "welcome_dialog", side_effect=welcome), \
+                        patch("PySide6.QtWidgets.QFileDialog.getExistingDirectory", return_value=str(folder)), \
+                        patch("PySide6.QtWidgets.QMessageBox.warning") as warning, \
+                        patch("wam_regtest.bip39_owner_gui.launch_bip39_trial") as launch, \
+                        patch("wam_regtest.core_supervisor.CoreSupervisor") as supervisor:
+                    self.assertEqual(onboarding.launch(self.root, self.root), 0)
+                launch.assert_not_called()
+                supervisor.assert_not_called()
+                warning.assert_called_once()
+                self.assertEqual(warning.call_args.args[2], message)
+                self.assertEqual(_digest(folder), before)
+
+    def test_a_bip39_folder_still_reaches_the_owner(self):
+        from PySide6.QtCore import QTimer
+        from wam_regtest import managed_onboarding as onboarding
+        folder = self.root / ("wam-fusion-core-" + "ab" * 8)
+        folder.mkdir()
+        (folder / "supervisor.profile").write_text("DISPOSABLE", encoding="utf-8")
+        dialogs = []
+        original = onboarding.welcome_dialog
+
+        def welcome():
+            dialog = original()
+            dialogs.append(dialog)
+            QTimer.singleShot(0, dialog.buttons["open"].click)
+            return dialog
+
+        with patch.object(onboarding, "welcome_dialog", side_effect=welcome), \
+                patch("PySide6.QtWidgets.QFileDialog.getExistingDirectory", return_value=str(folder)), \
+                patch("wam_regtest.bip39_owner_gui.launch_bip39_trial", return_value=0) as launch, \
+                patch("wam_regtest.core_supervisor.CoreSupervisor") as supervisor:
+            self.assertEqual(onboarding.launch(self.root, self.root), 0)
+        launch.assert_called_once()
+        self.assertEqual(launch.call_args.args[0], folder)
+        supervisor.assert_not_called()
 
 
 class LegacyQ05CreateCli(unittest.TestCase):

@@ -75,6 +75,7 @@ KO = {
     "welcome.shared_needs_bip39": "공유 모드에는 BIP39 지갑 프로필이 필요합니다.",
     "welcome.wallet_folder_not_accepted": "지갑 폴더가 받아들여지지 않았습니다",
     "welcome.folder_rejected": "기존 지갑 프로필이나 새 프로필을 위한 안전한 상위 폴더를 선택하십시오. 지갑 파일은 변경되지 않았습니다.",
+    "welcome.legacy_q05_preserved": "이 폴더는 레거시 테스트 지갑입니다. 내용은 변경되지 않은 채 보존됩니다. WAM Fusion V1은 이 폴더를 열지 않습니다.",
     "fusion.wam_fusion_regtest": "WAM FUSION / REGTEST",
     "fusion.overview": "개요",
     "fusion.receive": "받기",

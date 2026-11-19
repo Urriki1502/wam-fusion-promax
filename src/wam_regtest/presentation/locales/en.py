@@ -73,6 +73,7 @@ EN = {
     "welcome.shared_needs_bip39": "Shared mode requires a BIP39 wallet profile.",
     "welcome.wallet_folder_not_accepted": "Wallet folder not accepted",
     "welcome.folder_rejected": "Choose an existing wallet profile or a safe parent folder for a new one. No wallet files were changed.",
+    "welcome.legacy_q05_preserved": "This folder is a legacy test wallet. It is preserved unchanged. WAM Fusion V1 does not open it.",
     "fusion.wam_fusion_regtest": "WAM FUSION / REGTEST",
     "fusion.overview": "Overview",
     "fusion.receive": "Receive",

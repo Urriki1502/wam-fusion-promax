@@ -75,6 +75,7 @@ ZH_HANS = {
     "welcome.shared_needs_bip39": "共享模式需要 BIP39 钱包配置文件。",
     "welcome.wallet_folder_not_accepted": "钱包文件夹未被接受",
     "welcome.folder_rejected": "请选择已有钱包配置文件，或为新配置文件选择一个安全的父文件夹。没有钱包文件被更改。",
+    "welcome.legacy_q05_preserved": "此文件夹是旧版测试钱包。其内容保持不变。WAM Fusion V1 不会打开它。",
     "fusion.wam_fusion_regtest": "WAM FUSION / REGTEST",
     "fusion.overview": "概览",
     "fusion.receive": "接收",

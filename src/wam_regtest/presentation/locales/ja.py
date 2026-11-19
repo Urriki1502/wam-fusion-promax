@@ -75,6 +75,7 @@ JA = {
     "welcome.shared_needs_bip39": "共有モードには BIP39 ウォレットプロファイルが必要です。",
     "welcome.wallet_folder_not_accepted": "ウォレットフォルダは受け付けられませんでした",
     "welcome.folder_rejected": "既存のウォレットプロファイルか、新しいプロファイル用の安全な親フォルダを選んでください。ウォレットファイルは変更されていません。",
+    "welcome.legacy_q05_preserved": "このフォルダは従来のテストウォレットです。内容は変更されず保持されます。WAM Fusion V1 はこれを開きません。",
     "fusion.wam_fusion_regtest": "WAM FUSION / REGTEST",
     "fusion.overview": "概要",
     "fusion.receive": "受信",

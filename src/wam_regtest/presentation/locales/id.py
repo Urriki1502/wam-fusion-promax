@@ -75,6 +75,7 @@ ID = {
     "welcome.shared_needs_bip39": "Mode bersama memerlukan profil dompet BIP39.",
     "welcome.wallet_folder_not_accepted": "Folder dompet tidak diterima",
     "welcome.folder_rejected": "Pilih profil dompet yang ada atau folder induk yang aman untuk profil baru. Tidak ada berkas dompet yang diubah.",
+    "welcome.legacy_q05_preserved": "Folder ini adalah dompet uji lama. Isinya dipertahankan tanpa perubahan. WAM Fusion V1 tidak membukanya.",
     "fusion.wam_fusion_regtest": "WAM FUSION / REGTEST",
     "fusion.overview": "Ringkasan",
     "fusion.receive": "Terima",

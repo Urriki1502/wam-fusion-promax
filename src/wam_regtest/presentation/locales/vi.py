@@ -75,6 +75,7 @@ VI = {
     "welcome.shared_needs_bip39": "Chế độ dùng chung cần hồ sơ ví BIP39.",
     "welcome.wallet_folder_not_accepted": "Thư mục ví không được chấp nhận",
     "welcome.folder_rejected": "Hãy chọn một hồ sơ ví đã có hoặc thư mục cha an toàn cho hồ sơ mới. Không có tệp ví nào bị thay đổi.",
+    "welcome.legacy_q05_preserved": "Thư mục này là ví thử nghiệm cũ. Nó được giữ nguyên, không thay đổi. WAM Fusion V1 không mở nó.",
     "fusion.wam_fusion_regtest": "WAM FUSION / REGTEST",
     "fusion.overview": "Tổng quan",
     "fusion.receive": "Nhận",

@@ -9,6 +9,7 @@ from .bip39_locale import t as ui_text
 from pathlib import Path
 import re
 import secrets
+import stat
 
 
 def selected_profile(directory, create):
@@ -35,6 +36,30 @@ _ROUTES = {
     "restore": (True, "restore", True),
 }
 _RETIRED_WELCOME = frozenset(("legacy_open", "legacy_create"))
+
+
+def _layout_entry(directory, name, want_directory):
+    path = directory / name
+    try:
+        info = path.lstat()
+    except OSError:
+        return False
+    if stat.S_ISLNK(info.st_mode):
+        return False
+    return stat.S_ISDIR(info.st_mode) if want_directory else stat.S_ISREG(info.st_mode)
+
+
+def legacy_q05_layout(directory):
+    """Read-only no-follow check. A symlink is not this folder's layout."""
+    directory = Path(directory)
+    try:
+        info = directory.lstat()
+    except OSError:
+        return False
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+        return False
+    return (_layout_entry(directory, "wallet-vault", True)
+            or _layout_entry(directory, "supervisor.wallet", False))
 
 
 def wallet_route(choice):
@@ -195,8 +220,14 @@ def launch(core, source):
         )
         if not selected:
             continue
+        chosen = Path(selected).absolute()
+        if mode in ("reopen", "restore") and legacy_q05_layout(chosen):
+            QMessageBox.warning(
+                None, ui_text("welcome.wallet_folder_not_accepted"),
+                ui_text("welcome.legacy_q05_preserved"))
+            continue
         try:
-            root = selected_profile(Path(selected).absolute(), create)
+            root = selected_profile(chosen, create)
         except ValueError:
             QMessageBox.warning(
                 None, ui_text('welcome.wallet_folder_not_accepted'),

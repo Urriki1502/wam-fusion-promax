@@ -31,8 +31,8 @@ NEW_KEYS = (
     'owner.locks_unknown_warning',
 )
 # 802 catalog keys on 5e4e15b (after PM-077 and PM-075) plus these 15,
-# minus the five welcome.legacy_* keys retired by PM-086.
-CATALOG_KEYS = 812
+# minus the five welcome.legacy_* keys retired by PM-086, plus the D4' refusal.
+CATALOG_KEYS = 813
 TXID = TX(0x3000)
 TXID_B = TX(0x3001)
 TXID_C = TX(0x3002)
