@@ -455,6 +455,44 @@ def publish():
 
         with patch.object(audit, "PINS", pins):
             result = audit.evaluate(root, core)
+            self.assertEqual(result["schema"], "wam-regtest-independent-contracts/v1")
+            self.assertEqual(
+                set(result.keys()),
+                {
+                    "schema",
+                    "status",
+                    "contracts",
+                    "core_sha256",
+                    "wsp_source_commit",
+                    "model_crash_boundaries",
+                    "mutation_classes_detected",
+                    "runtime_pass_flags_trusted",
+                    "external_reviewer_approval",
+                    "second_builder_witness",
+                    "formal_verification_complete",
+                    "production_qualified",
+                },
+            )
+            self.assertEqual(
+                set(result["contracts"].keys()),
+                {
+                    "sign_broadcast_lease",
+                    "exact_sign_review_before_crypto",
+                    "exact_broadcast_review_before_submission",
+                    "live_inputs_before_sensitive_operations",
+                    "sign_anchor_precedes_crypto",
+                    "broadcast_anchor_precedes_submission",
+                    "uncertain_before_submission",
+                    "faults_on_crypto_or_submission_failure",
+                    "crash_model_invariants",
+                    "model_mutation_sensitivity",
+                    "source_mutation_sensitivity",
+                    "lock_closes_keys_and_plaintext_runtime",
+                    "stale_writer_anchor_comparison",
+                    "backup_create_only_publication_and_fsync",
+                    "both_core_hashes_independently_pinned",
+                },
+            )
             self.assertEqual(result["status"], "INDEPENDENT_WALLET_CONTRACTS_PASS")
             self.assertIs(result["contracts"]["backup_create_only_publication_and_fsync"], True)
 
@@ -473,6 +511,316 @@ def publish():
             )
             with self.assertRaisesRegex(ValueError, "INDEPENDENT_WALLET_CONTRACT_DENIED"):
                 audit.evaluate(root, core)
+
+    def test_mutant_fullflush_rebinding_forms_fail(self):
+        audit = _load_audit()
+        mutants = [
+            ("P1_trailing_assign_full_flush", VALID_FULLFLUSH + "full_flush = lambda fd: None\n"),
+            ("P2_trailing_assign_flush_directory", VALID_FULLFLUSH + "flush_directory = lambda fd: None\n"),
+            (
+                "second_function_def_full_flush",
+                VALID_FULLFLUSH + "def full_flush(fd):\n    pass\n",
+            ),
+            (
+                "second_function_def_flush_directory_conditional",
+                VALID_FULLFLUSH + "if True:\n    def flush_directory(fd):\n        pass\n",
+            ),
+            (
+                "second_async_def_full_flush",
+                VALID_FULLFLUSH + "async def full_flush(fd):\n    pass\n",
+            ),
+            (
+                "second_async_def_flush_directory",
+                VALID_FULLFLUSH + "async def flush_directory(fd):\n    pass\n",
+            ),
+            (
+                "class_def_full_flush",
+                VALID_FULLFLUSH + "class full_flush:\n    pass\n",
+            ),
+            (
+                "for_target_flush_directory",
+                VALID_FULLFLUSH + "for flush_directory in (lambda fd: None,):\n    pass\n",
+            ),
+            (
+                "augassign_full_flush",
+                VALID_FULLFLUSH + "full_flush += (lambda fd: None)\n",
+            ),
+            (
+                "annassign_full_flush_with_value",
+                VALID_FULLFLUSH + "full_flush: object = lambda fd: None\n",
+            ),
+            (
+                "annassign_flush_directory_bare",
+                VALID_FULLFLUSH + "flush_directory: object\n",
+            ),
+            (
+                "namedexpr_full_flush",
+                VALID_FULLFLUSH + "_ = (full_flush := (lambda fd: None))\n",
+            ),
+            (
+                "namedexpr_in_module_comprehension",
+                VALID_FULLFLUSH + "_ = [(flush_directory := (lambda fd: None)) for _ in (1,)]\n",
+            ),
+            (
+                "global_rebinding_inside_function_full_flush",
+                VALID_FULLFLUSH
+                + "def _tamper():\n    global full_flush\n    full_flush = lambda fd: None\n",
+            ),
+            (
+                "global_rebinding_inside_function_flush_directory",
+                VALID_FULLFLUSH
+                + "def _tamper():\n    global flush_directory\n    flush_directory = lambda fd: None\n",
+            ),
+            (
+                "import_as_full_flush",
+                VALID_FULLFLUSH + "import os as full_flush\n",
+            ),
+            (
+                "from_import_flush_directory",
+                VALID_FULLFLUSH + "from os import fsync as flush_directory\n",
+            ),
+            (
+                "from_import_direct_full_flush",
+                VALID_FULLFLUSH + "from other_mod import full_flush\n",
+            ),
+            (
+                "del_full_flush",
+                VALID_FULLFLUSH + "del full_flush\n",
+            ),
+            (
+                "del_flush_directory",
+                VALID_FULLFLUSH + "del flush_directory\n",
+            ),
+            (
+                "setattr_module_full_flush",
+                VALID_FULLFLUSH + "setattr(sys.modules[__name__], 'full_flush', lambda fd: None)\n",
+            ),
+            (
+                "setattr_inside_function_flush_directory",
+                VALID_FULLFLUSH
+                + "def _tamper():\n    setattr(sys.modules[__name__], 'flush_directory', lambda fd: None)\n",
+            ),
+            (
+                "globals_subscript_full_flush",
+                VALID_FULLFLUSH + "globals()['full_flush'] = lambda fd: None\n",
+            ),
+            (
+                "globals_update_dict_flush_directory",
+                VALID_FULLFLUSH + "globals().update({'flush_directory': lambda fd: None})\n",
+            ),
+            (
+                "globals_update_kwarg_full_flush",
+                VALID_FULLFLUSH + "globals().update(full_flush=lambda fd: None)\n",
+            ),
+            (
+                "dunder_dict_subscript_full_flush",
+                VALID_FULLFLUSH
+                + "sys.modules[__name__].__dict__['full_flush'] = lambda fd: None\n",
+            ),
+            (
+                "dunder_dict_update_flush_directory",
+                VALID_FULLFLUSH
+                + "sys.modules[__name__].__dict__.update({'flush_directory': lambda fd: None})\n",
+            ),
+            (
+                "bare_dunder_dict_full_flush",
+                VALID_FULLFLUSH + "__dict__['full_flush'] = lambda fd: None\n",
+            ),
+        ]
+        for label, ff_src in mutants:
+            with self.subTest(mutant=label):
+                root = self._make_tree(VALID_ENCRYPTED_STORAGE, ff_src)
+                self.assertIs(audit.storage_contract(root), False)
+
+    def test_mutant_encrypted_storage_rebinds_imported_fullflush_fails(self):
+        audit = _load_audit()
+        mutants = [
+            (
+                "rebind_even_with_os_fsync_present",
+                "import os\n"
+                "from .fullflush import full_flush\n"
+                "full_flush = lambda fd: None\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    os.fsync(1)\n"
+                "    full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "rebind_alias",
+                "import os\n"
+                "from .fullflush import full_flush as ff\n"
+                "ff = lambda fd: None\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    ff(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "rebind_imported_flush_directory",
+                "import os\n"
+                "from .fullflush import flush_directory, full_flush\n"
+                "flush_directory = lambda fd: None\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    full_flush(1)\n"
+                "    os.link('a', 'b')\n"
+                "    flush_directory(1)\n",
+            ),
+            (
+                "rebind_namedexpr",
+                "import os\n"
+                "from .fullflush import full_flush\n"
+                "_ = (full_flush := (lambda fd: None))\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "rebind_del",
+                "import os\n"
+                "from .fullflush import full_flush\n"
+                "del full_flush\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    os.fsync(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "rebind_global_in_function",
+                "import os\n"
+                "from .fullflush import full_flush\n"
+                "def _tamper():\n"
+                "    global full_flush\n"
+                "    full_flush = lambda fd: None\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "rebind_via_second_import_from_same_module",
+                "import os\n"
+                "from .fullflush import full_flush\n"
+                "from .fullflush import FULL_FLUSH_FAILED as full_flush\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "rebind_via_setattr",
+                "import os, sys\n"
+                "from .fullflush import full_flush\n"
+                "setattr(sys.modules[__name__], 'full_flush', lambda fd: None)\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "rebind_via_globals",
+                "import os\n"
+                "from .fullflush import full_flush\n"
+                "globals()['full_flush'] = lambda fd: None\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "rebind_via_dunder_dict",
+                "import os, sys\n"
+                "from .fullflush import full_flush\n"
+                "sys.modules[__name__].__dict__['full_flush'] = lambda fd: None\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "rebind_imported_module_attribute",
+                "import os\n"
+                "from . import fullflush\n"
+                "fullflush.full_flush = lambda fd: None\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    fullflush.full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "rebind_imported_module_via_setattr",
+                "import os\n"
+                "from . import fullflush\n"
+                "setattr(fullflush, 'full_flush', lambda fd: None)\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    fullflush.full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "rebind_dotted_import_module_attr",
+                "import os\n"
+                "import wam_regtest.fullflush\n"
+                "wam_regtest.fullflush = None\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    wam_regtest.fullflush.full_flush(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+        ]
+        for label, storage_src in mutants:
+            with self.subTest(mutant=label):
+                root = self._make_tree(storage_src, VALID_FULLFLUSH)
+                self.assertIs(audit.storage_contract(root), False)
+
+    def test_known_accepted_ast_reachability_limits_documented(self):
+        """Document pre-existing, accepted AST-reachability limits (M1, M2, M3).
+
+        Identical to the pre-existing oracle ({os.link, os.fsync, os.fchmod} <=
+        ast-call-set), storage_contract() verifies AST presence and primitive
+        implementation rather than control-flow reachability or fd dataflow:
+          - M1: full_flush called only in dead/unrelated code while publish()
+            never flushes.
+          - M2: os.fsync placed behind a dead ``if False:`` branch.
+          - M3: full_flush called with a wrong fd / only one of the two fds.
+        """
+        audit = _load_audit()
+        cases = [
+            (
+                "M1_dead_code_call",
+                "import os\n"
+                "from .fullflush import full_flush\n"
+                "def _dead_helper():\n"
+                "    full_flush(1)\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "M2_if_false_os_fsync",
+                "import os\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    if False:\n"
+                "        os.fsync(1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+            (
+                "M3_wrong_fd_or_single_fd_only",
+                "import os\n"
+                "from .fullflush import full_flush\n"
+                "def publish():\n"
+                "    os.fchmod(1, 0o600)\n"
+                "    full_flush(-1)\n"
+                "    os.link('a', 'b')\n",
+            ),
+        ]
+        for label, storage_src in cases:
+            with self.subTest(limitation=label):
+                root = self._make_tree(storage_src, VALID_FULLFLUSH)
+                self.assertIs(audit.storage_contract(root), True)
 
 
 if __name__ == "__main__":

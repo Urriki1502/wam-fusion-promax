@@ -25,57 +25,207 @@ _OSERROR_CATCHERS=frozenset({
 })
 _TRY_NODES=(ast.Try,getattr(ast,'TryStar',ast.Try))
 
+_FULLFLUSH_PRIMITIVES=frozenset({'full_flush','flush_directory'})
+_MATCH_NODES=tuple(c for c in (getattr(ast,'MatchAs',None),getattr(ast,'MatchStar',None),
+                                getattr(ast,'MatchMapping',None)) if c is not None)
+
 def _target_names(target):
     if isinstance(target,ast.Name): yield target.id
     elif isinstance(target,(ast.Tuple,ast.List)):
         for elt in target.elts: yield from _target_names(elt)
     elif isinstance(target,ast.Starred): yield from _target_names(target.value)
 
-def _assigned_names(tree,*,skip_imports=(),allow_stdlib=()):
+def _iter_target_nodes(target):
+    yield target
+    if isinstance(target,(ast.Tuple,ast.List)):
+        for elt in target.elts: yield from _iter_target_nodes(elt)
+    elif isinstance(target,ast.Starred): yield from _iter_target_nodes(target.value)
+
+def _iter_write_targets(node):
+    if isinstance(node,(ast.Assign,ast.Delete)):
+        for t in node.targets: yield from _iter_target_nodes(t)
+    elif isinstance(node,(ast.AnnAssign,ast.AugAssign,ast.For,ast.AsyncFor,ast.NamedExpr)):
+        yield from _iter_target_nodes(node.target)
+    elif isinstance(node,(ast.With,ast.AsyncWith)):
+        for item in node.items:
+            if item.optional_vars is not None: yield from _iter_target_nodes(item.optional_vars)
+
+def _bound_targets_in_node(node,*,skip_aliases=(),allow_stdlib=()):
+    if isinstance(node,ast.FunctionDef): yield ('func',node.name)
+    elif isinstance(node,(ast.AsyncFunctionDef,ast.ClassDef)): yield ('other_def',node.name)
+    elif isinstance(node,(ast.Assign,ast.AnnAssign,ast.AugAssign,ast.For,ast.AsyncFor,
+                          ast.With,ast.AsyncWith,ast.NamedExpr)):
+        for t in _iter_write_targets(node):
+            if isinstance(t,ast.Name): yield ('bind',t.id)
+    elif isinstance(node,ast.Delete):
+        for t in _iter_write_targets(node):
+            if isinstance(t,ast.Name): yield ('del',t.id)
+    elif isinstance(node,ast.ExceptHandler) and isinstance(node.name,str): yield ('bind',node.name)
+    elif _MATCH_NODES and isinstance(node,_MATCH_NODES):
+        attr='rest' if isinstance(node,ast.MatchMapping) else 'name'
+        val=getattr(node,attr,None)
+        if isinstance(val,str): yield ('bind',val)
+    elif isinstance(node,ast.Import):
+        for alias in node.names:
+            if alias in skip_aliases: continue
+            if alias.name in allow_stdlib and alias.asname is None: continue
+            yield ('bind',(alias.asname or alias.name).split('.')[0])
+    elif isinstance(node,ast.ImportFrom):
+        for alias in node.names:
+            if alias in skip_aliases: continue
+            if alias.name=='*': yield ('star','*')
+            else: yield ('bind',(alias.asname or alias.name).split('.')[0])
+
+def _assigned_names(tree,*,skip_aliases=(),allow_stdlib=()):
     bound=set()
     for node in ast.walk(tree):
-        if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef)): bound.add(node.name)
-        elif isinstance(node,ast.Assign):
-            for t in node.targets: bound.update(_target_names(t))
-        elif isinstance(node,(ast.AnnAssign,ast.AugAssign)): bound.update(_target_names(node.target))
-        elif isinstance(node,(ast.For,ast.AsyncFor)): bound.update(_target_names(node.target))
-        elif isinstance(node,(ast.With,ast.AsyncWith)):
-            for item in node.items:
-                if item.optional_vars is not None: bound.update(_target_names(item.optional_vars))
-        elif isinstance(node,ast.ExceptHandler) and isinstance(node.name,str): bound.add(node.name)
-        elif isinstance(node,ast.Import) and node not in skip_imports:
-            for alias in node.names:
-                if alias.name in allow_stdlib and alias.asname is None: continue
-                bound.add((alias.asname or alias.name).split('.')[0])
-        elif isinstance(node,ast.ImportFrom) and node not in skip_imports:
-            for alias in node.names:
-                bound.add((alias.asname or alias.name).split('.')[0])
+        for kind,ident in _bound_targets_in_node(node,skip_aliases=skip_aliases,allow_stdlib=allow_stdlib):
+            if kind!='star': bound.add(ident)
     return bound
+
+def _walk_module_scope(node):
+    yield node
+    if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef)):
+        for sub in (*node.decorator_list,*node.args.defaults,
+                    *(d for d in node.args.kw_defaults if d is not None)):
+            yield from _walk_module_scope(sub)
+        return
+    if isinstance(node,ast.ClassDef):
+        for sub in (*node.decorator_list,*node.bases,*node.keywords):
+            yield from _walk_module_scope(sub)
+        return
+    if isinstance(node,ast.Lambda):
+        for sub in (*node.args.defaults,*(d for d in node.args.kw_defaults if d is not None)):
+            yield from _walk_module_scope(sub)
+        return
+    for child in ast.iter_child_nodes(node): yield from _walk_module_scope(child)
+
+def _count_module_bindings(tree,targets):
+    counts={}
+    invalid=False
+    for node in _walk_module_scope(tree):
+        for kind,ident in _bound_targets_in_node(node):
+            if kind=='star': invalid=True
+            elif ident in targets:
+                if kind=='other_def': invalid=True
+                counts[ident]=counts.get(ident,0)+1
+    return counts,invalid
+
+def _resolve_expr(node,env,seen=()):
+    while isinstance(node,ast.Name) and node.id in env and node.id not in seen:
+        seen=seen+(node.id,)
+        node=env[node.id]
+    return node
+
+def _is_globals_call(node,env=()):
+    node=_resolve_expr(node,env) if env else node
+    return (isinstance(node,ast.Call) and name(node.func) in ('globals','builtins.globals')
+            and not node.args and not node.keywords)
+
+def _is_dict_expr(node,env=()):
+    node=_resolve_expr(node,env) if env else node
+    return ((isinstance(node,ast.Name) and node.id=='__dict__')
+            or (isinstance(node,ast.Attribute) and node.attr=='__dict__')
+            or (isinstance(node,ast.Call) and name(node.func) in ('vars','builtins.vars')))
+
+def _mentions_target(node,targets,env=()):
+    for n in ast.walk(node):
+        if isinstance(n,ast.Constant) and isinstance(n.value,str) and n.value in targets: return True
+        if env and isinstance(n,ast.Name):
+            resolved=_resolve_expr(n,env)
+            if isinstance(resolved,ast.Constant) and isinstance(resolved.value,str) and resolved.value in targets:
+                return True
+    return False
+
+def _has_dynamic_rebind(tree,targets,module_targets=()):
+    env=_single_bindings(tree.body,tree)
+    for node in ast.walk(tree):
+        if isinstance(node,ast.Global) and any(n in targets for n in node.names): return True
+        if isinstance(node,ast.Call):
+            fn=name(node.func)
+            if fn in ('setattr','builtins.setattr','delattr','builtins.delattr'):
+                if _mentions_target(node,targets,env): return True
+                if (module_targets and _mentions_target(node,_FULLFLUSH_PRIMITIVES,env)
+                        and any(isinstance(a,ast.Name) and a.id in module_targets for a in node.args)):
+                    return True
+            elif isinstance(node.func,ast.Attribute):
+                val,attr=node.func.value,node.func.attr
+                if (_is_globals_call(val,env) or _is_dict_expr(val,env)) and attr in ('update','setdefault','__setitem__','pop'):
+                    if any(kw.arg in targets for kw in node.keywords) or _mentions_target(node,targets,env):
+                        return True
+                if (module_targets and isinstance(val,ast.Attribute) and val.attr=='__dict__'
+                        and name(val.value) in module_targets and attr in ('update','setdefault','__setitem__','pop')
+                        and (any(kw.arg in _FULLFLUSH_PRIMITIVES for kw in node.keywords)
+                             or _mentions_target(node,_FULLFLUSH_PRIMITIVES,env))):
+                    return True
+                if attr in ('__setattr__','__delattr__'):
+                    if _mentions_target(node,targets,env): return True
+                    if module_targets and name(val) in module_targets and _mentions_target(node,_FULLFLUSH_PRIMITIVES,env):
+                        return True
+        for t in _iter_write_targets(node):
+            if isinstance(t,ast.Subscript):
+                if (_is_globals_call(t.value,env) or _is_dict_expr(t.value,env)) and _mentions_target(t.slice,targets,env):
+                    return True
+                if (module_targets and isinstance(t.value,ast.Attribute) and t.value.attr=='__dict__'
+                        and name(t.value.value) in module_targets and _mentions_target(t.slice,_FULLFLUSH_PRIMITIVES,env)):
+                    return True
+            elif isinstance(t,ast.Attribute):
+                if t.attr in targets: return True
+                if module_targets and (name(t) in module_targets
+                        or (name(t.value) in module_targets and t.attr in _FULLFLUSH_PRIMITIVES)):
+                    return True
+    return False
 
 def _resolve_fullflush_calls(storage):
     """Return local call names proven to resolve to fullflush.full_flush."""
-    direct,modules,valid_imports=set(),set(),[]
+    direct,modules,skip_aliases=set(),set(),[]
+    imported_locals,pkg_imports,module_refs=set(),set(),set()
     for node in ast.walk(storage):
         if isinstance(node,ast.ImportFrom):
             if (node.level==1 and node.module=='fullflush') or (node.level==0 and node.module=='wam_regtest.fullflush'):
-                valid_imports.append(node)
                 for alias in node.names:
-                    if alias.name=='full_flush': direct.add(alias.asname or 'full_flush')
+                    if alias.name=='*': return None
+                    local=alias.asname or alias.name
+                    if local in imported_locals: return None
+                    imported_locals.add(local)
+                    skip_aliases.append(alias)
+                    if alias.name=='full_flush': direct.add(local)
             elif (node.level==1 and node.module is None) or (node.level==0 and node.module=='wam_regtest'):
-                if any(a.name=='fullflush' for a in node.names):
-                    valid_imports.append(node)
                 for alias in node.names:
-                    if alias.name=='fullflush': modules.add(alias.asname or 'fullflush')
+                    if alias.name=='fullflush':
+                        local=alias.asname or 'fullflush'
+                        if local in imported_locals: return None
+                        imported_locals.add(local)
+                        skip_aliases.append(alias)
+                        modules.add(local)
+                        module_refs.add(local)
         elif isinstance(node,ast.Import):
-            if any(a.name=='wam_regtest.fullflush' for a in node.names):
-                valid_imports.append(node)
             for alias in node.names:
                 if alias.name=='wam_regtest.fullflush':
-                    modules.add(alias.asname or 'wam_regtest.fullflush')
-    shadowed=_assigned_names(storage,skip_imports=tuple(valid_imports),allow_stdlib=('os',))
+                    skip_aliases.append(alias)
+                    if alias.asname:
+                        if alias.asname in imported_locals: return None
+                        imported_locals.add(alias.asname)
+                        modules.add(alias.asname)
+                        module_refs.add(alias.asname)
+                    else:
+                        pkg_imports.add('wam_regtest')
+                        modules.add('wam_regtest.fullflush')
+                        module_refs.add('wam_regtest.fullflush')
+                elif alias.asname is None and (alias.name=='wam_regtest' or alias.name.startswith('wam_regtest.')):
+                    skip_aliases.append(alias)
+    skip_tuple=tuple(skip_aliases)
+    if imported_locals or pkg_imports:
+        for node in ast.walk(storage):
+            if isinstance(node,ast.ImportFrom) and any(a not in skip_tuple and a.name=='*' for a in node.names):
+                return None
+    shadowed=_assigned_names(storage,skip_aliases=skip_tuple,allow_stdlib=('os',))
     if 'os' in shadowed: return None
-    calls={n for n in direct if n not in shadowed}
-    calls.update(f'{m}.full_flush' for m in modules if m.split('.')[0] not in shadowed)
+    watched=imported_locals|pkg_imports
+    if watched&shadowed: return None
+    if watched and _has_dynamic_rebind(storage,watched,module_targets=module_refs): return None
+    calls=set(direct)
+    calls.update(f'{m}.full_flush' for m in modules)
     return calls
 
 def _is_darwin_platform_check(test):
@@ -195,6 +345,9 @@ def _verify_fullflush(root):
     try: tree=ast.parse(path.read_text())
     except (OSError,SyntaxError): return False
     if {'os','sys','fcntl'}&_assigned_names(tree,allow_stdlib=('os','sys','fcntl')): return False
+    counts,invalid=_count_module_bindings(tree,_FULLFLUSH_PRIMITIVES)
+    if invalid or any(counts.get(n)!=1 for n in _FULLFLUSH_PRIMITIVES): return False
+    if _has_dynamic_rebind(tree,_FULLFLUSH_PRIMITIVES): return False
     funcs={n.name:n for n in tree.body if isinstance(n,ast.FunctionDef)}
     full_flush_fn,flush_dir_fn=funcs.get('full_flush'),funcs.get('flush_directory')
     if full_flush_fn is None or flush_dir_fn is None: return False
