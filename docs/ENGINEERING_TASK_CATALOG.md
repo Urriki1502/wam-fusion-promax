@@ -12,7 +12,7 @@ IDs **must not be renumbered**. GitHub issues, acceptance case IDs, tests/accept
 | Q02 | Authenticated WAM Core & Chain Identity | Real Core, signed binaries, correct genesis, credentials and fail-closed chain verification |
 | Q03 | Managed RPC & Credential Lifecycle | Serialized authenticated local RPC, reusable reads, cookie/credentials, Windows lifecycle |
 | Q04 | Node/Miner Coexistence & Safe Reconnection | External Core observation, mining coexistence, busy backoff, recovery without adoption |
-| Q05 | Owned Core Persistence & Native Wallet Custody | CoreSupervisor, encrypted vault, native anchor, checkpoint, crash/reopen and no replay |
+| Q05 | Owned Core Persistence & Native Wallet Custody | CoreSupervisor, encrypted vault, native anchor, checkpoint, crash/reopen and no replay. V1 Welcome does not create or open a Q05 wallet. Q06 open of a Q05 folder is refused before Core start. The developer CLI may open an existing Q05 profile only for read, unlock, snapshot, and original-owner cleanup. This catalog is not a promise that Welcome still has a legacy button. |
 | Q06 | BIP39 12-Word Wallet & BIP352 Silent Payments | Mnemonic, native-sealed seed, receive, Prepare/Sign/Broadcast, same-chain reconciliation |
 | Q07 | BIP39 24-Word Wallet | Preserve this existing Issue #45 obligation; no reassignment to network P2P |
 

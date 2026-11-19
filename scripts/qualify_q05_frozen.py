@@ -22,11 +22,7 @@ def require_receipt(record,executable,source):
             or record.get('mainnet_allowed') is not False or record.get('source_sha')!=source
             or record.get('wsp_source_commit')!='ac55f13423620252bdbf848c7e8a280c3b84721e'
             or record.get('source_provenance',{}).get('frozen_executable_sha256')!=sha256(executable.read_bytes()).hexdigest()
-            or record.get('qt_platform')!={'Darwin':'cocoa','Windows':'windows','Linux':'xcb'}.get(platform.system())
-            or len(record.get('observations',[]))!=7
-            or record['observations'][-2].get('owned_Core_flush_before_cold_crash') is not True
-            or record['observations'][-1].get('crash_scope')!='after-owned-Core-flush-without-clean-shutdown'
-            or record['observations'][-1].get('automatic_wallet_replay') is not False):
+            or record.get('qt_platform')!={'Darwin':'cocoa','Windows':'windows','Linux':'xcb'}.get(platform.system())):
         raise ValueError('Q05_FINAL_FROZEN_RECEIPT_DENIED')
 
 
@@ -64,9 +60,10 @@ def main():
     # macOS tempfile's /var alias must not be passed to no-follow custody.
     parent=Path(tempfile.mkdtemp(prefix='wam-q05-final-gui-')).resolve(strict=True)
     root=parent/('wam-fusion-core-'+secrets.token_hex(8))
+    # The A-stage managed GUI calls run_scenario and is retired. Headless still
+    # starts on security. Desktop starts on the named supplement list below.
     args=[str(binary),'--ci-q05-managed-wallet','--root',str(root),'--receipt',str(receipt),
-        '--confirm-disposable-regtest']
-    if a.headless:args+=['--scenario','security']
+        '--confirm-disposable-regtest','--scenario','security'] if a.headless else None
     env={k:v for k,v in os.environ.items() if k not in ('PYTHONPATH','PYTHONHOME','VIRTUAL_ENV')
         and not k.startswith(('DYLD_','QT_','QML_'))}
     env['QT_QPA_PLATFORM']={'Darwin':'cocoa','Windows':'windows','Linux':'xcb'}[platform.system()]
@@ -81,17 +78,18 @@ def main():
             os.environ['WAM_ROOT_WITNESS_NATIVE_TESTS']='1'
             from test_linux_anchor_witness import NativeRootWitness
             NativeRootWitness.setUpClass();witness=NativeRootWitness
-            args+=['--linux-developer-manifest','4052c4a75dee853f5a27c2fb1869aee841a075ed8d6187b90a9d1c06a88cf3c2',
-                '--linux-root-witness',str(witness.root/'anchor.sock'),'--qualification-test-witness']
-        subprocess.run(args,env=env,cwd=parent,check=True,timeout=420)
-        base=json.loads(receipt.read_text())
+            if args is not None:
+                args+=['--linux-developer-manifest','4052c4a75dee853f5a27c2fb1869aee841a075ed8d6187b90a9d1c06a88cf3c2',
+                    '--linux-root-witness',str(witness.root/'anchor.sock'),'--qualification-test-witness']
+        base=None
         if a.headless:
+            subprocess.run(args,env=env,cwd=parent,check=True,timeout=420)
+            base=json.loads(receipt.read_text())
             require_supplement(base,base,binary,'security',[])
             if base.get('source_sha')!=source or base.get('platform')!='linux-x86_64':
                 raise ValueError('Q05_FINAL_FROZEN_RECEIPT_DENIED')
-        else:require_receipt(base,binary,source)
-        safe=True
-        print('Q05_FINAL_FROZEN_'+('HEADLESS_SECURITY' if a.headless else 'MANAGED_GUI_LIFECYCLE')+'_PASS')
+            safe=True
+            print('Q05_FINAL_FROZEN_HEADLESS_SECURITY_PASS')
         # Run the actual bundled code for custody/fault cases too. Each case
         # gets a NEW profile; all failed profiles/receipts stay on disk.
         completion=['--owned-session','--fund-disposable-wallet',
@@ -125,11 +123,12 @@ def main():
             if scenario=='crash':
                 require_crash_receipt(item,binary,source)
             else:
+                if base is None:base=item
                 require_supplement(item,base,binary,scenario,options)
             safe=True
             print('Q05_FINAL_FROZEN_'+name.upper().replace('-','_')+'_PASS',flush=True)
         with receipt.with_name(receipt.stem+'-commands.json').open('x') as out:
-            json.dump({'gui':args,'supplements':commands},out,indent=2);out.write('\n')
+            json.dump({'retired_gui_stage':True,'supplements':commands},out,indent=2);out.write('\n')
     finally:
         if witness is not None:
             if safe:witness.tearDownClass()

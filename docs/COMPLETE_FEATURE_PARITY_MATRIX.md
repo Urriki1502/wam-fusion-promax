@@ -14,7 +14,7 @@ Shared desktop path (all three GUI ports):
 `managed_onboarding.launch` → BIP39 create/open/restore → `launch_bip39_trial` → `Bip39FusionWindow`  
 (`src/wam_regtest/managed_onboarding.py`, `bip39_owner_gui.py`, `bip39_fusion_gui.py`).
 
-Legacy Q05 remains a separate welcome route (`managed_gui.ManagedWalletWindow`). It is not the V2.2 BIP39 desktop.
+V1 Welcome has no legacy route. `ManagedWalletWindow` is not a product entry. Opening a Q05 folder from Q06 is refused before Core start.
 
 Linux headless excludes Qt (`build_linux_wallet.py` `--exclude-module PySide6`). GUI rows are `NOT_APPLICABLE`.
 
@@ -22,7 +22,7 @@ Linux headless excludes Qt (`build_linux_wallet.py` `--exclude-module PySide6`).
 
 | # | Feature | macOS ARM64 Desktop | Windows 11 x64 Desktop | Ubuntu 24.04 x86_64 Desktop | Linux Headless | Code | Tests |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Onboarding / welcome | IMPLEMENTED_AND_TESTED (frozen welcome + cocoa) | IMPLEMENTED_NOT_NATIVE_TESTED | IMPLEMENTED_NOT_NATIVE_TESTED | NOT_APPLICABLE | `managed_onboarding.welcome_dialog` | `tests/test_q06_bip39_welcome.py`; Win/Linux `q06_platform_probe.assert_unified_welcome_qt` |
+| 1 | Onboarding / welcome (no legacy Q05 route) | IMPLEMENTED_AND_TESTED (frozen welcome + cocoa) | IMPLEMENTED_NOT_NATIVE_TESTED | IMPLEMENTED_NOT_NATIVE_TESTED | NOT_APPLICABLE | `managed_onboarding.welcome_dialog` | `tests/test_q06_bip39_welcome.py`; Win/Linux `q06_platform_probe.assert_unified_welcome_qt` |
 | 2 | BIP39 12-word create | IMPLEMENTED_AND_TESTED | IMPLEMENTED_NOT_NATIVE_TESTED | IMPLEMENTED_NOT_NATIVE_TESTED | IMPLEMENTED_NOT_NATIVE_TESTED (no GUI) | `Bip39ReadOnlyBackend` + Fusion start | macOS `--ci-q06-bip39-*`; Win/Linux `--ci-q06-owned-spend` |
 | 3 | Seed backup ack | IMPLEMENTED_AND_TESTED | IMPLEMENTED_NOT_NATIVE_TESTED | IMPLEMENTED_NOT_NATIVE_TESTED | NOT_APPLICABLE | `Bip39BackupPage` in Fusion | `ui_layout_probe`, Q06 readonly |
 | 4 | Wallet restore | IMPLEMENTED_AND_TESTED | IMPLEMENTED_NOT_NATIVE_TESTED | IMPLEMENTED_NOT_NATIVE_TESTED | IMPLEMENTED_NOT_NATIVE_TESTED | welcome `restore` + `open(..., restore)` | Q06 same-chain / fresh restore |

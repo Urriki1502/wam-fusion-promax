@@ -47,7 +47,7 @@ def main():
         witness=adapter._witness.root/'anchor.sock'
     completion=['--owned-session','--fund-disposable-wallet','--interrupt-publication',
         '--recover-after-interruption','--interrupt-recovery-reference','--complete-pending-recovery']
-    cases=[('gui','probe_q05_executor_gui.py',[]),('security','probe_q05_security.py',[]),
+    cases=[('security','probe_q05_security.py',[]),
         ('signed-completion','probe_q05_wallet_checkpoint.py',[*completion,'--reservation','signed']),
         ('uncertain-completion','probe_q05_wallet_checkpoint.py',[*completion,'--reservation','uncertain'])]
     divergence=['--owned-session','--fund-disposable-wallet','--interrupt-publication',
@@ -71,8 +71,7 @@ def main():
                     a.linux_developer_manifest or
                     '4052c4a75dee853f5a27c2fb1869aee841a075ed8d6187b90a9d1c06a88cf3c2']
                 if a.test_root_witness:
-                    command+=['--test-root-witness' if script=='probe_q05_executor_gui.py'
-                              else '--qualification-test-witness']
+                    command+=['--qualification-test-witness']
             record['commands'].append(command)
             safe=False
             with (a.output_dir/(name+'.log')).open('x') as log:

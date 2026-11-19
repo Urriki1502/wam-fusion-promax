@@ -227,8 +227,14 @@ class ColdCrashTransplantTests(unittest.TestCase):
             with self.subTest(changes=changes), self.assertRaisesRegex(ValueError, "CRASH_RECEIPT_DENIED"):
                 require["require_crash_receipt"](broken, binary, "abc")
         frozen_source = (ROOT / "scripts/qualify_q05_frozen.py").read_text()
-        self.assertIn("len(record.get('observations',[]))!=7", frozen_source)
+        receipt = frozen_source.split("def require_crash_receipt", 1)[0]
+        self.assertNotIn("owned_Core_flush_before_cold_crash", receipt)
+        self.assertNotIn("crash_scope", receipt)
+        self.assertNotIn("len(record.get('observations',[]))!=7", receipt)
         self.assertIn("('cold-crash','crash',[])", frozen_source.replace(" ", ""))
+        self.assertIn("retired_gui_stage", frozen_source)
+        native = (ROOT / "scripts/qualify_q05_native.py").read_text()
+        self.assertNotIn("probe_q05_executor_gui.py", native)
 
 
 class DQuitEngineTransplantTests(unittest.TestCase):
