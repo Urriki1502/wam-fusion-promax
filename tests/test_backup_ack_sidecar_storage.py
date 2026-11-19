@@ -127,30 +127,39 @@ class BackupAckSidecarStorage(unittest.TestCase):
                           "seed_id": SEED, "mac": self._mac()})
 
     def test_write_fsync_and_replace_errors_keep_previous_record(self):
-        import wam_regtest.bip39_owner_backend as backend_module
+        from wam_regtest import fullflush
+        from wam_regtest.domain import backup_ack
         self.backend._q06_write_ack(self.folder, False, deferred=True)
         previous = self.path.read_bytes()
-        for name in ("write", "fsync", "rename"):
-            with self.subTest(fault=name):
-                with patch.object(backend_module.os, name, side_effect=OSError("PUBLIC_FAULT")):
+        for label, target, name in (
+            ("write", backup_ack.os, "write"),
+            ("fsync", fullflush, "full_flush"),
+            ("rename", backup_ack.os, "rename"),
+        ):
+            with self.subTest(fault=label):
+                with patch.object(target, name, side_effect=OSError("PUBLIC_FAULT")):
                     self._denied_write()
                 self.assertEqual(self.path.read_bytes(), previous)
                 self._no_stage()
 
     def test_file_fsync_before_rename_then_directory_fsync(self):
-        import wam_regtest.bip39_owner_backend as backend_module
-        events, real_fsync, real_rename = [], os.fsync, os.rename
+        from wam_regtest import fullflush
+        from wam_regtest.domain import backup_ack
+        events = []
+        real_full_flush = fullflush.full_flush
+        real_rename = backup_ack.os.rename
 
-        def fsync(fd):
+        def spy_full_flush(fd):
             events.append("fsync-dir" if stat.S_ISDIR(os.fstat(fd).st_mode) else "fsync-file")
-            return real_fsync(fd)
+            return real_full_flush(fd)
 
         def rename(*a, **k):
             events.append("rename")
             return real_rename(*a, **k)
+
         self.backend._q06_write_ack(self.folder, False, deferred=True)
-        with patch.object(backend_module.os, "fsync", fsync), \
-                patch.object(backend_module.os, "rename", rename):
+        with patch.object(fullflush, "full_flush", spy_full_flush), \
+                patch.object(backup_ack.os, "rename", rename):
             self.backend._q06_write_ack(self.folder, True, secret=SECRET)
         self.assertEqual(events, ["fsync-file", "rename", "fsync-dir"])
 

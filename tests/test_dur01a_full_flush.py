@@ -559,18 +559,37 @@ class MkdirNestedAndRaceContracts(unittest.TestCase):
                 results.append(ino)
             return real_after(pfd)
 
+        validate_barrier = threading.Barrier(2)
+        real_tempdir = custody.tempfile.TemporaryDirectory
+        errors = []
+
+        def sync_tempdir(*args, **kwargs):
+            validate_barrier.wait(timeout=5)
+            return real_tempdir(*args, **kwargs)
+
+        def run_tempdir(prefix):
+            try:
+                custody.private_temporary_directory(prefix).cleanup()
+            except BaseException as exc:
+                with lock:
+                    errors.append(exc)
+
         old_cwd = os.getcwd()
         os.chdir(work)
         self.addCleanup(os.chdir, old_cwd)
         with patch.object(Path, "mkdir", synchronized_mkdir), \
-                patch.object(fullflush, "flush_after_mkdir", spy_after):
-            t1 = threading.Thread(target=lambda: custody.private_temporary_directory("a-").cleanup())
-            t2 = threading.Thread(target=lambda: custody.private_temporary_directory("b-").cleanup())
+                patch.object(fullflush, "flush_after_mkdir", spy_after), \
+                patch.object(custody.tempfile, "TemporaryDirectory", sync_tempdir):
+            t1 = threading.Thread(target=run_tempdir, args=("a-",), daemon=True)
+            t2 = threading.Thread(target=run_tempdir, args=("b-",), daemon=True)
             t1.start()
             t2.start()
             t1.join(timeout=10)
             t2.join(timeout=10)
 
+        self.assertFalse(t1.is_alive())
+        self.assertFalse(t2.is_alive())
+        self.assertEqual(errors, [])
         self.assertEqual(results, [parent_ino, parent_ino])
 
     def test_m3_backup_ack_nested_state_and_ack_both_flush_parent(self):
@@ -639,15 +658,27 @@ class MkdirNestedAndRaceContracts(unittest.TestCase):
                 race_flushed.append(ino)
             return real_after(pfd)
 
+        errors = []
+
+        def run_ensure():
+            try:
+                vault._ensure_private_directory(race_leaf)
+            except BaseException as exc:
+                with lock:
+                    errors.append(exc)
+
         with patch.object(Path, "mkdir", sync_mkdir), \
                 patch.object(fullflush, "flush_after_mkdir", spy_race):
-            t1 = threading.Thread(target=lambda: vault._ensure_private_directory(race_leaf))
-            t2 = threading.Thread(target=lambda: vault._ensure_private_directory(race_leaf))
+            t1 = threading.Thread(target=run_ensure, daemon=True)
+            t2 = threading.Thread(target=run_ensure, daemon=True)
             t1.start()
             t2.start()
             t1.join(timeout=10)
             t2.join(timeout=10)
 
+        self.assertFalse(t1.is_alive())
+        self.assertFalse(t2.is_alive())
+        self.assertEqual(errors, [])
         self.assertEqual(race_flushed, [os.stat(race_parent).st_ino, os.stat(race_parent).st_ino])
 
     def test_m5_supervisor_stage_directory_race_winner_and_loser_both_flush(self):
@@ -673,20 +704,29 @@ class MkdirNestedAndRaceContracts(unittest.TestCase):
                 flushed.append(ino)
             return real_after(pfd)
 
+        errors = []
+
         def open_stage():
-            with store._posix_dir(root) as dfd:
-                sfd = store._open_stage_directory(dfd, create=True)
-                os.close(sfd)
+            try:
+                with store._posix_dir(root) as dfd:
+                    sfd = store._open_stage_directory(dfd, create=True)
+                    os.close(sfd)
+            except BaseException as exc:
+                with lock:
+                    errors.append(exc)
 
         with patch.object(store.os, "mkdir", sync_mkdir), \
                 patch.object(store, "flush_after_mkdir", spy_after):
-            t1 = threading.Thread(target=open_stage)
-            t2 = threading.Thread(target=open_stage)
+            t1 = threading.Thread(target=open_stage, daemon=True)
+            t2 = threading.Thread(target=open_stage, daemon=True)
             t1.start()
             t2.start()
             t1.join(timeout=10)
             t2.join(timeout=10)
 
+        self.assertFalse(t1.is_alive())
+        self.assertFalse(t2.is_alive())
+        self.assertEqual(errors, [])
         self.assertEqual(flushed, [root_ino, root_ino])
 
 
@@ -1034,6 +1074,7 @@ class CrossChainFlushFailureInvariants(unittest.TestCase):
         owner.directory.mkdir(mode=0o700)
         owner.profile = {"profile_id": PROFILE_ID}
         owner.journal = SimpleNamespace(events=[{"seq": 1, "state": "RUNNING"}])
+        owner.status.return_value = {"state": "stopped"}
         owner.process = Mock()
         owner.process.poll.return_value = None
         owner._faulted = True
@@ -1043,7 +1084,22 @@ class CrossChainFlushFailureInvariants(unittest.TestCase):
         session.lock.side_effect = WalletSessionError("WALLET_MANAGED_RUNTIME_PRESERVED")
         backend.session = session
         executor = WalletExecutor(lambda: backend)
-        self.addCleanup(lambda: (executor.request("quit") if not executor.closed else None, executor.join(5)))
+
+        def _cleanup_executor():
+            try:
+                if not executor.closed:
+                    backend._notice_persist_failed = False
+                    backend._quit_cleanup_uncertain = False
+                    backend.session = None
+                    owner.process = None
+                    try:
+                        executor.request("quit", timeout=5)
+                    except Exception:
+                        pass
+            finally:
+                self.assertTrue(executor.join(5), "WalletExecutor thread did not exit within timeout")
+
+        self.addCleanup(_cleanup_executor)
         executor.request("core_status", timeout=5)
 
         with store.exclusive_lease(qroot), \
@@ -1232,11 +1288,12 @@ class HelperCallCountsAndLatencyEvidence(unittest.TestCase):
             commitment = "ef" * 32
             session._review = PaymentReview(intent.code, 50_000, 1000, 49_000, 1, commitment)
 
+            from wam_sp.psbt import PSBT
             with patch("wam_regtest.bip39_spend_session._owned"), \
                     patch("wam_regtest.bip39_spend_session._owner_binding", return_value="binding"), \
                     patch.object(session, "_unchanged_inputs"), \
                     patch.object(session, "_preflight_not_submitted"), \
-                    patch("wam_sp.wallet.Wallet.broadcast", return_value="11" * 32):
+                    patch("wam_sp.wallet.Wallet.broadcast", side_effect=lambda signed_psbt, *a, **k: PSBT.decode(signed_psbt).txid()):
                 with self._meter() as sign_counts:
                     t0 = time.perf_counter()
                     session.sign(commitment)

@@ -84,17 +84,17 @@ class DarwinPublication(unittest.TestCase):
         self.assertEqual(self.residue(), [])
 
     def test_rename_eexist_race_refuses_and_retains_the_stage_residue(self):
-        real_fsync = os.fsync
+        real_flush = store.full_flush
         calls = []
 
         def racer(fd):
-            real_fsync(fd)
-            if not calls:  # the stage-file fsync: a competitor publishes first
+            real_flush(fd)
+            if not calls:  # the stage-file flush: a competitor publishes first
                 calls.append(fd)
                 (self.root / NAME).write_bytes(b"r" * 32)
                 os.chmod(self.root / NAME, 0o600)
 
-        with patch.object(os, "fsync", racer):
+        with patch.object(store, "full_flush", racer):
             with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_CREATE_DENIED"):
                 create_once(self.root, NAME, DATA)
         self.assertEqual((self.root / NAME).read_bytes(), b"r" * 32)
@@ -136,7 +136,7 @@ class DarwinPublication(unittest.TestCase):
         self.assertEqual((self.stage / self.stage_name()).read_bytes(), DATA[:7])
 
     def test_cut_at_stage_fsync_and_before_rename_never_publish(self):
-        for target, attribute in ((os, "fsync"), (store, "_rename_exclusive")):
+        for target, attribute in ((store, "full_flush"), (store, "_rename_exclusive")):
             with self.subTest(cut=attribute):
                 with patch.object(target, attribute, Mock(side_effect=Cut())), self.assertRaises(Cut):
                     create_once(self.root, NAME, DATA)
@@ -159,31 +159,28 @@ class DarwinPublication(unittest.TestCase):
     # --- N3: pre- vs post-publication errors -------------------------------
 
     def test_root_fsync_and_close_errors_after_rename_raise_with_final_present(self):
-        real_fsync = os.fsync
+        real_flush_dir = store.flush_directory
         calls = []
 
-        def failing_fsync(fd):
+        def failing_flush_dir(fd):
             calls.append(fd)
-            if len(calls) == 2:  # 1 = stage file, 2 = final root directory
-                raise OSError(errno.EIO, "injected")
-            return real_fsync(fd)
+            raise OSError(errno.EIO, "injected")
 
-        with patch.object(os, "fsync", failing_fsync):
+        with patch.object(store, "flush_directory", failing_flush_dir):
             with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_CREATE_UNVERIFIED"):
                 create_once(self.root, NAME, DATA)
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 1)
         self.assertEqual(read_exact(self.root, NAME, length=32), DATA)  # not removed
         with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_CREATE_DENIED"):
             create_once(self.root, NAME, DATA)  # retry still errors
 
-        # Close failure on the final root directory after rename + fsync also raises and retains final.
+        # Close failure on the final root directory after rename + flush also raises and retains final.
         real_close = os.close
         root_fds = set()
 
-        def track_fsync(fd):
-            real_fsync(fd)
-            if len(calls) == 1:
-                root_fds.add(fd)
+        def track_flush_dir(fd):
+            real_flush_dir(fd)
+            root_fds.add(fd)
             calls.append(fd)
 
         def failing_root_close(fd):
@@ -192,7 +189,7 @@ class DarwinPublication(unittest.TestCase):
                 raise OSError(errno.EIO, "close-injected")
 
         calls.clear()
-        with patch.object(os, "fsync", track_fsync), patch.object(os, "close", failing_root_close):
+        with patch.object(store, "flush_directory", track_flush_dir), patch.object(os, "close", failing_root_close):
             with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_CREATE_UNVERIFIED"):
                 create_once(self.root, "supervisor.profile", DATA)
         self.assertEqual(read_exact(self.root, "supervisor.profile", length=32), DATA)
@@ -218,7 +215,7 @@ class DarwinPublication(unittest.TestCase):
         cases = (
             ("enospc-write", os, "write", OSError(errno.ENOSPC, "x")),
             ("eintr-write", os, "write", InterruptedError(errno.EINTR, "x")),
-            ("eio-stage-fsync", os, "fsync", OSError(errno.EIO, "x")),
+            ("eio-stage-fsync", store, "full_flush", OSError(errno.EIO, "x")),
         )
         for label, target, attribute, error in cases:
             with self.subTest(label):
@@ -368,7 +365,7 @@ class DarwinPublication(unittest.TestCase):
     # --- N2: staged-inode binding and replacement races ---------------------
 
     def race_at_stage_fsync(self, action):
-        real = os.fsync
+        real = store.full_flush
         calls = []
 
         def racing(fd):
@@ -377,7 +374,7 @@ class DarwinPublication(unittest.TestCase):
                 calls.append(fd)
                 action(self.stage / self.stage_name())
 
-        with patch.object(os, "fsync", racing):
+        with patch.object(store, "full_flush", racing):
             with self.assertRaisesRegex(SupervisorStorageError, "SUPERVISOR_STORAGE_STAGE_CHANGED"):
                 create_once(self.root, NAME, DATA)
         self.assert_no_final()

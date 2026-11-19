@@ -181,7 +181,8 @@ class QuitNoticeStoreContracts(unittest.TestCase):
 
     def test_canonical_round_trip_and_fullfsync(self):
         with exclusive_lease(self.root):
-            with patch.object(module, '_fullfsync', wraps=module._fullfsync) as sync_spy:
+            with patch.object(module, 'full_flush', wraps=module.full_flush) as file_spy, \
+                    patch.object(module, 'flush_directory', wraps=module.flush_directory) as dir_spy:
                 published = publish_notice(
                     self.root,
                     profile_id=PROFILE_ID,
@@ -191,8 +192,9 @@ class QuitNoticeStoreContracts(unittest.TestCase):
                     codes=('WALLET_MANAGED_RUNTIME_PRESERVED',),
                     journal_seq=7,
                 )
-        # 1 file sync + 2 dir syncs (after link, after unlink).
-        self.assertEqual(sync_spy.call_count, 3)
+        # 1 file full_flush + 2 dir flush_directory (after link, after unlink).
+        self.assertEqual(file_spy.call_count, 1)
+        self.assertEqual(dir_spy.call_count, 2)
         path = self.root / 'supervisor.notice.000001'
         self.assertTrue(path.exists())
         st = path.lstat()
@@ -407,9 +409,9 @@ class QuitNoticeStoreContracts(unittest.TestCase):
         with self.assertRaisesRegex(QuitNoticeError, 'QUIT_NOTICE_LEASE_REQUIRED'):
             read_store(self.root, expected_profile_id=PROFILE_ID, complete_staged=True)
 
-        # Under lease, reader accepts AND completes publication (unlink stage + F_FULLFSYNC).
+        # Under lease, reader accepts AND completes publication (unlink stage + flush_directory).
         with exclusive_lease(self.root):
-            with patch.object(module, '_fullfsync', wraps=module._fullfsync) as sync_spy:
+            with patch.object(module, 'flush_directory', wraps=module.flush_directory) as sync_spy:
                 items = unacknowledged(self.root, expected_profile_id=PROFILE_ID)
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]['kind'], 'notice')
@@ -1023,7 +1025,7 @@ class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
     def test_post_link_unlink_or_dir_flush_failure_fails_closed_while_notice_exists(self):
         # I3-N3: failing stage unlink or post-link/post-unlink dir flush still raises
         # NOTICE_PERSIST_FAILED and retains owner, even though the notice file exists on disk.
-        real_fullfsync = module._fullfsync
+        real_flush_dir = module.flush_directory
         for idx, mode in enumerate(('unlink', 'dir_flush_after_unlink')):
             with self.subTest(mode=mode):
                 parent = self.root.parent / f'n3_{idx}'
@@ -1037,20 +1039,20 @@ class QuitNoticeExecutorAndHooksContracts(unittest.TestCase):
                 backend.session = session
                 executor = self._executor(backend)
 
-                sync_calls = [0]
+                dir_calls = [0]
 
-                def fail_third_sync(fd):
-                    sync_calls[0] += 1
-                    if sync_calls[0] == 3:
+                def fail_second_dir_flush(fd):
+                    dir_calls[0] += 1
+                    if dir_calls[0] == 2:
                         raise OSError('simulated-dir-flush-failure')
-                    return real_fullfsync(fd)
+                    return real_flush_dir(fd)
 
                 with exclusive_lease(sub_root), \
                         patch('wam_regtest.rpc_scope.identity', return_value=SimpleNamespace(faulted=False)):
                     cm = (
                         patch.object(module.os, 'unlink', side_effect=OSError('simulated-unlink-failure'))
                         if mode == 'unlink'
-                        else patch.object(module, '_fullfsync', side_effect=fail_third_sync)
+                        else patch.object(module, 'flush_directory', side_effect=fail_second_dir_flush)
                     )
                     with cm:
                         with self.assertRaisesRegex(WalletExecutorError, '^NOTICE_PERSIST_FAILED$'):
