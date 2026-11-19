@@ -5,7 +5,76 @@ from PySide6.QtCore import Qt, Signal, QRectF, QTimer
 from PySide6.QtGui import QColor,QPainter,QFont,QFontDatabase
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QLineEdit,QComboBox,QCheckBox,QTableWidget,QTableWidgetItem,QHeaderView,QApplication,QDialog,QDialogButtonBox,QFrame
 from .fusion_ui import SHELL,label,panel,page,action,ResponsiveRow,AdaptiveButtonRow,keyboard_table,vector_icon,fusion_palette,activity_by_block,grow_with_wrapped_text,direction_tone,QR,pending_amount_text
+from .presentation.strings import text as catalog_text
 from .wallet_read import format_wam
+
+_REC1_KEYS = {
+    'CONFIRMED': 'rec1.CONFIRMED',
+    'IN_LOCAL_MEMPOOL': 'rec1.IN_LOCAL_MEMPOOL',
+    'NOT_OBSERVED_LOCALLY': 'rec1.NOT_OBSERVED_LOCALLY',
+    'CONFLICTED': 'rec1.CONFLICTED',
+    'REJECTED_BY_POLICY': 'rec1.REJECTED_BY_POLICY',
+    'BROADCAST_OUTCOME_UNCERTAIN': 'rec1.BROADCAST_OUTCOME_UNCERTAIN',
+    'CORRUPTED_EVIDENCE': 'rec1.CORRUPTED_EVIDENCE',
+}
+_SIGNED_NEVER_SUBMITTED = 'SIGNED_NOT_SUBMITTED_RESUMABLE'
+
+
+def _rec1_read(key, language, lookup):
+    if lookup is not None:
+        return lookup(key)
+    return catalog_text(key, language)
+
+
+def rec1_status_line(state, language=None, *, lookup=None):
+    """One localized line. An unknown state stays unclassified, never a raw code."""
+    key = _REC1_KEYS.get(state) if type(state) is str else None
+    if key is None:
+        return _rec1_read('rec1.UNCLASSIFIED', language, lookup)
+    line = _rec1_read(key, language, lookup)
+    if state == 'BROADCAST_OUTCOME_UNCERTAIN':
+        # PM-082 already says the inputs stay locked and nothing is released.
+        line += _rec1_read('pages.no_retry_until_confirmed', language, lookup)
+    return line
+
+
+def sole_signed_never_submitted(intents):
+    """The one intent the GUI may offer for a first submission, or None.
+
+    Offered only when exactly one intent is classified
+    SIGNED_NOT_SUBMITTED_RESUMABLE and its reservation state is signed.
+    Uncertain, mixed, unknown, and any other state are not offered.
+    """
+    if type(intents) is not list:
+        return None
+    chosen = None
+    for item in intents:
+        if type(item) is not dict:
+            return None
+        if (item.get('classification') == _SIGNED_NEVER_SUBMITTED
+                and item.get('state') == 'signed'
+                and type(item.get('token')) is str
+                and type(item.get('txid')) is str):
+            if chosen is not None:
+                return None
+            chosen = item
+    return chosen
+
+
+def rec1_states_by_txid(intents):
+    """txid -> rec1_state for the History detail. Missing states stay missing."""
+    found = {}
+    if type(intents) is not list:
+        return found
+    for item in intents:
+        if type(item) is not dict:
+            continue
+        txid = item.get('txid')
+        if type(txid) is not str or not txid:
+            continue
+        state = item.get('rec1_state')
+        found[txid] = state if type(state) is str else None
+    return found
 
 
 class PaymentQR(QWidget):
@@ -108,6 +177,9 @@ class HistoryPage(QWidget):
         self.table.clearSelection()
         self.table.setCurrentCell(-1, -1)
     def render_snapshot(self,snap):
+        # A fresh chain snapshot drops a previous REC-1 annotation so a
+        # later confirmation is not still described by an older state.
+        self._rec1_by_txid = {}
         selected_txid = self._selected_txid() if snap is not None else None
         self._has_snapshot = snap is not None
         self.rows=(snap.pending_history + snap.history) if snap else ()
@@ -207,10 +279,24 @@ class HistoryPage(QWidget):
                 text += '\n' + ui_text('pending.details_value').format(
                     fee=pending_amount_text(tx.fee_atoms),
                     change=pending_amount_text(tx.pending_change_atoms))
-            self.detail_values.setText(text)
+            self.detail_values.setText(self._with_rec1(text, tx.txid))
         else:
-            self.detail_values.setText(ui_text('pages.block_amounts').format(height=tx.block_height, confirmations=tx.confirmations, credit=format_wam(tx.credit_atoms), debit=format_wam(tx.debit_atoms)))
+            self.detail_values.setText(self._with_rec1(ui_text('pages.block_amounts').format(height=tx.block_height, confirmations=tx.confirmations, credit=format_wam(tx.credit_atoms), debit=format_wam(tx.debit_atoms)), tx.txid))
         self.copy_button.setEnabled(True)
+    def set_rec1_states(self, by_txid):
+        """Show one REC-1 line in the History detail for a reviewed txid."""
+        clean = {}
+        if isinstance(by_txid, dict):
+            for txid, state in by_txid.items():
+                if type(txid) is str and txid:
+                    clean[txid] = state if type(state) is str else None
+        self._rec1_by_txid = clean
+        self.show_details()
+    def _with_rec1(self, text, txid):
+        notes = getattr(self, '_rec1_by_txid', None)
+        if isinstance(notes, dict) and txid in notes:
+            return text + '\n' + rec1_status_line(notes[txid], lookup=ui_text)
+        return text
     def select_txid(self,txid):
         self.search.clear();self.filter.setCurrentIndex(0)
         for i,tx in enumerate(self.rows):

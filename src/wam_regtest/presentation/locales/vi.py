@@ -821,4 +821,14 @@ VI = {
     "owner.locks_evicted_warning": "Không tìm thấy giao dịch đã phát trong lịch sử đã xác nhận hoặc mempool của Core này, và các đầu vào vẫn bị khóa cục bộ. Khóa vẫn an toàn và không tự động giải phóng; hãy chạy Kiểm tra TXID và đừng chi tiêu hai lần.",
     "owner.locks_conflicted_warning": "Một giao dịch đã phát xung đột với trạng thái chuỗi hoặc có đầu vào không khả dụng, và các khoản giữ chỗ vẫn bị khóa tại đây. Khóa vẫn an toàn và không có gì tự động mở khóa; hãy kiểm tra TXID trước đó trước khi thao tác thủ công.",
     "owner.locks_unknown_warning": "Không thể xác minh trạng thái khóa giữ chỗ với Core này. Hãy coi các đầu vào đang khóa là không khả dụng; quyền lưu ký an toàn, không có gì tự động mở khóa và hãy làm mới sau khi Core được xác minh.",
+    # PM-090
+    "rec1.CONFIRMED": "Đã xác nhận trong lịch sử đã kiểm chứng của nút này.",
+    "rec1.IN_LOCAL_MEMPOOL": "Đang chờ trong mempool của nút này. Chưa xác nhận và không thể chi tiêu.",
+    "rec1.NOT_OBSERVED_LOCALLY": "Nút này chưa thấy khoản thanh toán. Khoản thanh toán chưa biến mất. Tiền vẫn được giữ chỗ và không có hành động tự động.",
+    "rec1.CONFLICTED": "Xung đột với giao dịch khác hoặc một đầu vào không còn dùng được. Các khoản giữ chỗ vẫn khóa và không được giải phóng tự động.",
+    "rec1.REJECTED_BY_POLICY": "Bị từ chối bởi một kiểm tra chính sách đã ghi nhận. Hồ sơ thanh toán giữ nguyên và không được gửi lại hay giải phóng tự động.",
+    "rec1.BROADCAST_OUTCOME_UNCERTAIN": "Kết quả phát sóng chưa rõ. Phiên bản này không gửi lại.",
+    "rec1.CORRUPTED_EVIDENCE": "Không thể kiểm chứng hồ sơ của khoản thanh toán này. Hồ sơ được giữ nguyên và tách riêng.",
+    "rec1.UNCLASSIFIED": "Trạng thái phát sóng của khoản thanh toán này chưa được phân loại. Không có gì được gửi lại hoặc giải phóng tự động.",
+    "errors.REC2_UNCERTAIN_RESUBMIT_DEFERRED": "Việc gửi lại một khoản thanh toán chưa rõ kết quả được hoãn trong phiên bản này. Khoản thanh toán không được gửi lại. Các đầu vào đã giữ chỗ vẫn khóa và không được giải phóng tự động.",
 }

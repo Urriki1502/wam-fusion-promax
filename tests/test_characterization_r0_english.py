@@ -43,6 +43,9 @@ ENGLISH_GUI_ERRORS = {'FEE_ABSOLUTE_LIMIT': 'The fee exceeds 0.01 WAM. Nothing w
                                 'spending or reopening. Review and acknowledge the notice first; '
                                 'preserved runtime and evidence files remain untouched.',
  'RBF_SIGNALLING_MISSING': 'This payment is missing explicit BIP125 replaceability. Nothing was signed.',
+ 'REC2_UNCERTAIN_RESUBMIT_DEFERRED': 'Uncertain re-submission is deferred in this version. The '
+                                     'payment was not re-sent. Reserved inputs stay locked and '
+                                     'are not released automatically.',
  'SHARED_CONFIRMED_PEER_REQUIRED': 'The configured Core peer is disconnected or not yet verified. '
                                    'Reconnect and verify the shared chain; signed and pending '
                                    'payments remain preserved.',

@@ -821,4 +821,14 @@ ZH_HANS = {
     "owner.locks_evicted_warning": "在已确认历史和此 Core 内存池中均未找到已广播交易，其输入在本地保持锁定。密钥安全且锁定绝不会自动释放；请运行检查 TXID，切勿双重花费。",
     "owner.locks_conflicted_warning": "某笔已广播交易与链状态冲突或输入不可用，其预留在此保持锁定。密钥安全且不会自动解锁；手动操作前请先检查先前的 TXID。",
     "owner.locks_unknown_warning": "无法对照此 Core 验证预留锁定状态。请将已锁定输入视为不可用；托管安全，不会自动解锁，请在 Core 验证后刷新。",
+    # PM-090
+    "rec1.CONFIRMED": "已在此节点的已验证历史中确认。",
+    "rec1.IN_LOCAL_MEMPOOL": "在此节点的内存池中待处理。尚未确认，也不可花费。",
+    "rec1.NOT_OBSERVED_LOCALLY": "此节点尚未看到这笔付款。付款并未消失。资金保持预留，且不会采取自动操作。",
+    "rec1.CONFLICTED": "与另一笔交易或不可用的输入发生冲突。预留保持锁定，且不会自动解除。",
+    "rec1.REJECTED_BY_POLICY": "已被记录的策略检查拒绝。这笔付款的记录保持不变，且不会自动重发或解除。",
+    "rec1.BROADCAST_OUTCOME_UNCERTAIN": "广播结果未知。此版本不会重新发送。",
+    "rec1.CORRUPTED_EVIDENCE": "无法验证这笔付款的记录。该记录保持不变并被隔离。",
+    "rec1.UNCLASSIFIED": "这笔付款的广播状态未被分类。不会自动重发或解除。",
+    "errors.REC2_UNCERTAIN_RESUBMIT_DEFERRED": "结果不确定的再次提交在此版本中被推迟。这笔付款未被重新发送。已预留的输入保持锁定，且不会自动解除。",
 }

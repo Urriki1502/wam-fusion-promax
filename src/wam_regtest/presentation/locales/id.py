@@ -821,4 +821,14 @@ ID = {
     "owner.locks_evicted_warning": "Transaksi tersiar tidak ditemukan di riwayat terkonfirmasi atau mempool Core ini, dan inputnya tetap terkunci secara lokal. Kunci aman dan tidak dilepaskan secara otomatis; jalankan Periksa TXID dan jangan mengirim ganda.",
     "owner.locks_conflicted_warning": "Transaksi tersiar berkonflik dengan status rantai atau input yang tidak tersedia, dan reservasinya tetap terkunci di sini. Kunci aman dan tidak terbuka secara otomatis; periksa TXID sebelumnya sebelum tindakan manual.",
     "owner.locks_unknown_warning": "Status kunci reservasi tidak dapat diverifikasi terhadap Core ini. Anggap input terkunci tidak tersedia; kustodi aman, tidak ada yang terbuka secara otomatis, dan muat ulang setelah Core terverifikasi.",
+    # PM-090
+    "rec1.CONFIRMED": "Terkonfirmasi dalam riwayat terverifikasi simpul ini.",
+    "rec1.IN_LOCAL_MEMPOOL": "Tertunda di mempool simpul ini. Belum terkonfirmasi dan tidak dapat dibelanjakan.",
+    "rec1.NOT_OBSERVED_LOCALLY": "Tidak terlihat oleh simpul ini. Pembayaran ini tidak hilang. Dana tetap dipesan dan tidak ada tindakan otomatis.",
+    "rec1.CONFLICTED": "Bentrok dengan transaksi lain atau input yang tidak tersedia. Reservasi tetap terkunci dan tidak ada yang dilepas secara otomatis.",
+    "rec1.REJECTED_BY_POLICY": "Ditolak oleh pemeriksaan kebijakan yang tercatat. Catatan pembayaran tetap tidak berubah dan tidak ada yang dikirim ulang atau dilepas secara otomatis.",
+    "rec1.BROADCAST_OUTCOME_UNCERTAIN": "Hasil siaran tidak diketahui. Versi ini tidak mengirim ulang.",
+    "rec1.CORRUPTED_EVIDENCE": "Catatan pembayaran ini tidak dapat diverifikasi. Catatan disimpan tanpa perubahan dan diisolasi.",
+    "rec1.UNCLASSIFIED": "Status siaran pembayaran ini tidak terklasifikasi. Tidak ada yang dikirim ulang atau dilepas secara otomatis.",
+    "errors.REC2_UNCERTAIN_RESUBMIT_DEFERRED": "Pengiriman ulang yang hasilnya tidak pasti ditunda pada versi ini. Pembayaran tidak dikirim ulang. Input yang dipesan tetap terkunci dan tidak dilepas secara otomatis.",
 }

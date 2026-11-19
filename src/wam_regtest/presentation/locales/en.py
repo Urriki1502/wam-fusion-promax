@@ -819,4 +819,14 @@ EN = {
     "owner.locks_evicted_warning": "Broadcast transaction was not found in confirmed history or this Core mempool, and its inputs stay locked locally. Keys are safe and locks never release automatically; run Inspect TXID and do not double-spend.",
     "owner.locks_conflicted_warning": "A broadcast transaction conflicts with chain state or unavailable inputs, and its reservations stay locked here. Keys are safe and nothing unlocks automatically; inspect the previous TXID before taking manual action.",
     "owner.locks_unknown_warning": "Reservation lock state could not be verified against this Core. Treat locked inputs as unavailable; custody is safe, nothing unlocks automatically, and you should refresh after Core is verified.",
+    # PM-090: one truthful REC-1 line. Uncertain re-submission stays deferred.
+    "rec1.CONFIRMED": "Confirmed in this node's verified history.",
+    "rec1.IN_LOCAL_MEMPOOL": "Pending in this node's mempool. Not confirmed and not spendable.",
+    "rec1.NOT_OBSERVED_LOCALLY": "Not seen by this node. The payment is not gone. Funds stay reserved and no automatic action is taken.",
+    "rec1.CONFLICTED": "Conflicted with another transaction or an unavailable input. Reservations stay locked and nothing is released automatically.",
+    "rec1.REJECTED_BY_POLICY": "Rejected by a recorded policy check. The payment record is unchanged and nothing is re-sent or released automatically.",
+    "rec1.BROADCAST_OUTCOME_UNCERTAIN": "Broadcast outcome is unknown. This version does not re-send.",
+    "rec1.CORRUPTED_EVIDENCE": "This payment's record could not be verified. It is kept unchanged and isolated.",
+    "rec1.UNCLASSIFIED": "This payment's broadcast state is not classified. Nothing is re-sent or released automatically.",
+    "errors.REC2_UNCERTAIN_RESUBMIT_DEFERRED": "Uncertain re-submission is deferred in this version. The payment was not re-sent. Reserved inputs stay locked and are not released automatically.",
 }

@@ -25,7 +25,9 @@ from .bip39_backup_page import (
 from .domain.payment_state import reservations_need_attention
 
 from .fusion_ui import label, action
-from .fusion_pages import owner_approval_text
+from .fusion_pages import (
+    owner_approval_text, rec1_states_by_txid, rec1_status_line,
+    sole_signed_never_submitted)
 from .quit_lifecycle_gui import QuitLifecycleMixin
 
 
@@ -620,6 +622,12 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
         item=self._resumable_intent
         if item is None or not self._spend_enabled or self.executor.state.faulted:
             return
+        # The button is only an offer. A stale or non-signed item is not submitted.
+        if (item.get('classification') != 'SIGNED_NOT_SUBMITTED_RESUMABLE'
+                or item.get('state') != 'signed'):
+            self._resumable_intent = None
+            self._set_actions()
+            return
         answer=QMessageBox.question(
             self,t('owner.resume_title'),
             t('owner.resume_consent').format(txid=item['txid'], recipient=item['recipient'], atoms=item['atoms'], fee=item['fee'], state=item['state']),
@@ -807,19 +815,34 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
                 self.status.setText(
                     t('owner.txid_unknown'))
         elif action=="intent_status":
-            intents=result["intents"]
-            resumable=[i for i in intents if i["classification"] in
-                       ("SIGNED_NOT_SUBMITTED_RESUMABLE","UNCERTAIN_NOT_OBSERVED_RESUMABLE")]
-            self._resumable_intent=resumable[0] if len(resumable)==1 else None
+            intents=result["intents"] if isinstance(result, dict) else []
+            if type(intents) is not list:
+                intents=[]
+            # Submit is offered only for one signed intent that was never submitted.
+            self._resumable_intent=sole_signed_never_submitted(intents)
             counts={}
+            lines=[]
             for item in intents:
-                counts[item["classification"]]=counts.get(item["classification"],0)+1
-            summary="; ".join(t('owner.intent_count').format(classification=k, count=v) for k,v in sorted(counts.items())) or t('owner.no_intents')
+                if type(item) is not dict:
+                    lines.append(rec1_status_line(None, lookup=t))
+                    continue
+                classification=item.get('classification')
+                if type(classification) is str:
+                    counts[classification]=counts.get(classification, 0)+1
+                state=item.get('rec1_state')
+                lines.append(rec1_status_line(
+                    state if type(state) is str else None, lookup=t))
+            summary='; '.join(
+                t('owner.intent_count').format(classification=key, count=counts[key])
+                for key in sorted(counts)) or t('owner.no_intents')
             self.status.setText(
                 t('owner.intent_summary').format(summary=summary)
-                +(t('owner.intent_resumable')
-                  if self._resumable_intent is not None else
-                  t('owner.intent_protected')))
+                + (t('owner.intent_resumable') if self._resumable_intent is not None
+                   else t('owner.intent_protected'))
+                + (('\n'+'\n'.join(lines)) if lines else ''))
+            page=getattr(self, 'history_page', None)
+            if page is not None and hasattr(page, 'set_rec1_states'):
+                page.set_rec1_states(rec1_states_by_txid(intents))
         elif action=="resume_intent":
             self._resumable_intent=None
             self._pending_confirm_txid=result["txid"]
@@ -989,6 +1012,9 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
     def _on_denied(self, code):
         code = public_code(code)
         self._last_error_code = code
+        if code == 'REC2_UNCERTAIN_RESUBMIT_DEFERRED':
+            # A race may still refuse. Drop the offer and show the localized line.
+            self._resumable_intent = None
         if (code == 'WALLET_UNLOCK_REFUSED' and self.executor.state.locked
                 and not self.executor.state.faulted
                 and not self.executor.state.reauthentication_required
