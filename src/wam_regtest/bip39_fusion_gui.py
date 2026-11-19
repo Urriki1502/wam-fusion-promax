@@ -21,7 +21,7 @@ from .domain.payment_state import BROADCAST, reserved_rows_needing_attention
 
 from .bip39_locale import effective_choice, t
 from .desktop import resolve_theme
-from .gui_errors import operation_error
+from .gui_errors import error_text, operation_error, public_code
 from .fusion_ui import (
     FusionOverview, fusion_stylesheet, fusion_palette, page, panel,
     label, ResponsiveRow, vector_icon, nav_icon_for, FUSION_NAV_PAGES, fusion_nav_pages,
@@ -261,16 +261,6 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.sync.setToolTip(t('wallet.refresh_tooltip'))
         self.sync.setAccessibleName(t('wallet.refresh_accessible'))
         top.addWidget(self.sync)
-        divider = QFrame()
-        divider.setObjectName("FusionDivider")
-        divider.setFrameShape(QFrame.Shape.NoFrame)
-        divider.setFixedWidth(SHELL['divider'])
-        divider.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.MinimumExpanding)
-        top.addWidget(divider)
-        top.addWidget(label(t('wallet.theme'), "FusionMuted"))
-        self.header_theme = ThemeSlider(compact=True)
-        self.header_theme.setAccessibleName(t('wallet.theme_accessible'))
-        top.addWidget(self.header_theme)
         content.addWidget(topbar)
 
         self.stack = TransitionHost()
@@ -308,9 +298,13 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.recipient_input = QLineEdit()
         self.recipient_input.setMaxLength(256)
         self.recipient_input.setPlaceholderText(t('wallet.recipient_hint'))
+        self.recipient_input.setAccessibleName(t('wallet.recipient_accessible'))
+        self.recipient_input.setAccessibleDescription(t('wallet.recipient_accessible_description'))
         self.amount_input = QLineEdit()
         self.amount_input.setMaxLength(32)
         self.amount_input.setPlaceholderText("0.00000000")
+        self.amount_input.setAccessibleName(t('wallet.amount_accessible'))
+        self.amount_input.setAccessibleDescription(t('wallet.amount_accessible_description'))
         fl.addWidget(label(t('wallet.recipient_caption'), "FusionKicker"))
         fl.addWidget(self.recipient_input)
         fl.addWidget(label(t('wallet.amount_caption'), "FusionKicker"))
@@ -321,6 +315,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
         fee_note.setMinimumWidth(0)
         fl.addWidget(fee_note)
         self.send.setText(t('wallet.review_payment'))
+        self.send.setAccessibleName(t('wallet.review_payment'))
+        self.send.setAccessibleDescription(t('wallet.review_payment_description'))
         self.send.setObjectName("FusionPrimary")
         self.send.setProperty("fusion_icon", "send")
         fl.addWidget(self.send)
@@ -334,12 +330,18 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.review_summary.setMinimumWidth(0)
         rl.addWidget(self.review_summary)
         self.activate.setText(t('wallet.enable_sending'))
+        self.activate.setAccessibleName(t('wallet.enable_sending'))
+        self.activate.setAccessibleDescription(t('wallet.enable_sending_description'))
         self.activate.setObjectName("FusionSecondary")
         self.activate.setProperty("fusion_icon", "security")
         self.broadcast.setText(t('pages.approve_broadcast'))
+        self.broadcast.setAccessibleName(t('pages.approve_broadcast'))
+        self.broadcast.setAccessibleDescription(t('wallet.approve_broadcast_description'))
         self.broadcast.setObjectName("FusionSecondary")
         self.broadcast.setProperty("fusion_icon", "send")
         self.cancel.setText(t('owner.cancel_draft'))
+        self.cancel.setAccessibleName(t('owner.cancel_draft'))
+        self.cancel.setAccessibleDescription(t('wallet.cancel_draft_description'))
         self.cancel.setObjectName("FusionSecondary")
         rl.addWidget(self.activate)
         rl.addWidget(self.broadcast)
@@ -440,9 +442,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
             t('wallet.appearance_body'))
         self.settings_theme = ThemeSlider(compact=False)
         appearance_layout.addWidget(self.settings_theme, 0, Qt.AlignmentFlag.AlignLeft)
-        self.appearance_group = self.header_theme.group
-        self.appearance_buttons = self.header_theme.buttons
+        self.appearance_group = self.settings_theme.group
+        self.appearance_buttons = self.settings_theme.buttons
         self.reduce_motion = QCheckBox(t('wallet.reduce_motion'))
+        self.reduce_motion.setAccessibleName(t('wallet.reduce_motion'))
+        self.reduce_motion.setAccessibleDescription(t('wallet.reduce_motion_description'))
         stored = ui_settings()
         self.reduce_motion.setChecked(
             os.environ.get("QT_REDUCE_MOTION") == "1"
@@ -457,6 +461,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.language = QComboBox()
         self.language.setObjectName("FusionLanguage")
         self.language.setAccessibleName(t("settings.language"))
+        self.language.view().setAccessibleName(t("settings.language"))
         for caption, code in (
                 (t("settings.language_system"), "system"),
                 ("English", "en"),
@@ -569,11 +574,9 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self._advanced_transition = None
         self._press_feedback = PressFeedback(self)
         self._theme_sync = False
-        self.header_theme.currentChanged.connect(self._theme_chosen)
         self.settings_theme.currentChanged.connect(self._theme_chosen)
         saved = ui_settings().value("fusion_appearance", 0, type=int)
         if saved in (0, 1, 2):
-            self.header_theme.setCurrentIndex(saved, animate=False)
             self.settings_theme.setCurrentIndex(saved, animate=False)
         self._apply_reduce_motion(self.reduce_motion.isChecked())
         self._overview_intro = False
@@ -633,21 +636,18 @@ class Bip39FusionWindow(Bip39TrialWindow):
             return
         self._theme_sync = True
         try:
-            for slider in (self.header_theme, self.settings_theme):
-                if slider.currentIndex() != index:
-                    slider.setCurrentIndex(index, animate=slider is not self.sender())
             ui_settings().setValue("fusion_appearance", index)
             self._apply_fusion_theme()
         finally:
             self._theme_sync = False
 
     def _native_theme_changed(self, *_):
-        if self.header_theme.currentIndex() == 0:
+        if self.settings_theme.currentIndex() == 0:
             self._apply_fusion_theme()
 
     def _apply_fusion_theme(self, *_):
         from datetime import datetime
-        selection = self.header_theme.currentIndex()
+        selection = self.settings_theme.currentIndex()
         if selection == 0:
             # Match macOS System Appearance, not an assumed day/night hour.
             scheme = QApplication.styleHints().colorScheme()
@@ -1139,7 +1139,9 @@ class Bip39FusionWindow(Bip39TrialWindow):
                 or snap.broadcast_allowed is not result.get("broadcast_allowed")
                 or self.executor.state.faulted):
             self._clear_visuals()
-            self.status.setText("Q06_FUSION_VERIFIED_SNAPSHOT_DENIED")
+            self.status.setText(error_text(public_code(
+                'Q06_FUSION_VERIFIED_SNAPSHOT_DENIED',
+                fallback='WALLET_SYNC_UNVERIFIED')))
             return
         try:
             self.overview.render_snapshot(
@@ -1162,7 +1164,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self._render_network(snap)
         except (ValueError, TypeError):
             self._clear_visuals()
-            self.status.setText("Q06_FUSION_PRESENTATION_DENIED")
+            self.status.setText(error_text(public_code(
+                'Q06_FUSION_PRESENTATION_DENIED')))
             return
         self._last_verified = snap
         # go_send availability has ONE writer: _set_actions via
@@ -1195,6 +1198,9 @@ class Bip39FusionWindow(Bip39TrialWindow):
             field.setToolTip('')
             field.setAccessibleName('')
             field.setAccessibleDescription('')
+        # Role names stay. The cleared buffers above are values, not the control.
+        self.receive.setAccessibleName(t('owner.receive_caption'))
+        self.history.setAccessibleName(t('owner.history_caption'))
         self.connection_pill.setText(classify(
             'snapshot', snap=None, locked=True,
             faulted=self.executor.state.faulted,

@@ -1576,6 +1576,46 @@
     {
       "key": "owner.locks_unknown_warning",
       "reason": "PM-082 UX-01: an unverified lock state is unavailable, custody stays safe, and nothing unlocks automatically. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "errors.OPERATOR_REVIEW_MIXED_STATE",
+      "reason": "PM-094: mixed reservation states stay unsubmitted. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "errors.OPERATOR_REVIEW_EVIDENCE_INVALID",
+      "reason": "PM-094: an unverified signed record stays isolated. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "errors.OPERATOR_REVIEW_SIGNED_EVIDENCE_MISSING",
+      "reason": "PM-094: a missing signed record keeps reservations locked. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "errors.OPERATOR_REVIEW_EVIDENCE_INPUT_MISMATCH",
+      "reason": "PM-094: a mismatched signed record is not submitted. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "errors.OPERATOR_REVIEW_CORRUPTED_EVIDENCE_QUARANTINED",
+      "reason": "PM-094: a linked unverified record isolates the payment. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "errors.OPERATOR_REVIEW_INPUT_SPENT_OR_CONFLICTED",
+      "reason": "PM-094: reuses the PM-090 conflicted claim. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "errors.SIGNED_NOT_SUBMITTED_RESUMABLE",
+      "reason": "PM-094: signed-and-not-submitted does not send by itself. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "errors.UNCERTAIN_NOT_OBSERVED_RESUMABLE",
+      "reason": "PM-094: an uncertain unseen broadcast is not re-sent. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "errors.CONFIRMED_IN_VERIFIED_HISTORY",
+      "reason": "PM-094: reuses the PM-090 confirmed claim. Machine-assisted; native review PENDING."
+    },
+    {
+      "key": "errors.IN_MEMPOOL_AWAITING_CONFIRMATION",
+      "reason": "PM-094: reuses the PM-090 mempool claim. Machine-assisted; native review PENDING."
     }
   ]
 }

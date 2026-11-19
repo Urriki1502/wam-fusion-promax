@@ -151,7 +151,18 @@ ENGLISH_GUI_ERRORS = {'FEE_ABSOLUTE_LIMIT': 'The fee exceeds 0.01 WAM. Nothing w
  'OPERATOR_REVIEW_OBSERVATION_CONTRADICTION': 'Observation contradicts local wallet records. '
                                               'Reservations are preserved; do not retry, sign '
                                               'or release anything. Verify the original Core '
-                                              'and chain, then review manually.'}
+                                              'and chain, then review manually.',
+ # PM-094: owner-intent classifications shown through public error text.
+ 'OPERATOR_REVIEW_MIXED_STATE': 'This payment has more than one reservation state. Nothing is submitted or released automatically.',
+ 'OPERATOR_REVIEW_EVIDENCE_INVALID': "This payment's signed record could not be verified. It is kept unchanged and isolated.",
+ 'OPERATOR_REVIEW_SIGNED_EVIDENCE_MISSING': 'The signed payment record is missing. Reservations stay locked and nothing is released automatically.',
+ 'OPERATOR_REVIEW_EVIDENCE_INPUT_MISMATCH': 'The signed record does not match the reserved inputs. Nothing is submitted or released automatically.',
+ 'OPERATOR_REVIEW_CORRUPTED_EVIDENCE_QUARANTINED': 'This payment is isolated because a linked record could not be verified. Nothing is re-sent or released automatically.',
+ 'OPERATOR_REVIEW_INPUT_SPENT_OR_CONFLICTED': 'Conflicted with another transaction or an unavailable input. Reservations stay locked and nothing is released automatically.',
+ 'SIGNED_NOT_SUBMITTED_RESUMABLE': 'Signed and not submitted. Nothing is sent automatically.',
+ 'UNCERTAIN_NOT_OBSERVED_RESUMABLE': 'Not seen by this node after an uncertain broadcast. The payment is not gone. Funds stay reserved and nothing is re-sent automatically.',
+ 'CONFIRMED_IN_VERIFIED_HISTORY': "Confirmed in this node's verified history.",
+ 'IN_MEMPOOL_AWAITING_CONFIRMATION': "Pending in this node's mempool. Not confirmed and not spendable."}
 
 ENGLISH_LOCALE = {'app_name': 'WAM Fusion',
  'back_up_later': 'Back up later',

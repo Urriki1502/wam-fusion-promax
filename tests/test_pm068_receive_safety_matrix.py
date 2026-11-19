@@ -159,11 +159,10 @@ class ReceiveSafetyMatrix(unittest.TestCase):
                     window = Bip39FusionWindow(owner)
                     window._poll.stop()
                     # Existing appearance selector API, under isolated INI.
-                    window.header_theme.setCurrentIndex(
+                    window.settings_theme.setCurrentIndex(
                         theme_index, animate=False)
                     self._pump()
-                    self.assertEqual(window.header_theme.currentIndex(),
-                                     theme_index)
+                    self.assertFalse(hasattr(window, 'header_theme'))
                     self.assertEqual(window.settings_theme.currentIndex(),
                                      theme_index)
                     self.assertEqual(window._styled_mode, theme_name)
@@ -187,8 +186,6 @@ class ReceiveSafetyMatrix(unittest.TestCase):
                     self._settle_transition(window)
                     self.assertEqual((window.width(), window.height()),
                                      SMALL_SIZE)
-                    self.assertEqual(window.header_theme.currentIndex(),
-                                     theme_index)
                     self.assertEqual(window.settings_theme.currentIndex(),
                                      theme_index)
                     self.assertEqual(window._styled_mode, theme_name)

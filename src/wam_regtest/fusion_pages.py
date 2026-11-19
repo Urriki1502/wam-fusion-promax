@@ -61,6 +61,13 @@ def sole_signed_never_submitted(intents):
     return chosen
 
 
+def _name_line_clear(edit, name):
+    from PySide6.QtWidgets import QToolButton
+    for button in edit.findChildren(QToolButton):
+        if not button.accessibleName():
+            button.setAccessibleName(name)
+
+
 def rec1_states_by_txid(intents):
     """txid -> rec1_state for the History detail. Missing states stay missing."""
     found = {}
@@ -110,7 +117,7 @@ class ReceivePage(QWidget):
         card,cl=panel(ui_text('pages.your_silent_payment_address'),ui_text('pages.receive_scope'))
         self.qr=PaymentQR();qrbox=QWidget();ql=QVBoxLayout(qrbox);ql.setContentsMargins(0,0,0,0);ql.addWidget(self.qr,alignment=Qt.AlignmentFlag.AlignCenter);ql.addWidget(label(ui_text('pages.exact_address_qr'),'FusionKicker'),alignment=Qt.AlignmentFlag.AlignCenter)
         address=QWidget();al=QVBoxLayout(address);al.setContentsMargins(0,0,0,0);al.addWidget(label(ui_text('pages.bip352_regtest'),'FusionBadge'));self.receive_code=label('—','ReceiveCode',True);self.receive_code.setMinimumWidth(0);al.addWidget(self.receive_code)
-        self.copy_button=action(ui_text('pages.copy_full_address'),'copy',True);self.copy_button.setEnabled(False);self.copy_button.clicked.connect(self.copy_address);al.addWidget(self.copy_button);self.copy_status=label(ui_text('pages.copy_full_value'));al.addWidget(self.copy_status);al.addStretch()
+        self.copy_button=action(ui_text('pages.copy_full_address'),'copy',True);self.copy_button.setEnabled(False);self.copy_button.setAccessibleName(ui_text('pages.copy_full_address'));self.copy_button.setAccessibleDescription(ui_text('pages.copy_full_address_description'));self.copy_button.clicked.connect(self.copy_address);al.addWidget(self.copy_button);self.copy_status=label(ui_text('pages.copy_full_value'));al.addWidget(self.copy_status);al.addStretch()
         self._copy_timer=QTimer(self);self._copy_timer.setSingleShot(True)
         self._copy_timer.timeout.connect(lambda:self.copy_status.setText(ui_text('pages.copy_complete') if self.code else ui_text('pages.address_locked')))
         cl.addWidget(ResponsiveRow(qrbox,address,weights=[2,3],breakpoint=610));layout.addWidget(card)
@@ -134,12 +141,12 @@ class HistoryPage(QWidget):
     def __init__(self):
         super().__init__();self.setObjectName('FusionInner');self.rows=();self.mode='dark';self._offset=0;self._total=0;self._has_snapshot=False;root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
         scroll,layout=page(ui_text('pages.history'),ui_text('pages.history_subtitle') + ' ' + ui_text('pending.history_subtitle'),ui_text('pages.on_chain_history'));root.addWidget(scroll)
-        card,cl=panel();toolbar=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText(ui_text('pages.search_placeholder'));self.search.setClearButtonEnabled(True);self.search.setAccessibleName(ui_text('pages.search_confirmed_transactions'));self.filter=QComboBox();self.filter.addItems((ui_text('pages.all_activity'),ui_text('pages.credits'),ui_text('pages.debits')));toolbar.addWidget(self.search,1);toolbar.addWidget(self.filter);cl.addLayout(toolbar)
+        card,cl=panel();toolbar=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText(ui_text('pages.search_placeholder'));self.search.setClearButtonEnabled(True);self.search.setAccessibleName(ui_text('pages.search_confirmed_transactions'));self.filter=QComboBox();self.filter.setAccessibleName(ui_text('pages.history_type_filter'));self.filter.view().setAccessibleName(ui_text('pages.history_type_filter'));self.filter.addItems((ui_text('pages.all_activity'),ui_text('pages.credits'),ui_text('pages.debits')));toolbar.addWidget(self.search,1);toolbar.addWidget(self.filter);_name_line_clear(self.search,ui_text('pages.search_confirmed_transactions'));cl.addLayout(toolbar)
         self.table=QTableWidget(0,6);self.table.setObjectName('FusionActivityTable');self.table.setHorizontalHeaderLabels((ui_text('pages.direction'),ui_text('pages.transaction'),ui_text('pages.block'),ui_text('pages.confirmed'),ui_text('pages.credit_wam'),ui_text('pages.debit_wam')));self.table.verticalHeader().hide();self.table.setShowGrid(False);self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows);keyboard_table(self.table,ui_text('pages.history'));self.table.setMinimumHeight(220);self._size_columns();cl.addWidget(self.table);self.table.viewport().installEventFilter(self)
-        self.newer=action(ui_text('pages.newer_confirmed_history'),'history');self.older=action(ui_text('pages.older_confirmed_history'),'history');self.newer.setEnabled(False);self.older.setEnabled(False);self.newer.clicked.connect(self._newer);self.older.clicked.connect(self._older);cl.addWidget(AdaptiveButtonRow(self.newer,self.older))
+        self.newer=action(ui_text('pages.newer_confirmed_history'),'history');self.older=action(ui_text('pages.older_confirmed_history'),'history');self.newer.setAccessibleName(ui_text('pages.newer_confirmed_history'));self.older.setAccessibleName(ui_text('pages.older_confirmed_history'));self.newer.setEnabled(False);self.older.setEnabled(False);self.newer.clicked.connect(self._newer);self.older.clicked.connect(self._older);cl.addWidget(AdaptiveButtonRow(self.newer,self.older))
         self.scope=label('');cl.addWidget(self.scope)
         self.empty=label(ui_text('history.unavailable'));cl.addWidget(self.empty);layout.addWidget(card)
-        detail,dl=panel(ui_text('pages.transaction_details'),ui_text('pages.select_row'));self.detail_id=label(ui_text('pages.no_transaction_selected'),'ReceiveCode',True);dl.addWidget(self.detail_id);self.detail_values=label('');dl.addWidget(self.detail_values);self.copy_button=action(ui_text('pages.copy_full_transaction_id'),'copy');self.copy_button.setEnabled(False);self.copy_button.clicked.connect(self.copy_txid);dl.addWidget(self.copy_button);layout.addWidget(detail);layout.addStretch()
+        detail,dl=panel(ui_text('pages.transaction_details'),ui_text('pages.select_row'));self.detail_id=label(ui_text('pages.no_transaction_selected'),'ReceiveCode',True);dl.addWidget(self.detail_id);self.detail_values=label('');dl.addWidget(self.detail_values);self.copy_button=action(ui_text('pages.copy_full_transaction_id'),'copy');self.copy_button.setAccessibleName(ui_text('pages.copy_full_transaction_id'));self.copy_button.setEnabled(False);self.copy_button.clicked.connect(self.copy_txid);dl.addWidget(self.copy_button);layout.addWidget(detail);layout.addStretch()
         self.table.itemSelectionChanged.connect(self.show_details);self.search.textChanged.connect(self.apply_filter);self.filter.currentIndexChanged.connect(self.apply_filter)
     # Narrow windows (R-5): columns size to their content, the transaction
     # column stretches, and when everything cannot fit, Block and Confirmed

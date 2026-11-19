@@ -367,12 +367,14 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
         self.receive = QLineEdit()
         self.receive.setReadOnly(True)
         self.receive.setPlaceholderText(t('owner.receive_locked'))
+        self.receive.setAccessibleName(t('owner.receive_caption'))
         box.addWidget(self.receive)
         box.addWidget(QLabel(t('owner.last_txid')))
         self.last_txid=QLineEdit()
         self.last_txid.setReadOnly(True)
         self.last_txid.setPlaceholderText(
             t('owner.no_session_broadcast'))
+        self.last_txid.setAccessibleName(t('owner.last_txid'))
         box.addWidget(self.last_txid)
         self.account = QLabel(t('owner.account_locked'))
         self.balance = QLabel(t('owner.balance_unverified'))
@@ -382,6 +384,7 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
         self.history = QTextEdit()
         self.history.setReadOnly(True)
         self.history.setPlaceholderText(t('owner.history_hint'))
+        self.history.setAccessibleName(t('owner.history_caption'))
         box.addWidget(self.history)
         bar=QHBoxLayout()
         self.sync=QPushButton(t('owner.sync_core'))
@@ -398,6 +401,11 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
         self.lock=QPushButton(t('owner.lock_q06'))
         self.unlock=QPushButton(t('owner.unlock'))
         self.quit=QPushButton(t('owner.quit'))
+        self.fund.setAccessibleName(t('owner.fund_receive'))
+        self.confirm.setAccessibleName(t('owner.confirm_block'))
+        self.inspect.setAccessibleName(t('owner.inspect_txid'))
+        self.intents.setAccessibleName(t('owner.review_signed'))
+        self.resume.setAccessibleName(t('owner.submit_signed'))
         bar.addWidget(self.sync);bar.addWidget(self.fund);bar.addWidget(self.activate)
         box.addLayout(bar)
         payment=QHBoxLayout()
@@ -649,8 +657,8 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
         """Clear last_txid text, selection, and tooltip/accessibility buffers."""
         self.last_txid.clear()
         self.last_txid.setToolTip('')
-        self.last_txid.setAccessibleName('')
         self.last_txid.setAccessibleDescription('')
+        self.last_txid.setAccessibleName(t('owner.last_txid'))
 
     def _on_ready(self, action, result):
         if action in ('open', 'lock', 'quit', 'unlock'):
@@ -833,7 +841,9 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
                 lines.append(rec1_status_line(
                     state if type(state) is str else None, lookup=t))
             summary='; '.join(
-                t('owner.intent_count').format(classification=key, count=counts[key])
+                t('owner.intent_count').format(
+                    classification=error_text(public_code(key)),
+                    count=counts[key])
                 for key in sorted(counts)) or t('owner.no_intents')
             self.status.setText(
                 t('owner.intent_summary').format(summary=summary)

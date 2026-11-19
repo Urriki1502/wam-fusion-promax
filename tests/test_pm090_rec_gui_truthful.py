@@ -68,9 +68,10 @@ def _signed(**extra):
 class Rec1Copy(unittest.TestCase):
     def test_new_english_is_authoritative_in_every_locale(self):
         from wam_regtest.fusion_pages import rec1_status_line
-        self.assertEqual(len(CATALOG['en']), PRIOR_CATALOG_KEYS + len(ENGLISH))
+        # PM-094 adds 22 classification and accessibility keys after this catalog.
+        self.assertEqual(len(CATALOG['en']), PRIOR_CATALOG_KEYS + len(ENGLISH) + 22)
         for language, entries in CATALOG.items():
-            self.assertEqual(len(entries), PRIOR_CATALOG_KEYS + len(ENGLISH), language)
+            self.assertEqual(len(entries), PRIOR_CATALOG_KEYS + len(ENGLISH) + 22, language)
             for key, english in ENGLISH.items():
                 self.assertEqual(CATALOG['en'][key], english, key)
                 self.assertIn(key, entries)

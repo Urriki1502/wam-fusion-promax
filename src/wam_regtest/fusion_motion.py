@@ -11,6 +11,7 @@ from PySide6.QtGui import QColor, QPainter, QPen, QPainterPath
 from PySide6.QtWidgets import (
     QAbstractButton, QGraphicsOpacityEffect, QStackedWidget, QWidget, QVBoxLayout,
 )
+from .bip39_locale import t as ui_text
 
 FAST_MS = 140
 STANDARD_MS = 220
@@ -127,7 +128,7 @@ class StatusGlyph(QWidget):
         self._spin.timeout.connect(self._tick)
         self._reveal = None
         self.setFixedSize(22, 22)
-        self.setAccessibleName('Status indicator')
+        self.setAccessibleName(ui_text('fusion.status_indicator'))
 
     def get_progress(self):
         return self._progress

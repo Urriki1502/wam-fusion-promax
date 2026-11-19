@@ -218,7 +218,8 @@ class FusionV21LayoutAndMotion(unittest.TestCase):
         window._poll.stop()
         window.appearance_buttons[0].click()
         window.settings_theme.setCurrentIndex(2)
-        self.assertEqual(window.header_theme.currentIndex(), 2)
+        self.assertFalse(hasattr(window, 'header_theme'))
+        self.assertEqual(window.settings_theme.currentIndex(), 2)
         self.assertEqual(window.appearance_group.checkedId(), 2)
 
     def test_quick_backup_dialog_defaults_to_cancel_and_hides_seed(self):

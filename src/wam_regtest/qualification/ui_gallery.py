@@ -326,6 +326,23 @@ def _render_window(language, width, height, theme_index, theme, shoot, settle, f
         window._clear_visuals()
         window._on_denied('WALLET_UNLOCK_REFUSED')
         scene('11-status-refusal')
+        denied = dict(result)
+        denied['fusion_snapshot'] = None
+        window._render_verified(denied)
+        scene('11b-snapshot-unverified')
+        original_render = window.overview.render_snapshot
+
+        def deny_presentation(snap, *args, **kwargs):
+            if snap is not None:
+                raise ValueError('presentation')
+            return original_render(snap, *args, **kwargs)
+
+        window.overview.render_snapshot = deny_presentation
+        try:
+            window._render_verified(result)
+        finally:
+            window.overview.render_snapshot = original_render
+        scene('11c-presentation-denied')
         executor.state = ExecutorState(locked=False, faulted=False, core_alive=True)
         window._ready = True
         window._spend_enabled = True

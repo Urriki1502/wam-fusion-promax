@@ -192,13 +192,18 @@ class CatalogTests(unittest.TestCase):
         pm090 = json.loads((ROOT / 'tests/pm090_english_literals.json').read_text())
         for key, literal in pm090['english'].items():
             self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
-        self.assertEqual(set(CATALOG['en']) - SETTINGS_KEYS,
+        pm094 = json.loads((ROOT / 'tests/pm094_english_literals.json').read_text())
+        for key, literal in pm094['english'].items():
+            self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
+        # Header theme strings stay for the PM-017 move proof. The control is gone.
+        retired = set(pm094['retired_unused'])
+        self.assertEqual(set(CATALOG['en']) - SETTINGS_KEYS - retired,
                          expected | pm017_keys | status_keys | pm018_keys
                          | set(pm021['english']) | set(fe002['english']) | set(pm041['english'])
                          | set(fe003['english']) | {'backup.preparing', 'backup.checking', 'backup.scroll_accessible', 'backup.reopen', 'backup.done'}
                          | set(pm062['english']) | {'errors.WALLET_CHANGE_BELOW_DUST'}
                          | set(pm075['english']) | set(pm082['english']) | set(pm086['english'])
-                         | set(pm090['english']))
+                         | set(pm090['english']) | set(pm094['english']))
 
     def test_public_error_mapping_and_codes_unchanged(self):
         from wam_regtest.gui_errors import _MESSAGES, error_text, public_code
@@ -213,6 +218,9 @@ class CatalogTests(unittest.TestCase):
         pm090 = json.loads((ROOT / 'tests/pm090_english_literals.json').read_text())
         additions.update({key.removeprefix('errors.'): value
                           for key, value in pm090['english'].items() if key.startswith('errors.')})
+        pm094 = json.loads((ROOT / 'tests/pm094_english_literals.json').read_text())
+        additions.update({key.removeprefix('errors.'): value
+                          for key, value in pm094['english'].items() if key.startswith('errors.')})
         self.assertEqual(_MESSAGES, FIXTURE['errors'] | additions)
         for code, literal in FIXTURE['errors'].items():
             self.assertEqual(public_code(code), code)

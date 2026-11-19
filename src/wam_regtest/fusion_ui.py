@@ -9,7 +9,7 @@ from PySide6.QtGui import (
     QPainterPath, QFont, QFontMetrics, QRadialGradient,
 )
 from PySide6.QtWidgets import (
-    QApplication, QBoxLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea,
+    QAbstractButton, QApplication, QBoxLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea,
     QVBoxLayout, QWidget, QToolTip, QSizePolicy, QTableWidget, QTableWidgetItem,
     QPlainTextEdit, QCheckBox, QToolButton, QButtonGroup, QHeaderView, QStyledItemDelegate, QStyleOptionViewItem,
 )
@@ -670,10 +670,31 @@ def keep_focus_visible(scroll, accessible_name=None):
     return scroll
 
 
+class _CornerName(QObject):
+    """The table corner button is a real control. Give it the table's name."""
+
+    def __init__(self, table, name):
+        super().__init__(table)
+        self._name = name
+        table.installEventFilter(self)
+        self.apply(table)
+
+    def eventFilter(self, watched, event):
+        if event.type() in (QEvent.Type.Show, QEvent.Type.Polish):
+            self.apply(watched)
+        return False
+
+    def apply(self, table):
+        corner = table.findChild(QAbstractButton, 'qt_tableview_cornerbutton')
+        if corner is not None:
+            corner.setAccessibleName(self._name)
+
+
 def keyboard_table(table, accessible_name):
     """Tables: Tab leaves the table (R-10 keyboard trap); arrows move cells."""
     table.setTabKeyNavigation(False)
     table.setAccessibleName(accessible_name)
+    _CornerName(table, accessible_name)
     return table
 
 
@@ -1488,8 +1509,10 @@ class FusionOverview(QScrollArea):
         hero.addWidget(self.fund_details)
         row = QHBoxLayout(); row.setSpacing(10)
         self.go_send = action(ui_text('fusion.send'), 'send', True); self.go_send.setEnabled(False)
+        self.go_send.setAccessibleName(ui_text('fusion.send'))
         self.go_send.setToolTip(ui_text('fusion.send_disabled'))
         self.go_receive = action(ui_text('fusion.receive'), 'receive')
+        self.go_receive.setAccessibleName(ui_text('fusion.receive'))
         row.addWidget(self.go_send); row.addWidget(self.go_receive); row.addStretch()
         hero.addLayout(row)
         hero.addStretch()
@@ -1522,6 +1545,7 @@ class FusionOverview(QScrollArea):
         top = QHBoxLayout()
         top.addWidget(label(ui_text('fusion.recent_transactions'), 'FusionCardTitle')); top.addStretch()
         self.open_history = action(ui_text('fusion.view_all'), 'history')
+        self.open_history.setAccessibleName(ui_text('fusion.view_all'))
         top.addWidget(self.open_history); alayout.addLayout(top)
         self.activity_table = QTableWidget(0, 3)
         self.activity_table.setObjectName('FusionActivityTable')
@@ -1558,7 +1582,9 @@ class FusionOverview(QScrollArea):
         self.health_details = label(ui_text('fusion.verified_sources_only'))
         self.evidence_text = label(ui_text('fusion.no_verified_blockchain_snapshot'))
         self.manual_sync = action(ui_text('fusion.refresh'), 'sync')
+        self.manual_sync.setAccessibleName(ui_text('fusion.refresh'))
         self.open_security = action(ui_text('fusion.security'), 'security')
+        self.open_security.setAccessibleName(ui_text('fusion.security'))
         self.open_security.setEnabled(False)
         self.wallet_profile = label(ui_text('fusion.regtest_profile'))
         self.environment_core = label(ui_text('fusion.core_identity_pending'))

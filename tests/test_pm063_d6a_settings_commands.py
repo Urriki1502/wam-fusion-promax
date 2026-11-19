@@ -273,7 +273,7 @@ class SettingsCommandBoundaryTests(unittest.TestCase):
                 ):
                     window.navigation.setCurrentRow(6)
                     window.settings_theme.buttons[2].click()
-                    window.header_theme.buttons[1].click()
+                    window.settings_theme.buttons[1].click()
                     window.settings_theme.buttons[0].click()
                     vi_idx = window.language.findData("vi")
                     window.language.setCurrentIndex(vi_idx)
@@ -655,7 +655,8 @@ class SettingsLifetimeTests(unittest.TestCase):
 
                 self.assertEqual(window.last_txid.text(), "")
                 self.assertEqual(window.last_txid.selectedText(), "")
-                self.assertEqual(_surface_texts([window.last_txid]), [])
+                self.assertEqual(_surface_texts([window.last_txid]), [t("owner.last_txid")])
+                self.assertNotIn(_BROADCAST_TXID, "".join(_surface_texts([window.last_txid])))
                 self.assertEqual(window.status.text(), t("owner.faulted"))
                 self.assertNotIn(_BROADCAST_TXID, window.status.toolTip())
             finally:
@@ -702,7 +703,8 @@ class SettingsLifetimeTests(unittest.TestCase):
                 )
                 QApplication.processEvents()
                 self.assertEqual(window.last_txid.text(), "")
-                self.assertEqual(_surface_texts([window.last_txid]), [])
+                self.assertEqual(_surface_texts([window.last_txid]), [t("owner.last_txid")])
+                self.assertNotIn(_BROADCAST_TXID, "".join(_surface_texts([window.last_txid])))
                 self.assertEqual(window.status.text(), t("fusion.awaiting_verification"))
                 self.assertEqual(window.status.toolTip(), t("fusion.awaiting_verification"))
                 for text in _surface_texts([window.last_txid, window.status]):
@@ -745,7 +747,8 @@ class SettingsLifetimeTests(unittest.TestCase):
                 window._on_ready("quit", {"quit": True})
                 QApplication.processEvents()
                 self.assertEqual(window.last_txid.text(), "")
-                self.assertEqual(_surface_texts([window.last_txid]), [])
+                self.assertEqual(_surface_texts([window.last_txid]), [t("owner.last_txid")])
+                self.assertNotIn(_BROADCAST_TXID, "".join(_surface_texts([window.last_txid])))
             finally:
                 _close_window_bounded(window, executor)
 
@@ -781,7 +784,7 @@ class SettingsLifetimeTests(unittest.TestCase):
                 QApplication.processEvents()
                 self.assertEqual(
                     window.status.text().replace("\u200b", ""),
-                    "Q06_FUSION_VERIFIED_SNAPSHOT_DENIED",
+                    t("errors.WALLET_SYNC_UNVERIFIED"),
                 )
                 self.assertIsNone(window._last_verified)
                 self.assertEqual(window.account.text(), t("owner.account_locked"))
@@ -801,7 +804,7 @@ class SettingsLifetimeTests(unittest.TestCase):
                 QApplication.processEvents()
                 self.assertEqual(
                     window.status.text().replace("\u200b", ""),
-                    "Q06_FUSION_VERIFIED_SNAPSHOT_DENIED",
+                    t("errors.WALLET_SYNC_UNVERIFIED"),
                 )
                 self.assertIsNone(window._last_verified)
                 self.assertEqual(window.account.text(), t("owner.account_locked"))

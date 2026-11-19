@@ -172,7 +172,7 @@ class SettingsIsolationAndKeysTests(unittest.TestCase):
 
             window, executor, _ = _make_window()
             try:
-                self.assertEqual(window.header_theme.currentIndex(), 0)
+                self.assertFalse(hasattr(window, 'header_theme'))
                 self.assertEqual(window.settings_theme.currentIndex(), 0)
                 self.assertEqual(window.language.currentData(), "system")
                 self.assertFalse(window.reduce_motion.isChecked())
@@ -191,7 +191,6 @@ class SettingsIsolationAndKeysTests(unittest.TestCase):
                 # Change theme via settings_theme -> Dark (2)
                 window.settings_theme.buttons[2].click()
                 QApplication.processEvents()
-                self.assertEqual(window.header_theme.currentIndex(), 2)
                 self.assertEqual(window.settings_theme.currentIndex(), 2)
                 after_dark = _snapshot_ini(ini_path)
                 self.assertEqual(int(after_dark["fusion_appearance"]), 2)
@@ -201,15 +200,15 @@ class SettingsIsolationAndKeysTests(unittest.TestCase):
                 }
                 self.assertEqual(changed, {"fusion_appearance"})
 
-                # Change theme via header_theme -> Light (1) then Automatic (0)
-                window.header_theme.buttons[1].click()
+                # Settings is the only theme control: Light (1) then Automatic (0).
+                window.settings_theme.buttons[1].click()
                 QApplication.processEvents()
                 self.assertEqual(window.settings_theme.currentIndex(), 1)
                 self.assertEqual(int(_snapshot_ini(ini_path)["fusion_appearance"]), 1)
 
                 window.settings_theme.buttons[0].click()
                 QApplication.processEvents()
-                self.assertEqual(window.header_theme.currentIndex(), 0)
+                self.assertEqual(window.settings_theme.currentIndex(), 0)
                 self.assertEqual(int(_snapshot_ini(ini_path)["fusion_appearance"]), 0)
             finally:
                 _close_window(window, executor)

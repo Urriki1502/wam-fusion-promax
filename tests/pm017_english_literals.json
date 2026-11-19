@@ -2645,8 +2645,6 @@
     "wallet.snapshot_unverified",
     "wallet.refresh_tooltip",
     "wallet.refresh_accessible",
-    "wallet.theme",
-    "wallet.theme_accessible",
     "wallet.send_subtitle",
     "wallet.send_kicker",
     "wallet.prepare_title",

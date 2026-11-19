@@ -191,6 +191,7 @@ def welcome_dialog():
     ))
     root.addWidget(label(ui_text('welcome.regtest_preview_no_real_funds'), "FusionBadge"))
     dialog.shared_mode = QCheckBox(ui_text('welcome.shared_regtest_manual_core_p2p'))
+    dialog.shared_mode.setAccessibleName(ui_text('welcome.shared_regtest_manual_core_p2p'))
     dialog.shared_mode.setToolTip(ui_text('welcome.shared_tooltip'))
     root.addWidget(dialog.shared_mode)
 

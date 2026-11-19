@@ -1,0 +1,33 @@
+{
+  "english": {
+    "errors.OPERATOR_REVIEW_MIXED_STATE": "This payment has more than one reservation state. Nothing is submitted or released automatically.",
+    "errors.OPERATOR_REVIEW_EVIDENCE_INVALID": "This payment's signed record could not be verified. It is kept unchanged and isolated.",
+    "errors.OPERATOR_REVIEW_SIGNED_EVIDENCE_MISSING": "The signed payment record is missing. Reservations stay locked and nothing is released automatically.",
+    "errors.OPERATOR_REVIEW_EVIDENCE_INPUT_MISMATCH": "The signed record does not match the reserved inputs. Nothing is submitted or released automatically.",
+    "errors.OPERATOR_REVIEW_CORRUPTED_EVIDENCE_QUARANTINED": "This payment is isolated because a linked record could not be verified. Nothing is re-sent or released automatically.",
+    "errors.OPERATOR_REVIEW_INPUT_SPENT_OR_CONFLICTED": "Conflicted with another transaction or an unavailable input. Reservations stay locked and nothing is released automatically.",
+    "errors.SIGNED_NOT_SUBMITTED_RESUMABLE": "Signed and not submitted. Nothing is sent automatically.",
+    "errors.UNCERTAIN_NOT_OBSERVED_RESUMABLE": "Not seen by this node after an uncertain broadcast. The payment is not gone. Funds stay reserved and nothing is re-sent automatically.",
+    "errors.CONFIRMED_IN_VERIFIED_HISTORY": "Confirmed in this node's verified history.",
+    "errors.IN_MEMPOOL_AWAITING_CONFIRMATION": "Pending in this node's mempool. Not confirmed and not spendable.",
+    "wallet.recipient_accessible": "Silent-payment recipient",
+    "wallet.recipient_accessible_description": "Enter a complete REGTEST silent-payment address.",
+    "wallet.amount_accessible": "Payment amount in WAM",
+    "wallet.amount_accessible_description": "Enter a WAM amount with at most 8 decimal places.",
+    "wallet.review_payment_description": "Reviews this payment. Nothing is signed yet.",
+    "wallet.enable_sending_description": "Enables sending only after verification. It does not sign or broadcast.",
+    "wallet.approve_broadcast_description": "Asks for approval before this signed payment is broadcast.",
+    "wallet.cancel_draft_description": "Cancels an unsigned draft. Signed reservations stay locked.",
+    "pages.copy_full_address_description": "Copies the complete address.",
+    "pages.history_type_filter": "Search transaction type",
+    "wallet.reduce_motion_description": "Limits interface animation. Balances, payments, and saved settings stay unchanged.",
+    "fusion.status_indicator": "Status indicator"
+  },
+  "reused_from": {
+    "errors.OPERATOR_REVIEW_INPUT_SPENT_OR_CONFLICTED": "rec1.CONFLICTED",
+    "errors.CONFIRMED_IN_VERIFIED_HISTORY": "rec1.CONFIRMED",
+    "errors.IN_MEMPOOL_AWAITING_CONFIRMATION": "rec1.IN_LOCAL_MEMPOOL"
+  },
+  "vi_shared_regtest_manual_core_p2p": "REGTEST dùng chung · Core P2P thủ công",
+  "retired_unused": ["wallet.theme", "wallet.theme_accessible"]
+}
