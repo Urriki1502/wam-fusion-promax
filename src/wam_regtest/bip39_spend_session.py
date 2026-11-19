@@ -10,6 +10,7 @@ explicit owned-Core caller and must be separately tested on frozen macOS.
 import os
 from pathlib import Path
 import secrets
+import sqlite3
 import stat
 import sys
 
@@ -33,7 +34,7 @@ from .bip39_native_checkpoint import (
 from .bip39_scanner_checkpoint import (
     decode_candidate, require_irreversible_preserved,
 )
-from .sqlite_flush import make_scanner as Scanner
+from .sqlite_flush import SqliteFlushUnconfigured, make_scanner as Scanner
 
 
 def _reservation_map(scanner):
@@ -363,9 +364,17 @@ class Q06OwnedSpendSession(WalletSession):
         is ambiguous and refused here BEFORE any RPC, write or state change.
         Status classification is untouched: uncertain intents stay visible.
         """
-        with self.scanner.store.transaction():
-            rows = self.scanner.store.db.execute(
-                "SELECT state FROM reservations WHERE token=?", (token,)).fetchall()
+        from wam_sp.errors import StorageError
+        try:
+            with self.scanner.store.transaction():
+                rows = self.scanner.store.db.execute(
+                    "SELECT state FROM reservations WHERE token=?", (token,)).fetchall()
+        except (WalletSessionError, Q06SpendSessionError,
+                SqliteFlushUnconfigured):
+            raise
+        except (sqlite3.Error, StorageError):
+            raise WalletSessionError(
+                'REC2_UNCERTAIN_RESUBMIT_DEFERRED') from None
         states = {row[0] for row in rows}
         if rows and states == {'broadcast'}:
             return  # Already broadcast: caller's NOT_ELIGIBLE path decides.

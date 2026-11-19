@@ -69,6 +69,23 @@ class _Vault:
         self.saves.append(True)
 
 
+class _SelectFailingDB:
+    """Delegate to a real connection and fail the REC-2 reservation SELECT."""
+
+    def __init__(self, db, error):
+        self._db = db
+        self._error = error
+
+    def execute(self, sql, parameters=()):
+        if isinstance(sql, str) and sql.strip().startswith(
+                "SELECT state FROM reservations WHERE token"):
+            raise self._error
+        return self._db.execute(sql, parameters)
+
+    def __getattr__(self, name):
+        return getattr(self._db, name)
+
+
 def _session(rows, evidence=None, *, faulted=False, session_uncertain=False,
              locked=False):
     from wam_regtest.bip39_spend_session import Q06OwnedSpendSession
@@ -205,6 +222,84 @@ class SessionRefusal(_Patched):
         self.assertEqual(session._rpc_fake.calls, [])
         self.assertEqual(session.vault.saves, [])
         self.assertEqual(session._evidence_fake.writes, [])
+
+    def test_reservation_read_sqlite_failure_is_rec2_before_any_rpc(self):
+        from wam_regtest.wallet_session import WalletSessionError
+        for error in (sqlite3.OperationalError("injected-read"),
+                      sqlite3.DatabaseError("injected-db")):
+            with self.subTest(error=type(error).__name__):
+                session = _session([(IN_1[0], IN_1[1], TOKEN, "signed")],
+                                   {(TOKEN, "signed"): _body()})
+                before = session._rows()
+                original = session.scanner.store.db
+                session.scanner.store.db = _SelectFailingDB(original, error)
+                try:
+                    with self.assertRaises(WalletSessionError) as caught:
+                        session.resume_signed_intent(TOKEN, TXID, approved=True)
+                finally:
+                    session.scanner.store.db = original
+                self.assertEqual(caught.exception.args, (REC2,))
+                self.assertEqual(session._rpc_fake.calls, [])
+                self.assertEqual(session.vault.saves, [])
+                self.assertEqual(session._evidence_fake.writes, [])
+                self.assertEqual(session._rows(), before)
+                self.assertIsNone(session._q06_pending_confirm)
+                self.assertFalse(session.faulted or session._q06_uncertain)
+
+    def test_reservation_read_storage_failure_is_rec2_before_any_rpc(self):
+        from wam_regtest.wallet_session import WalletSessionError
+        from wam_sp.errors import StorageError
+        session = _session([(IN_1[0], IN_1[1], TOKEN, "signed")],
+                           {(TOKEN, "signed"): _body()})
+        before = session._rows()
+        original = session.scanner.store.db
+        session.scanner.store.db = _SelectFailingDB(
+            original, StorageError("DATABASE_CORRUPTION"))
+        try:
+            with self.assertRaises(WalletSessionError) as caught:
+                session.resume_signed_intent(TOKEN, TXID, approved=True)
+        finally:
+            session.scanner.store.db = original
+        self.assertEqual(caught.exception.args, (REC2,))
+        self.assertEqual(session._rpc_fake.calls, [])
+        self.assertEqual(session.vault.saves, [])
+        self.assertEqual(session._evidence_fake.writes, [])
+        self.assertEqual(session._rows(), before)
+        self.assertIsNone(session._q06_pending_confirm)
+
+    def test_reservation_read_typed_wam_error_propagates_unchanged(self):
+        from wam_regtest.bip39_spend_session import Q06SpendSessionError
+        from wam_regtest.sqlite_flush import SqliteFlushUnconfigured
+        from wam_regtest.wallet_session import WalletSessionError
+        cases = (
+            (WalletSessionError("WALLET_TYPED_RESERVATION_TOKEN"),
+             WalletSessionError, ("WALLET_TYPED_RESERVATION_TOKEN",)),
+            (Q06SpendSessionError("Q06_TYPED_RESERVATION_TOKEN"),
+             Q06SpendSessionError, ("Q06_TYPED_RESERVATION_TOKEN",)),
+            (SqliteFlushUnconfigured(), SqliteFlushUnconfigured,
+             ("SQLITE_FLUSH_UNCONFIGURED",)),
+        )
+        for error, error_type, expected_args in cases:
+            with self.subTest(error_type=error_type.__name__):
+                session = _session([(IN_1[0], IN_1[1], TOKEN, "signed")],
+                                   {(TOKEN, "signed"): _body()})
+                before = session._rows()
+                original = session.scanner.store.db
+                session.scanner.store.db = _SelectFailingDB(original, error)
+                try:
+                    with self.assertRaises(error_type) as caught:
+                        session.resume_signed_intent(TOKEN, TXID, approved=True)
+                finally:
+                    session.scanner.store.db = original
+                # Same token, not replaced by the REC-2 token.
+                self.assertEqual(caught.exception.args, expected_args)
+                self.assertNotEqual(caught.exception.args, (REC2,))
+                if error_type is SqliteFlushUnconfigured:
+                    self.assertIs(type(caught.exception), SqliteFlushUnconfigured)
+                self.assertEqual(session._rpc_fake.calls, [])
+                self.assertEqual(session.vault.saves, [])
+                self.assertEqual(session._evidence_fake.writes, [])
+                self.assertEqual(session._rows(), before)
 
     def test_locked_and_faulted_sessions_refused_without_rpc(self):
         from wam_regtest.bip39_spend_session import Q06SpendSessionError

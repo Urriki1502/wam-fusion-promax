@@ -344,7 +344,7 @@ class Dur01bSqliteFlush(unittest.TestCase):
         connects = []
         for path in sorted(PRODUCT.rglob("*.py")):
             tree = ast.parse(path.read_text(), filename=str(path))
-            factory_names, wsp_names = _bindings(tree)
+            factory_names, wsp_names, store_names, store_modules = _bindings(tree)
             rel = str(path.relative_to(ROOT))
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
@@ -353,11 +353,17 @@ class Dur01bSqliteFlush(unittest.TestCase):
                 if (path.name != "sqlite_flush.py" and isinstance(func, ast.Name)
                         and func.id in wsp_names):
                     direct_calls.append((rel, node.lineno, func.id))
+                if (path.name != "sqlite_flush.py" and isinstance(func, ast.Name)
+                        and func.id in store_names):
+                    direct_calls.append((rel, node.lineno, func.id))
                 if isinstance(func, ast.Name) and func.id in factory_names:
                     factory_calls.append(rel)
                 if isinstance(func, ast.Attribute) and func.attr == "Scanner":
                     if path.name != "sqlite_flush.py":
                         direct_calls.append((rel, node.lineno, "attribute"))
+                if isinstance(func, ast.Attribute) and func.attr == "Store":
+                    if path.name != "sqlite_flush.py":
+                        direct_calls.append((rel, node.lineno, "attribute:Store"))
                 if isinstance(func, ast.Attribute) and func.attr == "connect":
                     value = func.value
                     if isinstance(value, ast.Name) and value.id == "sqlite3":
@@ -388,6 +394,36 @@ class Dur01bSqliteFlush(unittest.TestCase):
             text = (ROOT / script).read_text()
             self.assertIn("Scanner(", text)
             self.assertNotIn("sqlite_flush", text)
+
+    def test_guard_flags_direct_store_construction(self):
+        # Synthetic sources are parsed in memory only; nothing is written
+        # into src/. Each form must be flagged as a direct Store build.
+        cases = (
+            "from wam_sp.store import Store; Store(path, id)",
+            "from wam_sp.store import Store\nStore(path, account_id)\n",
+            "from wam_sp.store import Store as RenamedStore\n"
+            "RenamedStore(path, account_id)\n",
+            "import wam_sp.store\nwam_sp.store.Store(path, account_id)\n",
+            "import wam_sp.store as store_mod\n"
+            "store_mod.Store(path, account_id)\n",
+            "from wam_sp import store\nstore.Store(path, account_id)\n",
+            "from wam_sp import store as store_alias\n"
+            "store_alias.Store(path, account_id)\n",
+        )
+        for source in cases:
+            with self.subTest(source=source.splitlines()[0]):
+                tree = ast.parse(source)
+                self.assertTrue(_direct_store_calls(tree), source)
+        # The exact brief case binds the name Store itself.
+        tree = ast.parse("from wam_sp.store import Store; Store(path, id)")
+        _factory_names, _wsp_names, store_names, _store_modules = _bindings(tree)
+        self.assertIn("Store", store_names)
+        self.assertTrue(_direct_store_calls(tree))
+        # A factory construction is not a direct Store build.
+        clean = ast.parse(
+            "from .sqlite_flush import make_scanner as Scanner\n"
+            "Scanner(path, accounts)\n")
+        self.assertEqual(_direct_store_calls(clean), [])
 
     def test_create_preserves_exact_token_and_faulted(self):
         from wam_regtest import custody
@@ -587,9 +623,32 @@ def inspect_source(obj):
     return inspect.getsource(obj)
 
 
+def _dotted(node):
+    parts = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        parts.append(node.id)
+        parts.reverse()
+        return ".".join(parts)
+    return None
+
+
 def _bindings(tree):
     factory, wsp = set(), set()
+    store, store_modules = set(), set()
     for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "wam_sp.store":
+                    if alias.asname:
+                        store_modules.add(alias.asname)
+                    else:
+                        store_modules.add("wam_sp.store")
+                elif alias.name == "wam_sp":
+                    store_modules.add("wam_sp.store")
+            continue
         if not isinstance(node, ast.ImportFrom):
             continue
         for alias in node.names:
@@ -598,7 +657,31 @@ def _bindings(tree):
                 factory.add(bound)
             if node.module == "wam_sp.scanner" and node.level == 0 and alias.name == "Scanner":
                 wsp.add(bound)
-    return factory, wsp
+            if node.module == "wam_sp.store" and node.level == 0 and alias.name == "Store":
+                store.add(bound)
+            if node.module == "wam_sp" and node.level == 0 and alias.name == "store":
+                store_modules.add(bound)
+    return factory, wsp, store, store_modules
+
+
+def _direct_store_calls(tree):
+    _factory, _wsp, store_names, store_modules = _bindings(tree)
+    direct = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id in store_names:
+            direct.append((node.lineno, func.id))
+        if isinstance(func, ast.Attribute) and func.attr == "Store":
+            base = _dotted(func.value)
+            if base in store_modules or base == "wam_sp.store":
+                direct.append((node.lineno, "attribute:Store"))
+            elif base is not None:
+                # Mirror the Scanner attribute guard: any '*.Store(...)'
+                # construction in product code is a direct Store build.
+                direct.append((node.lineno, "attribute:Store"))
+    return direct
 
 
 if __name__ == "__main__":
