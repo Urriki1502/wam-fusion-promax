@@ -33,7 +33,7 @@ from .bip39_native_checkpoint import (
 from .bip39_scanner_checkpoint import (
     decode_candidate, require_irreversible_preserved,
 )
-from wam_sp.scanner import Scanner
+from .sqlite_flush import make_scanner as Scanner
 
 
 def _reservation_map(scanner):

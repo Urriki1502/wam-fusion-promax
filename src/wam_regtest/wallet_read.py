@@ -104,7 +104,7 @@ def read_real_wallet_snapshot(
         _pinned_source(wsp_source_root)
         from wam_sp.keystore import ScanAccount
         from wam_sp.core import pub
-        from wam_sp.scanner import Scanner
+        from .sqlite_flush import make_scanner as Scanner
         from wam_sp.watcher import GENESIS
         if GENESIS != REGTEST_GENESIS:
             raise RealWalletReadError("WALLET_REGTEST_GENESIS_DENIED")

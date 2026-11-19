@@ -120,6 +120,7 @@ def _require_no_prior_runtime(owner,wallet_id,active_name=None):
 
 def open_owned(cls,owner,source,password,*,authorized=False,keychain=None,create=False,mining_address=None):
     from .quit_notice import unacknowledged
+    from .sqlite_flush import SqliteFlushUnconfigured, make_scanner as Scanner
     from .vault import CheckpointVault
     from .wallet_session import WalletCoreCli,WalletSessionError
     import secrets
@@ -154,7 +155,6 @@ def open_owned(cls,owner,source,password,*,authorized=False,keychain=None,create
         vault=CheckpointVault(folder,anchor,source)
         rpc=WalletCoreCli(owner.cli,owner.directory);rpc.attest()
         from wam_sp.keystore import Keyring
-        from wam_sp.scanner import Scanner
         if create:
             ring=Keyring();ring.backup(password)
             if sys.platform=='win32':
@@ -180,6 +180,9 @@ def open_owned(cls,owner,source,password,*,authorized=False,keychain=None,create
         # runtime evidence and closes keys/lease; never repairs or sweeps files.
         ring=scanner=lease=guard=None
         return session
+    except SqliteFlushUnconfigured as error:
+        error.faulted = True
+        raise
     except WalletSessionError as error:
         if error.args==('QUIT_NOTICE_REVIEW_REQUIRED',):
             raise

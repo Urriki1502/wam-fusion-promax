@@ -305,7 +305,7 @@ class CheckpointVault:
                 or private_windows_runtime and sys.platform!='win32'):
             raise VaultError('VAULT_PRIVATE_WINDOWS_RUNTIME_SCOPE_DENIED')
         from wam_sp.keystore import Keyring
-        from wam_sp.scanner import Scanner
+        from .sqlite_flush import SqliteFlushUnconfigured, make_scanner as Scanner
         from wam_sp.file_lock import exclusive_file_lock
         runtime_files=tuple(runtime_path.with_name(runtime_path.name+x)
                             for x in ("","-journal","-wal","-shm"))
@@ -333,6 +333,17 @@ class CheckpointVault:
                     raise VaultError("VAULT_RESTORE_STATE_DENIED")
                 self._expected = record
                 return ring, scanner
+        except SqliteFlushUnconfigured:
+            try:
+                if scanner is not None:
+                    scanner.close()
+            finally:
+                if ring is not None:
+                    ring.close()
+                if runtime_created:
+                    for path in reversed(runtime_files):
+                        path.unlink(missing_ok=True)
+            raise
         except Exception:
             try:
                 if scanner is not None:

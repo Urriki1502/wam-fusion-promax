@@ -25,7 +25,7 @@ def probe_security(cli, datadir, source, mining_address):
     from .wsp_live import LiveCoreReadOnlyCli, _public_fixture_payment, _pinned_source
     _pinned_source(source)
     from wam_sp.keystore import Keyring
-    from wam_sp.scanner import Scanner
+    from .sqlite_flush import make_scanner as Scanner
     password = b"public-disposable-regtest-security-test"
     rpc = LiveCoreReadOnlyCli(cli, datadir)
     rpc.attest()

@@ -53,7 +53,7 @@ def prove_real_windows_vault(cli,datadir,port,env,source,mining_address):
     storage=custody.storage()
     storage.validate_directory(datadir)
     from wam_sp.keystore import Keyring, ScanAccount, seal
-    from wam_sp.scanner import Scanner
+    from .sqlite_flush import make_scanner as Scanner
     from wam_sp.wallet import Wallet, Intent, Signer
     from wam_sp.core import pub
     from wam_sp.watcher import GENESIS

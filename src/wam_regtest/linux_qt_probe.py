@@ -38,7 +38,7 @@ def background_snapshot(app,window):
 
 def probe(core,datadir,source,mining):
     from wam_sp.keystore import Keyring
-    from wam_sp.scanner import Scanner
+    from .sqlite_flush import make_scanner as Scanner
     from .qualification.real_core_smoke import smoke_real_core
     app=qt_application();session=window=receiver=scan=None;stage='CREATE'
     try:

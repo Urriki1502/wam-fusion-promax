@@ -102,7 +102,7 @@ def prove_real_windows_wsp_receive(cli: Path, datadir: Path, port: int, env: dic
         _deny("WIN_WSP_PUBLIC_MINING_ADDRESS_DENIED")
     from wam_sp.core import pub
     from wam_sp.keystore import ScanAccount
-    from wam_sp.scanner import Scanner
+    from .sqlite_flush import make_scanner as Scanner
 
     rpc = WindowsWspCoreRpc(cli, datadir, port, env)
     rpc.attest()

@@ -43,7 +43,7 @@ def verify_mnemonic_on_original_chain(owner, source, phrase, expected):
         directory = owner.directory / ("q06-seed-proof-" + secrets.token_hex(16))
         custody.create_directory(directory)
         target = directory / "wallet-runtime.sqlite"
-        from wam_sp.scanner import Scanner
+        from .sqlite_flush import make_scanner as Scanner
         from wam_sp.wallet import Wallet
         # Consistent with Q06 owned-spend: Windows must create the private
         # SQLite runtime through native ACL custody before sqlite3 opens it.

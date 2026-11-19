@@ -311,7 +311,7 @@ class WalletSession:
             raise WalletSessionError("WALLET_DISPOSABLE_CONSENT_DENIED")
         _pinned_source(source)
         from wam_sp.keystore import Keyring
-        from wam_sp.scanner import Scanner
+        from .sqlite_flush import SqliteFlushUnconfigured, make_scanner as Scanner
         _, cli, receipt = verified_core_paths(core_dir)
         if receipt["platform"] != custody.platform_name():
             raise WalletSessionError("WALLET_MACOS_CORE_DENIED")
@@ -337,6 +337,12 @@ class WalletSession:
                           core_cli=cli,core_receipt=receipt)
             vault.save(ring,scanner,password)
             return session
+        except SqliteFlushUnconfigured as error:
+            error.faulted = True
+            if scanner is not None:
+                scanner.close()
+            ring.close()
+            raise
         except Exception:
             if scanner is not None:
                 scanner.close()
@@ -358,6 +364,7 @@ class WalletSession:
         read,publish=storage.read,storage.publish
         from wam_sp.keystore import unseal
         from wam_sp.watcher import GENESIS
+        from .sqlite_flush import SqliteFlushUnconfigured
         ring=scanner=None
         stage="START"
         try:
@@ -403,6 +410,13 @@ class WalletSession:
             stage="SAVE"
             session._save()
             return session
+        except SqliteFlushUnconfigured as error:
+            error.faulted = True
+            if scanner is not None:
+                scanner.close()
+            if ring is not None:
+                ring.close()
+            raise
         except Exception as error:
             # Fixed public diagnostics only (stage token + public error code);
             # never message text, paths, payload or secrets.

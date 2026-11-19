@@ -270,7 +270,7 @@ def advance_owned_candidate(owner, seed_folder, scanner, source, password, *,
         decode_candidate, require_irreversible_preserved)
     from .managed_wallet_session import RuntimeGuard
     from .managed_wallet_checkpoint import durable_core_checkpoint
-    from wam_sp.scanner import Scanner
+    from .sqlite_flush import make_scanner as Scanner
     from wam_sp.keystore import seal
 
     clear = _owned_password(owner, source, password, authorized)

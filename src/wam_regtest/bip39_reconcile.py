@@ -81,7 +81,7 @@ def reconcile_owned_readonly(owner, seed_folder, source, password, *,
         if sys.platform == "win32":
             from .windows_private_storage import create_managed_runtime
             create_managed_runtime(target)  # actual native DACL; not chmod
-        from wam_sp.scanner import Scanner
+        from .sqlite_flush import make_scanner as Scanner
         scanner = Scanner(target, keys.accounts())
         guard = RuntimeGuard(target)
         from .bip39_native_checkpoint import _owner_binding

@@ -24,7 +24,7 @@ def locks(session):
 
 def probe(core,datadir,source,mining):
     from wam_sp.keystore import Keyring
-    from wam_sp.scanner import Scanner
+    from .sqlite_flush import make_scanner as Scanner
     from wam_sp.wallet import Signer
     session=receiver=receiver_scan=None
     stage='CREATE'

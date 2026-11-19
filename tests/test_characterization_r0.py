@@ -63,6 +63,7 @@ RUNTIME_SNAPSHOT = frozenset({
     'operational_gui', 'payjoin_safety', 'private_directory', 'production_entry',
     'q05_platforms', 'quit_lifecycle_gui', 'quit_notice', 'regtest_funding', 'release', 'rpc_contention',
     'rpc_credentials', 'rpc_scope', 'shared_regtest', 'shared_regtest_gui',
+    'sqlite_flush',
     'supervisor_client', 'supervisor_identity', 'supervisor_journal',
     'supervisor_protocol', 'supervisor_store', 'telemetry', 'tx_observation', 'vault',
     'wallet_executor', 'wallet_read', 'wallet_recovery', 'wallet_session',

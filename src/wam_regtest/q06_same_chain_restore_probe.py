@@ -150,7 +150,7 @@ def qualify(core, source, parent, adapter, *, port_base=29554):
             from .wallet_session import WalletCoreCli
             from . import custody
             from .managed_wallet_session import RuntimeGuard
-            from wam_sp.scanner import Scanner
+            from .sqlite_flush import make_scanner as Scanner
             owner = self._core()
             _owned(owner)
             if (any(p.name.startswith('bip39-12-scan-') for p in owner.directory.iterdir())

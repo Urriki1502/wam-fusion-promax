@@ -174,7 +174,7 @@ def reconcile_shared(owner,seed_folder,source,password,*,authorized=False,keycha
                 branch=_branch(owner,(data['height'],data['tip']),tip)
                 approved=_approved(owner,seed_id,folder,anchor,source,password)
                 phase='RESTORE_AUTHENTICATED'
-                from wam_sp.scanner import Scanner
+                from .sqlite_flush import make_scanner as Scanner
                 from .wallet_session import WalletCoreCli
                 from .bip39_spend_session import _reservation_map,_remove_known_scanner_lock
                 temporary=owner.directory/('q06-reconcile-'+secrets.token_hex(16))

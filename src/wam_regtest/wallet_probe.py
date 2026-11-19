@@ -112,7 +112,7 @@ def _operation(app,window,action,trigger,*,denied=False):
 
 def probe_wallet(core_dir,datadir,source,mining_address):
     from wam_sp.keystore import Keyring
-    from wam_sp.scanner import Scanner
+    from .sqlite_flush import make_scanner as Scanner
     session=recipient=recipient_scan=window=None
     keychain=datadir/'wallet-acceptance.keychain-db' if sys.platform=='darwin' else None
     created=False

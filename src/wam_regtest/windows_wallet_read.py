@@ -39,7 +39,7 @@ def read_native_windows_wallet(core: Path, cli: Path, datadir: Path, port: int,
         _pinned_source(wsp_source)
         from wam_sp.core import pub
         from wam_sp.keystore import ScanAccount
-        from wam_sp.scanner import Scanner
+        from .sqlite_flush import make_scanner as Scanner
         from wam_sp.watcher import GENESIS
 
         if GENESIS != REGTEST_GENESIS:

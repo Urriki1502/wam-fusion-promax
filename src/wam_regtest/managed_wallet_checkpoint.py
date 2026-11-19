@@ -273,7 +273,7 @@ def checkpoint(owner,source,password,*,authorized=False,keychain=None,create=Fal
     from .vault import CheckpointVault
     from .wallet_session import WalletCoreCli
     from wam_sp.keystore import Keyring
-    from wam_sp.scanner import Scanner
+    from .sqlite_flush import make_scanner as Scanner
     from .wallet_recovery import active_location,has_recovery_records,require_anchor_floor
     floor=None
     if create:

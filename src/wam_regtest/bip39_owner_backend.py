@@ -448,7 +448,7 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
         from .wallet_session import WalletCoreCli
         from . import custody
         from .managed_wallet_session import RuntimeGuard
-        from wam_sp.scanner import Scanner
+        from .sqlite_flush import make_scanner as Scanner
         from wam_sp.wallet import Wallet
         owner = self._core()
         _owned(owner)
