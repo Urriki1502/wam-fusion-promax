@@ -124,6 +124,13 @@ def route(binary,directory,args,*,timeout=15):
             context.ready=True
             return value
         except (CliRpcError,CredentialError,CoreBindingError,OSError) as error:
+            # A cookie Core is still creating or renaming is the existing
+            # missing-credential bootstrap until the first successful RPC.
+            # Drop the snapshot so the next poll reads the published file.
+            # After ready, cookie_bootstrap is ignored and the change latches.
+            if (not context.ready and type(error) is CredentialError and error.cookie_bootstrap):
+                context.credentials=None
+                error=CredentialError('RPC_CREDENTIAL_MISSING_OR_UNSAFE')
             args=error.args
             bootstrap=(not context.ready and args in (('CORE_RPC_UNAVAILABLE',),('CORE_RPC_WARMUP',),
                 ('RPC_CREDENTIAL_MISSING_OR_UNSAFE',)))
