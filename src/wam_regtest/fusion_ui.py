@@ -1699,6 +1699,10 @@ class FusionOverview(QScrollArea):
         self.activity_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.activity_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.activity_table.horizontalHeader().setStretchLastSection(True)
+        # The amount (column 1) sizes to its full text so it is never elided
+        # or truncated; the activity and status columns elide instead.
+        self.activity_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.ResizeToContents)
         keyboard_table(self.activity_table, ui_text('fusion.recent_transactions'))
         self.activity_table.setMinimumHeight(168)
         self.activity_table.setMinimumWidth(0)
@@ -1839,6 +1843,8 @@ class FusionOverview(QScrollArea):
             self.utxo_details.setText(ui_text('fusion.unlock_to_show_values'))
             self.fund_details.clear()
             self.fund_details.hide()
+            self.hero.setToolTip('')
+            self.hero.setAccessibleDescription('')
             self.balance_chart.render_points(())
             self.live_badge.setText(ui_text('fusion.locked') if locked else ui_text('fusion.not_verified'))
             self.evidence_text.setText(ui_text('fusion.no_verified_blockchain_snapshot'))
@@ -1863,13 +1869,22 @@ class FusionOverview(QScrollArea):
             + (ui_text('fusion.regtest_shared') if network.get('shared') else ui_text('fusion.regtest_isolated')))
         if available_atoms is None:
             available_atoms = snap.available_atoms
-        funds = [ui_text('fusion.spendable') + ui_text('pending.available_value').format(amount=pending_amount_text(available_atoms, grouped=True)),
-                 ui_text('pending.total_value').format(amount=pending_amount_text(snap.pending_atoms, grouped=True)),
-                 ui_text('pending.spent_value').format(amount=pending_amount_text(snap.pending_spent_atoms, grouped=True))]
-        funds.extend(reservation_lock_fund_lines(
+        # One short visible line: available to send. The pending receive/
+        # change and pending spend facts (incl. their exact 'unknown' truth)
+        # move to the hero's help surfaces, never clipped off the hero.
+        self.fund_details.setText(
+            ui_text('fusion.spendable')
+            + ui_text('pending.available_value').format(
+                amount=pending_amount_text(available_atoms, grouped=True)))
+        self.fund_details.setVisible(True)
+        pending_extra = [ui_text('pending.total_value').format(
+                             amount=pending_amount_text(snap.pending_atoms, grouped=True)),
+                         ui_text('pending.spent_value').format(
+                             amount=pending_amount_text(snap.pending_spent_atoms, grouped=True))]
+        pending_extra.extend(reservation_lock_fund_lines(
             reservation_lock_summary, reservation_count))
-        self.fund_details.setText('  ·  '.join(funds))
-        self.fund_details.setVisible(bool(funds))
+        self.hero.setToolTip('  ·  '.join(pending_extra))
+        self.hero.setAccessibleDescription('  ·  '.join(pending_extra))
         if busy:
             self.set_currentness(
                 ui_text('operational.last_verified').format(height=snap.height))

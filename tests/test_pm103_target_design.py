@@ -365,3 +365,140 @@ class TargetDesign(unittest.TestCase):
             for button in self.w.settings_categories:
                 self.assertEqual(button.toolButtonStyle(),
                                  Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+
+    def _long_amount_snapshot(self):
+        """A verified snapshot whose recent rows carry the longest REGTEST
+        amounts (-21999999.99999999 WAM, -0.25010000 WAM) so the test can
+        prove the amount cells are never clipped or wrapped."""
+        from wam_regtest.wallet_read import HistoryRow, WalletReadSnapshot
+        from wam_regtest.qualification.ui_gallery import _fixture_snapshot
+        from wam_regtest.domain.payment_state import summarize_reservation_locks
+        base_snap = _fixture_snapshot()[0]
+        code = base_snap.receive_code
+        history = (
+            HistoryRow('e2ae' * 16, 112, 2, 0, 2_199_999_999_999_999),
+            HistoryRow('9f0c' * 16, 108, 5, 0, 25_010_000),
+        )
+        snap = WalletReadSnapshot(
+            chain='regtest', height=112, tip=base_snap.tip,
+            receive_code=code, confirmed_atoms=2_199_999_999_999_999,
+            confirmed_utxos=1, history=history, core_sha256=base_snap.core_sha256,
+            signer_allowed=True, broadcast_allowed=True, history_complete=True,
+            history_count=len(history), receive_count=1, reservation_count=0,
+            reservation_state_counts=())
+        result = dict(fusion_snapshot=snap, receive_code=code,
+                      confirmed_atoms=snap.confirmed_atoms,
+                      available_atoms=snap.confirmed_atoms,
+                      signer_allowed=True, broadcast_allowed=True,
+                      reservation_count=0, reservation_state_counts=(),
+                      reservation_lock_summary=summarize_reservation_locks([], []))
+        return snap, result
+
+    def _show_verified(self, snap, result):
+        from wam_regtest.wallet_read import WalletReadSnapshot
+        self.w.executor.state = ExecutorState(locked=False, faulted=False,
+                                              core_alive=True)
+        self.w._ready = self.w._spend_enabled = True
+        self.w._render_verified(result)
+        self.w.resize(1100, 720)
+        self.w.reduce_motion.setChecked(True)
+        self.w.show()
+        for _ in range(8):
+            QApplication.processEvents()
+        return snap
+
+    def test_hero_secondary_is_single_available_line_pending_facts_in_help(self):
+        # R3 finding (a): the balance hero shows the amount then ONE short
+        # line only (available to send). The pending receive/change and
+        # pending spend lines (incl. the 'unknown' truth) move to the hero's
+        # toolTip AND accessibleDescription unchanged.
+        from wam_regtest.presentation.strings import text as catalog
+        from wam_regtest.wallet_read import format_wam
+        from wam_regtest.qualification.ui_gallery import _fixture_snapshot
+        self.w.executor.state = ExecutorState(locked=False, faulted=False, core_alive=True)
+        self.w._ready = self.w._spend_enabled = True
+        snap, result = _fixture_snapshot()
+        self._show_verified(snap, result)
+        over = self.w.overview
+        for language in self.w.language_tiles:
+            self.w.language_tiles[language].click()
+            for _ in range(8):
+                QApplication.processEvents()
+            avail = (catalog('fusion.spendable', language)
+                     + catalog('pending.available_value', language).format(
+                         amount=catalog('pending.amount_wam', language).format(
+                             amount=format_wam(snap.confirmed_atoms, grouped=True))))
+            # Visible secondary text is exactly the single available line.
+            self.assertFalse(over.fund_details.isHidden(), language)
+            self.assertEqual(over.fund_details.text(), avail, language)
+            spacing = over.fund_details.fontMetrics().lineSpacing()
+            self.assertLess(over.fund_details.height(), 2 * spacing,
+                            (language, over.fund_details.text()))
+            # Both pending facts (with the exact same 'unknown' meaning) live
+            # on the hero's help surfaces.
+            total = catalog('pending.total_value', language).format(
+                amount=catalog('pending.unknown', language))
+            spent = catalog('pending.spent_value', language).format(
+                amount=catalog('pending.unknown', language))
+            self.assertIn(total, over.hero.toolTip(), language)
+            self.assertIn(spent, over.hero.toolTip(), language)
+            self.assertIn(total, over.hero.accessibleDescription(), language)
+            self.assertIn(spent, over.hero.accessibleDescription(), language)
+            # Available line never shows the unknown text.
+            self.assertNotIn(catalog('pending.unknown', language),
+                             over.fund_details.text(), language)
+
+    def test_amount_columns_never_elide_overview_and_history_in_every_locale(self):
+        # R3 finding (b): an amount must never be elided or truncated. The
+        # Overview and History amount columns size to their full text; other
+        # columns elide instead. Checked with the longest REGTEST amounts in
+        # all six locales at 1100x720.
+        from wam_regtest.qualification.ui_gallery import _fixture_snapshot
+        snap, result = self._long_amount_snapshot()
+        self.w.executor.state = ExecutorState(locked=False, faulted=False, core_alive=True)
+        self.w._ready = self.w._spend_enabled = True
+        self.w._render_verified(result)
+        self.w.resize(1100, 720)
+        self.w.reduce_motion.setChecked(True)
+        self.w.show()
+        for _ in range(8):
+            QApplication.processEvents()
+        overview = self.w.overview
+        history = self.w.history_page
+        for language in self.w.language_tiles:
+            self.w.language_tiles[language].click()
+            for _ in range(8):
+                QApplication.processEvents()
+            # --- Overview recent activity: amount is column 1. ---
+            table = overview.activity_table
+            amount_texts = [table.item(r, 1).text()
+                            for r in range(table.rowCount())]
+            for want in ('-21999999.99999999 WAM', '-0.25010000 WAM'):
+                self.assertIn(want, amount_texts, (language, want))
+                self.assertNotIn('…', want)
+            widest = max(amount_texts,
+                         key=lambda s: table.fontMetrics().horizontalAdvance(s))
+            need = table.fontMetrics().horizontalAdvance(widest)
+            self.assertGreaterEqual(table.columnWidth(1), need,
+                                    (language, 'overview amount', widest))
+            # --- History page: credit=4 and debit=5 amounts. ---
+            self.w.navigation.setCurrentRow(2)
+            history._fit_columns()
+            for _ in range(8):
+                QApplication.processEvents()
+            for want in ('21999999.99999999', '0.25010000'):
+                debit_texts = [history.table.item(r, 5).text()
+                               for r in range(history.table.rowCount())]
+                self.assertIn(want, debit_texts, (language, want))
+            for col in (4, 5):
+                from PySide6.QtGui import QFontMetrics
+                items = [history.table.item(r, col)
+                         for r in range(history.table.rowCount())]
+                widest = max(items, key=lambda it: QFontMetrics(it.font())
+                             .horizontalAdvance(it.text()))
+                need = QFontMetrics(widest.font()).horizontalAdvance(widest.text())
+                self.assertGreaterEqual(history.table.columnWidth(col), need,
+                                        (language, 'history col', col))
+            self.w.navigation.setCurrentRow(0)
+            for _ in range(8):
+                QApplication.processEvents()

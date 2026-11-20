@@ -104,23 +104,27 @@ class OverviewState(unittest.TestCase):
                 self.assertEqual(pending_amount_text(invalid), t('pending.unknown'))
                 page.render_snapshot(snapshot(available_atoms=invalid, pending_atoms=invalid,
                                               pending_spent_atoms=invalid))
-                # SPEC-UX0102 §3.1.4 / §4.2.5: no lock summary appends
-                # fusion.locks_count_unknown as its own segment. The three
-                # amount segments stay one unitless pending.unknown.
-                text = page.fund_details.text()
-                unknown = t('pending.unknown')
-                parts = [part.strip() for part in text.split('  ·  ')]
-                self.assertEqual(len(parts), 4)
+                # R3 (a): the single visible line is the available amount;
+                # the pending receive/change + spend + lock facts move to the
+                # hero's help surface. All stay unitless pending.unknown.
+                funds = page.fund_details.text()
+                parts = [part.strip() for part in funds.split('  ·  ')]
+                self.assertEqual(len(parts), 1)
+                self.assertEqual(parts[0].count(t('pending.unknown')), 1)
+                self.assertNotIn('WAM', funds)
+                tip = page.hero.toolTip()
+                parts = [part.strip() for part in tip.split('  ·  ')]
+                self.assertEqual(len(parts), 3)
                 self.assertEqual(parts[-1], t('fusion.locks_count_unknown'))
-                for part in parts[:3]:
-                    self.assertEqual(part.count(unknown), 1)
+                for part in parts[:2]:
+                    self.assertEqual(part.count(t('pending.unknown')), 1)
                     self.assertNotIn('WAM', part)
-                self.assertNotIn('WAM', text)
-                self.assertNotIn(unknown + ' WAM', text)
+                self.assertNotIn(t('pending.unknown') + ' WAM', tip)
         page.render_snapshot(snapshot(confirmed_atoms=0, available_atoms=0,
                                       pending_atoms=0, pending_spent_atoms=0))
         self.assertIn('0.00000000', page.balance_value.text())
-        self.assertEqual(page.fund_details.text().count('0.00000000 WAM'), 3)
+        self.assertEqual(page.fund_details.text().count('0.00000000 WAM'), 1)
+        self.assertEqual(page.hero.toolTip().count('0.00000000 WAM'), 2)
 
     def test_four_independent_facts_not_derived_from_each_other_or_activity(self):
         page = self.page()
@@ -128,9 +132,13 @@ class OverviewState(unittest.TestCase):
                                       pending_spent_atoms=90000, pending_atoms=8000),
                              reservation_count=2)
         self.assertIn('0.00100000', page.balance_value.text())
-        for amount in ('0.00007000 WAM', '0.00090000 WAM', '0.00008000 WAM'):
-            self.assertIn(amount, page.fund_details.text())
-        self.assertIn('2', page.fund_details.text())
+        # R3 (a): the visible line is the single available amount; the pending
+        # receive/change and spend facts move to the hero's help surface.
+        self.assertIn('0.00007000 WAM', page.fund_details.text())
+        self.assertNotIn('0.00090000 WAM', page.fund_details.text())
+        for amount in ('0.00090000 WAM', '0.00008000 WAM'):
+            self.assertIn(amount, page.hero.toolTip())
+        self.assertIn('2', page.hero.toolTip())
 
     def test_action_predicates_exhaustive_boundary_flags(self):
         from wam_regtest.presentation.action_state import ActionInputs, SharedInputs, available_actions, fusion_actions

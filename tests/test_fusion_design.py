@@ -201,8 +201,12 @@ class FusionV2PresentationWidgets(unittest.TestCase):
         ))
         page.render_snapshot(
             consistent, available_atoms=100000000, reservation_count=1)
+        # R3 (a): the visible hero line is the single available amount; the
+        # reservation-lock fact moved to the hero's help surface unchanged.
         self.assertIn("Spendable", page.fund_details.text())
-        self.assertIn("reserved", page.fund_details.text())
+        self.assertNotIn("reserved", page.fund_details.text())
+        self.assertIn("reserved", page.hero.toolTip())
+        self.assertIn("reserved", page.hero.accessibleDescription())
 
     def test_theme_slider_three_positions_keyboard_and_no_binary_collapse(self):
         from PySide6.QtCore import Qt

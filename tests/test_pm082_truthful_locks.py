@@ -389,7 +389,7 @@ class OverviewAndSend(unittest.TestCase):
                 self.window.overview.render_snapshot(
                     _fusion(None)['fusion_snapshot'], operational=True,
                     reservation_lock_summary=summary, reservation_count=count)
-                details = self.window.overview.fund_details.text()
+                details = self.window.overview.hero.toolTip()
                 self.assertNotIn('0' + t('fusion.reserved_input_s_stay_unavailable'), details)
                 self.assertNotEqual(self.window.overview.health_value.text(), t('fusion.operating_normally'))
                 if summary is None or summary['locked_inputs_total'] is None or summary['counts']['unknown']:
@@ -406,20 +406,20 @@ class OverviewAndSend(unittest.TestCase):
         pending = _summary('IN_MEMPOOL', rows=4)
         confirmed = _summary('CONFIRMED', rows=5)
         self._render(evicted)
-        self.assertIn(t('fusion.broadcast_evicted_locked').format(count=2), self.window.overview.fund_details.text())
+        self.assertIn(t('fusion.broadcast_evicted_locked').format(count=2), self.window.overview.hero.toolTip())
         self.assertEqual(self.window.overview.health_value.text(), t('fusion.health_attention'))
         self._render(conflicted)
-        self.assertIn(t('fusion.broadcast_conflicted_locked').format(count=1), self.window.overview.fund_details.text())
+        self.assertIn(t('fusion.broadcast_conflicted_locked').format(count=1), self.window.overview.hero.toolTip())
         self.assertEqual(self.window.overview.health_value.text(), t('fusion.health_attention'))
         self._render(unavailable)
-        self.assertIn(t('fusion.broadcast_conflicted_locked').format(count=3), self.window.overview.fund_details.text())
+        self.assertIn(t('fusion.broadcast_conflicted_locked').format(count=3), self.window.overview.hero.toolTip())
         self._render(pending)
-        self.assertIn(t('fusion.broadcast_mempool_locked').format(count=4), self.window.overview.fund_details.text())
+        self.assertIn(t('fusion.broadcast_mempool_locked').format(count=4), self.window.overview.hero.toolTip())
         self.assertEqual(self.window.overview.health_value.text(), t('fusion.health_pending'))
         self.assertIn(t('fusion.health_pending_details'), self.window.overview.health_details.text())
         self._render(confirmed)
-        self.assertNotIn(t('fusion.reserved_input_s_stay_unavailable'), self.window.overview.fund_details.text())
-        self.assertNotIn('broadcast input', self.window.overview.fund_details.text())
+        self.assertNotIn(t('fusion.reserved_input_s_stay_unavailable'), self.window.overview.hero.toolTip())
+        self.assertNotIn('broadcast input', self.window.overview.hero.toolTip())
         self.assertEqual(self.window.overview.health_value.text(), t('fusion.operating_normally'))
 
     def test_composite_segments_keep_every_lock_visible(self):
@@ -429,7 +429,7 @@ class OverviewAndSend(unittest.TestCase):
         summary = summarize_reservation_locks(
             classified, [{'token': 't3', 'state': 'signed', 'rows': 1}])
         self._render(summary)
-        text = self.window.overview.fund_details.text()
+        text = self.window.overview.hero.toolTip()
         evicted = text.index(t('fusion.broadcast_evicted_locked').format(count=2))
         mempool = text.index(t('fusion.broadcast_mempool_locked').format(count=1))
         signed = text.index('1' + t('fusion.reserved_input_s_stay_unavailable'))
@@ -448,8 +448,8 @@ class OverviewAndSend(unittest.TestCase):
         self.assertEqual(overview.health_value.text(), t('fusion.read_only_regtest_wallet'))
         self.assertNotEqual(overview.health_value.text(), t('fusion.operating_normally'))
         self.assertEqual(overview.health_details.text(), t('fusion.send_disabled'))
-        self.assertIn(t('fusion.locks_count_unknown'), overview.fund_details.text())
-        self.assertNotIn('0' + t('fusion.reserved_input_s_stay_unavailable'), overview.fund_details.text())
+        self.assertIn(t('fusion.locks_count_unknown'), overview.hero.toolTip())
+        self.assertNotIn('0' + t('fusion.reserved_input_s_stay_unavailable'), overview.hero.toolTip())
         self.assertFalse(overview.custody_switch.isChecked())
         self.assertEqual(overview.custody_switch.text(), t('fusion.locked'))
         owner = SimpleNamespace(state=ExecutorState(locked=False, faulted=False, core_alive=True),

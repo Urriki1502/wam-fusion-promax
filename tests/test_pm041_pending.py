@@ -124,11 +124,16 @@ class PendingWidgets(unittest.TestCase):
         page.render_snapshot(self.snapshot(), operational=True)
         self.assertEqual(page._txids[0], TXID)
         self.assertIn('Pending', page.activity_table.item(0, 2).text())
+        # R3 (a): the visible line is just the available amount; the pending
+        # receive/change and spend facts move to the hero's help surface.
         text = page.fund_details.text()
-        self.assertIn('0.00006900', text)
         self.assertIn('Spendable (confirmed): 0.00000000', text)
-        page.render_snapshot(replace(self.snapshot(), pending_atoms=None, pending_spent_atoms=None), operational=True)
-        self.assertIn('unknown', page.fund_details.text())
+        self.assertNotIn('0.00006900', text)
+        self.assertIn('0.00006900', page.hero.toolTip())
+        self.assertIn('0.00010000', page.hero.toolTip())
+        page.render_snapshot(replace(self.snapshot(), pending_atoms=None,
+                                     pending_spent_atoms=None), operational=True)
+        self.assertIn('unknown', page.hero.toolTip())
 
     def test_pending_row_fits_wrapped_details_in_six_languages_and_widths(self):
         from itertools import product
@@ -241,18 +246,22 @@ class PendingWidgets(unittest.TestCase):
                                        pending_change_atoms=None),))
                     overview.render_snapshot(snap, operational=True)
                     funds = overview.fund_details.text()
-                    # SPEC-UX0102 §3.1.4 / §4.2.5: no lock summary appends
-                    # fusion.locks_count_unknown as its own segment. The three
-                    # amount segments stay one unitless pending.unknown.
+                    # R3 (a): the visible hero line is the single available
+                    # segment; the pending receive/change + spend + lock facts
+                    # move to the hero's help surface.
                     unknown = catalog['pending.unknown']
-                    parts = [part.strip() for part in funds.split('  ·  ')]
-                    self.assertEqual(len(parts), 4)
+                    available_parts = [p.strip() for p in funds.split('  ·  ')]
+                    self.assertEqual(len(available_parts), 1)
+                    self.assertEqual(available_parts[0].count(unknown), 1)
+                    self.assertNotIn('WAM', funds)
+                    tip = overview.hero.toolTip()
+                    parts = [p.strip() for p in tip.split('  ·  ')]
+                    self.assertEqual(len(parts), 3)
                     self.assertEqual(parts[-1], catalog['fusion.locks_count_unknown'])
-                    for part in parts[:3]:
+                    for part in parts[:2]:
                         self.assertEqual(part.count(unknown), 1)
                         self.assertNotIn('WAM', part)
-                    self.assertNotIn('WAM', funds)
-                    self.assertNotIn(unknown + ' WAM', funds)
+                    self.assertNotIn(unknown + ' WAM', tip)
                     status = overview.activity_table.item(0, 2).text()
                     history.render_snapshot(snap)
                     history.table.selectRow(0)
