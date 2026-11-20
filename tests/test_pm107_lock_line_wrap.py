@@ -14,9 +14,11 @@ from types import SimpleNamespace
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QApplication, QWidget
 
 from wam_regtest.desktop import qt_application
+from wam_regtest.fusion_ui import fusion_palette
 from wam_regtest.wallet_executor import ExecutorState
 from wam_regtest.bip39_fusion_gui import Bip39FusionWindow
 from wam_regtest.presentation.strings import text as t
@@ -149,6 +151,59 @@ class LockLineWrap(unittest.TestCase):
                         visible_label_clips(self.w.receive_page.received),
                         (language, size, locked,
                          self.w.receive_page.received.text()))
+
+    def _status_labels(self):
+        return (
+            ('security_state', self.w.security_state),
+            ('mode_value', self.w.network_page.mode_value),
+            ('connection_value', self.w.network_page.connection_value),
+            ('peer_value', self.w.network_page.peer_value),
+            ('height_value', self.w.network_page.height_value),
+            ('sync_value', self.w.network_page.sync_value),
+            ('identity_value', self.w.network_page.identity_value),
+            ('controls_note', self.w.network_page.controls_note),
+            ('received', self.w.receive_page.received),
+        )
+
+    def test_all_nine_status_labels_keep_themed_role_and_palette_both_themes(self):
+        """PM-107 r2: the relabelled lock/status sentences must not fall back to
+        the default unstyled QLabel. Every one of the nine must (a) carry the
+        exact FusionMuted objectName that label() gives a body-sentence label
+        (so the FusionMuted QSS rule applies: text_secondary colour, body font)
+        and (b) actually render with the themed palette's text_secondary colour
+        in both light and dark - not the default QLabel text colour."""
+        self._render_state(locked=True)
+        # Show every page so each label is polished by the current stylesheet.
+        self.w.resize(1100, 720)
+        self.w.show()
+        self._settle()
+        self.w.network_page.controls_toggle.setChecked(True)
+        for row in (4, 5, 1):
+            self.w.navigation.setCurrentRow(row)
+            self._settle()
+        for mode, index in (('light', 1), ('dark', 2)):
+            self.w.settings_theme.setCurrentIndex(index)
+            self._settle()
+            palette = fusion_palette(mode)
+            themed = palette['text_secondary'].lower()
+            default = palette['text'].lower()
+            for name, lbl in self._status_labels():
+                with self.subTest(mode=mode, label=name):
+                    self.assertEqual(
+                        lbl.objectName(), 'FusionMuted',
+                        "relabelled status line lost its themed role")
+                    # A page not currently shown keeps a stale palette after a
+                    # restyle, so repolish against the active sheet as the theme
+                    # engine does when the page becomes visible.
+                    lbl.ensurePolished()
+                    fg = lbl.palette().color(
+                        QPalette.ColorRole.WindowText).name().lower()
+                    self.assertEqual(
+                        fg, themed,
+                        "status line rendered as default QLabel, not FusionMuted")
+                    self.assertNotEqual(
+                        fg, default,
+                        "status line drew the plain QLabel text colour")
 
 
 if __name__ == '__main__':
