@@ -23,6 +23,22 @@
     "Tambah dana uji",
     "添加测试资金"
   ],
+  "owner.fund_title": [
+    "Add test funds",
+    "Thêm tiền thử",
+    "テスト資金を追加",
+    "테스트 자금 추가",
+    "Tambah dana uji",
+    "添加测试资金"
+  ],
+  "wallet.fund_title": [
+    "Add test funds",
+    "Thêm tiền thử",
+    "テスト資金を追加",
+    "테스트 자금 추가",
+    "Tambah dana uji",
+    "添加测试资金"
+  ],
   "wallet.advanced_title": [
     "Advanced",
     "Nâng cao",
