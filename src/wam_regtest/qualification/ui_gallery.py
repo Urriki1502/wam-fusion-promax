@@ -316,6 +316,31 @@ def _render_window(language, width, height, theme_index, theme, shoot, settle, f
         window.navigation.setCurrentRow(2)
         window.history_page.table.selectRow(0)
         scene('10-history-detail')
+        rec1_scenes = (
+            ('10b-history-rec1-uncertain', {
+                'token': 'ab' * 16, 'txid': TXIDS[0],
+                'classification': 'OPERATOR_REVIEW_OBSERVATION_CONTRADICTION',
+                'state': 'unknown', 'rec1_state': 'BROADCAST_OUTCOME_UNCERTAIN',
+            }),
+            ('10c-history-rec1-not-observed', {
+                'token': 'ab' * 16, 'txid': TXIDS[0],
+                'classification': 'UNCERTAIN_NOT_OBSERVED_RESUMABLE',
+                'state': 'uncertain', 'rec1_state': 'NOT_OBSERVED_LOCALLY',
+            }),
+            ('10d-history-rec1-corrupted', {
+                'token': 'ab' * 16, 'txid': TXIDS[0],
+                'classification': 'OPERATOR_REVIEW_MIXED_STATE',
+                'state': 'mixed', 'rec1_state': 'CORRUPTED_EVIDENCE',
+            }),
+        )
+        for name, item in rec1_scenes:
+            window._on_ready('intent_status', {'intents': [item]})
+            assert not window.resume.isEnabled(), name
+            scene(name)
+        window.history_page.set_rec1_states({})
+        window.status.setText('')
+        window._resumable_intent = None
+        window._set_actions()
         # A consistent refused-unlock state (D-PM024-2): the owner reports
         # locked, the cached view is cleared and the window's own denial
         # handler renders the refusal. It issues no executor command.
