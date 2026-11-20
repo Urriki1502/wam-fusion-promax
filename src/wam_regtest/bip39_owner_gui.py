@@ -21,7 +21,7 @@ from .managed_gui import ControlWorker
 from .wallet_executor import WalletExecutor
 from .bip39_owner_backend import Bip39ReadOnlyBackend
 from .bip39_12 import normalize_phrase
-from .bip39_locale import t
+from .bip39_locale import t, join_phrases
 from .presentation.action_state import ActionInputs, BASE_CONTROLS, available_actions
 from .bip39_backup_page import (
     SecretLineEdit, get_secret_multiline_text, get_secret_text,
@@ -750,7 +750,7 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
             self._test_funded = result["height"] > 0
             rows=result["history"]
             self.history.setPlainText(
-                "\n".join(t('owner.history_row').format(txid=row['txid'], height=row['height'], atoms=row['atoms']) for row in rows)
+                join_phrases("\n", (t('owner.history_row').format(txid=row['txid'], height=row['height'], atoms=row['atoms']) for row in rows))
                 if rows else t('owner.no_history'))
             if self._recovered_unsigned_cancel:
                 self.status.setText(
@@ -844,16 +844,16 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
                 state=item.get('rec1_state')
                 lines.append(rec1_status_line(
                     state if type(state) is str else None, lookup=t))
-            summary='; '.join(
+            summary=join_phrases('; ', (
                 t('owner.intent_count').format(
                     classification=error_text(public_code(key)),
                     count=counts[key])
-                for key in sorted(counts)) or t('owner.no_intents')
+                for key in sorted(counts))) or t('owner.no_intents')
             self.status.setText(
                 t('owner.intent_summary').format(summary=summary)
                 + (t('owner.intent_resumable') if self._resumable_intent is not None
                    else t('owner.intent_protected'))
-                + (('\n'+'\n'.join(lines)) if lines else ''))
+                + (('\n'+join_phrases('\n', lines)) if lines else ''))
             page=getattr(self, 'history_page', None)
             if page is not None and hasattr(page, 'set_rec1_states'):
                 page.set_rec1_states(rec1_states_by_txid(intents))

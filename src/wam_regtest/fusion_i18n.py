@@ -31,13 +31,16 @@ def _spec(widget):
 
 
 def capture(widget, slot, value):
-    """Remember a Phrase key. A plain string clears that slot."""
+    """Remember a catalog key or composed Phrase. Plain strings clear it."""
+    from .bip39_locale import Phrase
     if getattr(widget, '_i18n_applying', False):
         return
     spec = _spec(widget)
     key = phrase_key(value)
     if key:
         spec[slot] = key
+    elif isinstance(value, Phrase):
+        spec[slot] = value
     else:
         spec.pop(slot, None)
 
@@ -69,7 +72,7 @@ def bind_items(combo, keys):
 
 
 def apply_widget(widget):
-    from .bip39_locale import t
+    from .bip39_locale import Phrase, t
     spec = getattr(widget, '_fusion_i18n', None)
     headers = getattr(widget, '_fusion_i18n_headers', None)
     items = getattr(widget, '_fusion_i18n_items', None)
@@ -80,8 +83,11 @@ def apply_widget(widget):
         if isinstance(spec, dict):
             for slot, key in list(spec.items()):
                 setter = getattr(widget, _SETTERS.get(slot, ''), None)
-                if setter is not None and type(key) is str:
-                    setter(str(t(key)))
+                if setter is not None:
+                    if isinstance(key, Phrase):
+                        setter(key.translated())
+                    elif type(key) is str:
+                        setter(str(t(key)))
         if headers:
             widget.setHorizontalHeaderLabels([str(t(key)) for key in headers])
         if items is not None and hasattr(widget, 'setItemText'):

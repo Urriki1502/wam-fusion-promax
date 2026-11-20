@@ -267,6 +267,99 @@ class LiveLanguageTests(unittest.TestCase):
         self.assertIn(_norm(text('welcome.welcome_to_your_wallet', 'ja')), shown)
         self.assertNotIn(_norm(text('welcome.welcome_to_your_wallet', 'en')), shown)
 
+    def test_rec1_observations_survive_language_switch_without_a_new_snapshot(self):
+        from test_fusion_v21_layout import verified_snapshot
+        from test_pm090_rec_gui_truthful import STATES
+        window = self._window()
+        history = window.history_page
+        snap = verified_snapshot()
+        txid = snap.history[0].txid
+        for state in STATES:
+            history.render_snapshot(snap)
+            history.set_rec1_states({txid: state})
+            history.select_txid(txid)
+            for language in ('en', 'vi', 'ja'):
+                with self.subTest(state=state, language=language):
+                    window.language.setCurrentIndex(window.language.findData(language))
+                    self.assertEqual(history._rec1_by_txid, {txid: state})
+                    self.assertEqual(history._selected_txid(), txid)
+                    self.assertIn(text('rec1.' + state, language), history.detail_values.text())
+        history.render_snapshot(snap)
+        self.assertEqual(history._rec1_by_txid, {})
+
+    def test_new_busy_presentation_survives_language_switch(self):
+        from test_fusion_v21_layout import verified_snapshot
+        window = self._window()
+        snap = verified_snapshot()
+        from wam_regtest.wallet_executor import ExecutorState
+        window.executor.state = ExecutorState(locked=False, core_alive=True)
+        window._last_verified = snap
+        window._ready = True
+        window.overview.render_snapshot(snap, locked=False, operational=True,
+                                        core_alive=True, busy=False)
+        window.executor.busy = True
+        window._set_actions()
+        for language in ('en', 'vi', 'ja'):
+            with self.subTest(language=language):
+                window.language.setCurrentIndex(window.language.findData(language))
+                self.assertEqual(window.overview.currentness.text(),
+                                 text('operational.last_verified', language).format(height=110))
+                self.assertFalse(window.overview.currentness.isHidden())
+                self.assertTrue(window.executor.busy)
+
+    def test_populated_payment_result_rec_and_operation_text_retranslate(self):
+        from wam_regtest.bip39_locale import t
+        from wam_regtest.fusion_pages import fusion_review_text, describe_broadcast_result
+        from wam_regtest.gui_errors import error_text
+        from wam_regtest.wallet_session import PaymentReview
+        from test_pm090_rec_gui_truthful import _signed
+        window = self._window()
+        txid = 'ab' * 32
+        review = PaymentReview('wamrtsp1public', 50000, 1000, 49000, 1, 'a' * 64)
+        window.review_summary.setText(fusion_review_text(review))
+        window.send_result.setText(describe_broadcast_result(txid))
+        for populate, expected in (
+                (lambda: window.status.setText(t('owner.broadcast_submitted').format(txid=txid)),
+                 lambda lang: text('owner.broadcast_submitted', lang).format(txid=txid)),
+                (lambda: window.status.setText(t('operational.last_verified').format(height=110)),
+                 lambda lang: text('operational.last_verified', lang).format(height=110)),
+                (lambda: window.status.setText(error_text('WALLET_UNLOCK_REFUSED')),
+                 lambda lang: text('errors.WALLET_UNLOCK_REFUSED', lang)),
+                (lambda: window._on_ready('intent_status', {'intents': [_signed()]}), None)):
+            populate()
+            for language in ('en', 'vi', 'ja'):
+                with self.subTest(language=language, status=expected):
+                    window.language.setCurrentIndex(window.language.findData(language))
+                    with self.subTest(surface='review'):
+                        self.assertIn(text('wallet.review_details', language).split('{code}')[0],
+                                      window.review_summary.text())
+                    with self.subTest(surface='result'):
+                        self.assertIn(text('pages.submitted_pending', language), window.send_result.text())
+                        self.assertIn(txid, window.send_result.text())
+                    with self.subTest(surface='status'):
+                        if expected:
+                            self.assertEqual(_norm(window.status.text()), _norm(expected(language)))
+                        else:
+                            self.assertIn(_norm(text('rec1.NOT_OBSERVED_LOCALLY', language)),
+                                          _norm(window.status.text()))
+
+    def test_active_backup_challenge_labels_and_accessibility_retranslate(self):
+        window = self._window()
+        backup = window.backup_page
+        backup.set_challenge({'challenge_id': 'a' * 64, 'positions': [1, 4, 9]})
+        for edit, value in zip(backup._verify_inputs, ('alpha', 'beta', 'gamma')):
+            edit.setText(value)
+        for language in ('en',) + SWITCH:
+            window.language.setCurrentIndex(window.language.findData(language))
+            for (_, title, edit), position, value in zip(
+                    backup._verify_cards, (1, 4, 9), ('alpha', 'beta', 'gamma')):
+                with self.subTest(language=language, position=position):
+                    expected = text('recovery_word_position', language).format(position=position)
+                    self.assertEqual(title.text(), expected)
+                    self.assertEqual(edit.accessibleName(), expected)
+                    self.assertEqual(edit.text(), value)
+            self.assertEqual(backup._challenge_id, 'a' * 64)
+
     def test_screen_sources_have_no_hardcoded_english_literals(self):
         for language, retired in RETIRED_NEXT_WINDOW.items():
             self.assertNotEqual(CATALOG[language]['settings.language_next_window'], retired)

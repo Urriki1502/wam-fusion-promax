@@ -662,16 +662,22 @@ class Bip39FusionWindow(Bip39TrialWindow):
                 self.page_title.setText(self.navigation.item(row).text())
             self.setWindowTitle(str(t('wallet.window_title')) + self._title_suffix)
             retranslate_tree(self)
+            # Responsive layout can temporarily detach this panel from the
+            # window tree. Its populated review/result still belong to us.
+            retranslate_tree(self.review_summary.parentWidget())
             self._protocol_line.setText(
                 core_compat.DISPLAY_NAME + str(t('wallet.protocol_summary')))
-            overview_saved = getattr(self.overview, '_last_render', None)
-            if isinstance(overview_saved, dict):
-                overview_saved['network'] = self._network_view(overview_saved.get('snap'))
+            inputs = self._action_inputs()
+            self.overview.retranslate(
+                network=self._network_view(self._last_verified),
+                busy=inputs.busy, locked=inputs.locked,
+                operational=not inputs.locked and inputs.ready,
+                faulted=inputs.faulted, core_alive=inputs.core_alive)
             self.language.blockSignals(True)
             self.language.setItemText(0, str(t('settings.language_system')))
             self.language.blockSignals(False)
             for page in (
-                    self.overview, self.receive_page, self.history_page,
+                    self.receive_page, self.history_page,
                     self.network_page, self.payment_steps, self.settings_theme,
                     self.backup_page):
                 page.retranslate()

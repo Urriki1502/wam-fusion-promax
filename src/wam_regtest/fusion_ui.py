@@ -1715,11 +1715,13 @@ class FusionOverview(QScrollArea):
             self.currentness.clear()
             self.currentness.hide()
 
-    def retranslate(self):
+    def retranslate(self, **presentation):
         retranslate_tree(self)
         saved = getattr(self, '_last_render', None)
         if saved is not None:
-            self.render_snapshot(**saved)
+            # Snapshot data is retained; the shell supplies current
+            # presentation facts, which may have changed since that read.
+            self.render_snapshot(**dict(saved, **presentation))
         self.balance_chart.update()
 
     def changeEvent(self, event):

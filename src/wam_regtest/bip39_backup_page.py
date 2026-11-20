@@ -588,6 +588,9 @@ class Bip39BackupPage(QWidget):
 
     def retranslate(self):
         retranslate_tree(self)
+        for (_, title, edit), position in zip(self._verify_cards, self._challenge_positions):
+            title.setText(t('recovery_word_position').format(position=position))
+            edit.setAccessibleName(t('recovery_word_position').format(position=position))
         for page, step in ((self._phrase_page, 1), (self._verify_page, 2)):
             description = str(t('backup_step_progress').format(step=step, total=2))
             if step == 2:

@@ -180,7 +180,7 @@ class HistoryPage(QWidget):
         if subtitle is not None:
             subtitle.setText(str(ui_text('pages.history_subtitle')) + ' ' + str(ui_text('pending.history_subtitle')))
         if hasattr(self, '_rendered_snap'):
-            self.render_snapshot(self._rendered_snap)
+            self._render_history(self._rendered_snap)
             self.search.setText(query)
             if self._rendered_snap is not None:
                 self.filter.setCurrentIndex(choice)
@@ -225,10 +225,13 @@ class HistoryPage(QWidget):
         self.table.clearSelection()
         self.table.setCurrentCell(-1, -1)
     def render_snapshot(self,snap):
-        self._rendered_snap = snap
         # A fresh chain snapshot drops a previous REC-1 annotation so a
         # later confirmation is not still described by an older state.
         self._rec1_by_txid = {}
+        self._render_history(snap)
+    def _render_history(self, snap):
+        """Render current facts; only a new snapshot invalidates REC-1 notes."""
+        self._rendered_snap = snap
         selected_txid = self._selected_txid() if snap is not None else None
         self._has_snapshot = snap is not None
         self.rows=(snap.pending_history + snap.history) if snap else ()

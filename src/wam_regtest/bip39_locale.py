@@ -106,12 +106,51 @@ def _lang():
 
 
 class Phrase(str):
-    """Catalog string that still knows its key. Equality matches a plain str."""
+    """Localized presentation value retaining its keys and format parameters.
 
-    def __new__(cls, value, key):
+    Formatting and composition keep a recipe, never a wallet/executor action.
+    Explicit str() and f-strings discard it; use format/concatenation or
+    join_phrases for text that must survive a live language change.
+    """
+
+    def __new__(cls, value, key=None, render=None):
         obj = str.__new__(cls, value)
         obj.key = key
+        obj._render = render
         return obj
+
+    def translated(self):
+        return self._render() if self._render is not None else text(self.key, _lang())
+
+    def format(self, *args, **kwargs):
+        def render():
+            return self.translated().format(
+                *(_translated(value) for value in args),
+                **{key: _translated(value) for key, value in kwargs.items()})
+        return Phrase(str.format(self, *args, **kwargs), render=render)
+
+    def __add__(self, other):
+        if not isinstance(other, str):
+            return NotImplemented
+        return Phrase(str.__add__(self, other),
+                      render=lambda: self.translated() + _translated(other))
+
+    def __radd__(self, other):
+        if not isinstance(other, str):
+            return NotImplemented
+        return Phrase(str.__add__(other, self),
+                      render=lambda: _translated(other) + self.translated())
+
+
+def _translated(value):
+    return value.translated() if isinstance(value, Phrase) else value
+
+
+def join_phrases(separator, values):
+    """Join public presentation values without flattening localized children."""
+    values = tuple(values)
+    return Phrase(separator.join(values), render=lambda: separator.join(
+        _translated(value) for value in values))
 
 
 def t(key):
