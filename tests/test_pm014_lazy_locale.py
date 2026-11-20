@@ -50,7 +50,7 @@ class LazyLocaleTests(unittest.TestCase):
                     window._navigate(2)
                     self.assertEqual(window.page_title.text(), expected[2])
 
-    def test_default_kicker_resolves_language_after_import(self):
+    def test_default_kicker_resolves_language_and_empty_kicker_is_omitted(self):
         from PySide6.QtWidgets import QLabel
         from wam_regtest import bip39_locale, fusion_ui
         from wam_regtest.desktop import qt_application
@@ -67,4 +67,8 @@ class LazyLocaleTests(unittest.TestCase):
             for explicit in ('Custom kicker', ''):
                 scroll, _ = fusion_ui.page('Title', 'Subtitle', kicker=explicit)
                 self.addCleanup(scroll.deleteLater)
-                self.assertEqual(scroll.findChild(QLabel, 'FusionKicker').text(), explicit)
+                kicker = scroll.findChild(QLabel, 'FusionKicker')
+                if explicit:
+                    self.assertEqual(kicker.text(), explicit)
+                else:
+                    self.assertIsNone(kicker)

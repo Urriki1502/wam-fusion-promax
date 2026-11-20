@@ -102,7 +102,7 @@ class FusionV21LayoutAndMotion(unittest.TestCase):
         self.assertEqual(page.findChildren(QToolButton, "FusionQuick"), [])
         self.assertTrue(page.go_send.isVisible())
         self.assertTrue(page.go_receive.isVisible())
-        self.assertTrue(page.balance_chart.isVisible())
+        self.assertFalse(page.balance_chart.isVisible())  # PM-103 compact hero prioritizes balance/actions
         self.assertGreaterEqual(page.verticalScrollBar().maximum(), 0)
         page.verticalScrollBar().setValue(page.verticalScrollBar().maximum())
         self.app.processEvents()
@@ -280,7 +280,7 @@ class FusionV21LayoutAndMotion(unittest.TestCase):
         self.assertEqual(glyph.state(), "unknown")
         self.assertFalse(glyph._spin.isActive())
 
-    def test_compact_chart_stays_visible_without_horizontal_overflow(self):
+    def test_compact_hero_hides_chart_without_horizontal_overflow(self):
         page = FusionOverview()
         self.addCleanup(page.deleteLater)
         page.render_snapshot(verified_snapshot(), operational=True, core_alive=False)
@@ -289,7 +289,7 @@ class FusionV21LayoutAndMotion(unittest.TestCase):
         self.app.processEvents()
         page.hero.resizeEvent(None)
         self.app.processEvents()
-        self.assertTrue(page.balance_chart.isVisible())
+        self.assertFalse(page.balance_chart.isVisible())  # PM-103 compact hero prioritizes balance/actions
         self.assertLessEqual(page.horizontalScrollBar().maximum(), 0)
         self.assertIn("1.50000000", page.balance_value.text())
 

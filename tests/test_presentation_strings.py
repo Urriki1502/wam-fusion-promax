@@ -12,7 +12,7 @@ from wam_regtest.presentation.strings import CATALOG, text
 # English sentences; named placeholders canonicalise back to value_N.
 KEY_RENAMES = json.loads((Path(__file__).resolve().parent / 'pm015_key_renames.json').read_text())['renames']
 STABLE_PLACEHOLDERS = {'position', 'entered', 'step', 'total'}
-SETTINGS_KEYS = {'settings.language', 'settings.language_system', 'settings.language_next_window'}
+SETTINGS_KEYS = {'settings.language', 'settings.language_system'}
 
 
 def canonical_placeholders(value):
@@ -34,6 +34,9 @@ def pm014_key(key):
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = json.loads((ROOT / 'tests/pm014_english_literals.json').read_text())
+PM103 = json.loads((ROOT / 'tests/pm103_copy_changes.json').read_text())
+PM103_RETIRED = set(json.loads((ROOT / 'tests/pm103_retired_keys.json').read_text()))
+PM103_HISTORY = json.loads((ROOT / 'tests/pm103_copy_history.json').read_text())
 MODULES = ('bip39_locale', 'gui_errors', 'managed_onboarding', 'fusion_ui', 'fusion_pages')
 
 
@@ -146,7 +149,7 @@ class CatalogTests(unittest.TestCase):
         for module, expected in FIXTURE['source_fingerprints'].items():
             with self.subTest(module=module):
                 source = _proven_source(module)
-                self.assertEqual(english_source_fingerprint(source, CATALOG['en']), expected, module)
+                self.assertEqual(english_source_fingerprint(source, dict(CATALOG['en'], **PM103_HISTORY)), expected, module)
 
     def test_english_bytes_and_existing_vietnamese(self):
         for lang, entries in FIXTURE['legacy'].items():
@@ -167,43 +170,53 @@ class CatalogTests(unittest.TestCase):
         pm018_keys = set(json.loads((ROOT / 'tests/pm018_english_literals.json').read_text())['new_keys'])
         pm021 = json.loads((ROOT / 'tests/pm021_english_literals.json').read_text())
         for key, literal in pm021['english'].items():
-            self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
+            if key not in PM103_RETIRED:
+                self.assertEqual(text(key, 'en').encode(), PM103.get(key, [literal])[0].encode(), key)
         fe002 = json.loads((ROOT / 'tests/fe002_english_literals.json').read_text())
         for key, literal in fe002['english'].items():
-            self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
+            if key not in PM103_RETIRED:
+                self.assertEqual(text(key, 'en').encode(), PM103.get(key, [literal])[0].encode(), key)
         pm041 = json.loads((ROOT / 'tests/pm041_english_literals.json').read_text())
         for key, literal in pm041['english'].items():
-            self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
+            if key not in PM103_RETIRED:
+                self.assertEqual(text(key, 'en').encode(), PM103.get(key, [literal])[0].encode(), key)
         pm062 = json.loads((ROOT / 'tests/pm062_english_literals.json').read_text())
         for key, literal in pm062['english'].items():
-            self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
+            if key not in PM103_RETIRED:
+                self.assertEqual(text(key, 'en').encode(), PM103.get(key, [literal])[0].encode(), key)
         fe003 = json.loads((ROOT / 'tests/fe003_english_literals.json').read_text())
         for key, literal in fe003['english'].items():
-            self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
+            if key not in PM103_RETIRED:
+                self.assertEqual(text(key, 'en').encode(), PM103.get(key, [literal])[0].encode(), key)
         pm075 = json.loads((ROOT / 'tests/pm075_english_literals.json').read_text())
         for key, literal in pm075['english'].items():
-            self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
+            if key not in PM103_RETIRED:
+                self.assertEqual(text(key, 'en').encode(), PM103.get(key, [literal])[0].encode(), key)
         pm082 = json.loads((ROOT / 'tests/pm082_english_literals.json').read_text())
         for key, literal in pm082['english'].items():
-            self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
+            if key not in PM103_RETIRED:
+                self.assertEqual(text(key, 'en').encode(), PM103.get(key, [literal])[0].encode(), key)
         pm086 = json.loads((ROOT / 'tests/pm086_english_literals.json').read_text())
         for key, literal in pm086['english'].items():
-            self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
+            if key not in PM103_RETIRED:
+                self.assertEqual(text(key, 'en').encode(), PM103.get(key, [literal])[0].encode(), key)
         pm090 = json.loads((ROOT / 'tests/pm090_english_literals.json').read_text())
         for key, literal in pm090['english'].items():
-            self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
+            if key not in PM103_RETIRED:
+                self.assertEqual(text(key, 'en').encode(), PM103.get(key, [literal])[0].encode(), key)
         pm094 = json.loads((ROOT / 'tests/pm094_english_literals.json').read_text())
         for key, literal in pm094['english'].items():
-            self.assertEqual(text(key, 'en').encode(), literal.encode(), key)
+            if key not in PM103_RETIRED:
+                self.assertEqual(text(key, 'en').encode(), PM103.get(key, [literal])[0].encode(), key)
         # Header theme strings stay for the PM-017 move proof. The control is gone.
         retired = set(pm094['retired_unused'])
         self.assertEqual(set(CATALOG['en']) - SETTINGS_KEYS - retired,
-                         expected | pm017_keys | status_keys | pm018_keys
+                         (expected | pm017_keys | status_keys | pm018_keys
                          | set(pm021['english']) | set(fe002['english']) | set(pm041['english'])
                          | set(fe003['english']) | {'backup.preparing', 'backup.checking', 'backup.scroll_accessible', 'backup.reopen', 'backup.done'}
                          | set(pm062['english']) | {'errors.WALLET_CHANGE_BELOW_DUST'}
                          | set(pm075['english']) | set(pm082['english']) | set(pm086['english'])
-                         | set(pm090['english']) | set(pm094['english']))
+                         | set(pm090['english']) | set(pm094['english']) | set(PM103)) - PM103_RETIRED)
 
     def test_public_error_mapping_and_codes_unchanged(self):
         from wam_regtest.gui_errors import _MESSAGES, error_text, public_code
@@ -286,6 +299,9 @@ class CatalogTests(unittest.TestCase):
             'retired_history_callers'])
         retired.update(json.loads((ROOT / 'tests/pm065_english_literals.json').read_text())[
             'retired_callers'])
+        retired.update(PM103_RETIRED)
+        # PM-103 keeps the isolated-profile caption in the canonical Fusion shell.
+        retired.add('pages.zero_peer_isolated_profile')
         for entries in FIXTURE['moved'].values():
             self.assertLessEqual({key for key in entries if pm014_key(key) not in retired}, used_pm014)
 

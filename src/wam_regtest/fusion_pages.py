@@ -3,7 +3,7 @@ from __future__ import annotations
 from .bip39_locale import t as ui_text
 from PySide6.QtCore import Qt, Signal, QRectF, QTimer, QEvent
 from PySide6.QtGui import QColor,QPainter,QFont,QFontDatabase
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QLineEdit,QComboBox,QCheckBox,QTableWidget,QTableWidgetItem,QHeaderView,QApplication,QDialog,QDialogButtonBox,QFrame,QToolButton,QButtonGroup
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QLineEdit,QComboBox,QCheckBox,QTableWidget,QTableWidgetItem,QHeaderView,QApplication,QDialog,QDialogButtonBox,QFrame,QToolButton,QButtonGroup,QScrollArea
 from .fusion_ui import SHELL,label,panel,page,action,ResponsiveRow,AdaptiveButtonRow,keyboard_table,vector_icon,fusion_palette,activity_by_block,grow_with_wrapped_text,direction_tone,QR,pending_amount_text
 from .fusion_i18n import bind, bind_headers, bind_items, retranslate_tree
 from .presentation.strings import text as catalog_text
@@ -65,7 +65,7 @@ def sole_signed_never_submitted(intents):
 def reveal(widget, visible):
     """Show or hide a control and move keyboard focus if it was on the hidden one."""
     visible = bool(visible)
-    if widget.isVisible() == visible:
+    if (not widget.isHidden()) == visible:
         return
     if not visible and widget.hasFocus():
         widget.focusNextPrevChild(True)
@@ -180,7 +180,7 @@ class HistoryPage(QWidget):
     def __init__(self):
         super().__init__();self.setObjectName('FusionInner');self.rows=();self.mode='dark';self._offset=0;self._total=0;self._has_snapshot=False;root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
         self.scroll,layout=page(ui_text('pages.history'),'','');root.addWidget(self.scroll)
-        card,cl=panel();toolbar=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText(ui_text('pages.search_placeholder'));self.search.setClearButtonEnabled(True);self.search.setAccessibleName(ui_text('pages.search_confirmed_transactions'));self.filter=QComboBox();self.filter.setAccessibleName(ui_text('pages.history_type_filter'));self.filter.view().setAccessibleName(ui_text('pages.history_type_filter'));self.filter.addItems((ui_text('pages.all_activity'),ui_text('pages.credits'),ui_text('pages.debits')));toolbar.addWidget(self.search,1);self.filter.hide();_name_line_clear(self.search,ui_text('pages.search_confirmed_transactions'));cl.addLayout(toolbar)
+        card,cl=panel();toolbar=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText(ui_text('pages.search_placeholder'));self.search.setClearButtonEnabled(True);self.search.setAccessibleName(ui_text('pages.search_confirmed_transactions'));self.filter=QComboBox();self.filter.setAccessibleName(ui_text('pages.history_type_filter'));self.filter.view().setAccessibleName(ui_text('pages.history_type_filter'));self.filter.addItems((ui_text('pages.all_activity'),ui_text('pages.credits'),ui_text('pages.debits')));toolbar.addWidget(self.search,1);self.filter.setParent(card);self.filter.hide();_name_line_clear(self.search,ui_text('pages.search_confirmed_transactions'));cl.addLayout(toolbar)
         self._filter_chips = []
         self._filter_group = QButtonGroup(self)
         self._filter_group.setExclusive(True)
@@ -188,8 +188,8 @@ class HistoryPage(QWidget):
             chip = QToolButton()
             chip.setObjectName('FusionCategory')
             chip.setCheckable(True)
-            chip.setText(self.filter.itemText(index))
-            chip.setAccessibleName(self.filter.itemText(index))
+            key = ('pages.all_activity', 'pages.credits', 'pages.debits')[index]
+            bind(chip, text=key, accessible_name=key)
             self._filter_group.addButton(chip, index)
             toolbar.addWidget(chip)
             self._filter_chips.append(chip)
@@ -211,8 +211,8 @@ class HistoryPage(QWidget):
         choice = self.filter.currentIndex()
         retranslate_tree(self)
         for index, chip in enumerate(self._filter_chips):
-            chip.setText(self.filter.itemText(index))
-            chip.setAccessibleName(self.filter.itemText(index))
+            key = ('pages.all_activity', 'pages.credits', 'pages.debits')[index]
+            bind(chip, text=key, accessible_name=key)
         if hasattr(self, '_rendered_snap'):
             self._render_history(self._rendered_snap)
             self.search.setText(query)
@@ -337,6 +337,7 @@ class HistoryPage(QWidget):
                 net=row.credit_atoms-row.debit_atoms
                 item.setIcon(vector_icon('receive' if net>0 else 'send',direction_tone(c, net)))
     def apply_filter(self,*_):
+        self._filter_chips[self.filter.currentIndex()].setChecked(True)
         term=self.search.text().strip().lower();choice=self.filter.currentIndex();shown=0
         for i,row in enumerate(self.rows):
             visible=(not term or term in row.txid.lower() or term in str(row.block_height)) and (choice==0 or choice==1 and row.credit_atoms>0 or choice==2 and row.debit_atoms>0)
@@ -359,7 +360,7 @@ class HistoryPage(QWidget):
         if (not 0<=row<len(self.rows)
                 or self.table.isRowHidden(row)
                 or not self.table.selectionModel().hasSelection()):
-            self.detail_id.setText(ui_text('pages.no_transaction_selected'));self.detail_values.setText('');self.copy_button.setEnabled(False);return
+            self.detail_id.setText(ui_text('pages.no_transaction_selected'));self.detail_values.setText('');self.copy_button.setEnabled(False);self.copy_button.hide();return
         tx=self.rows[row];self.detail_id.setText(tx.txid)
         if getattr(tx, 'state', None) == 'pending':
             text = ui_text('pending.state')
@@ -373,6 +374,7 @@ class HistoryPage(QWidget):
         else:
             self.detail_values.setText(self._with_rec1(ui_text('pages.block_amounts').format(height=tx.block_height, confirmations=tx.confirmations, credit=format_wam(tx.credit_atoms), debit=format_wam(tx.debit_atoms)), tx.txid))
         self.copy_button.setEnabled(True)
+        self.copy_button.show()
     def set_rec1_states(self, by_txid):
         """Show one REC-1 line in the History detail for a reviewed txid."""
         clean = {}
@@ -416,14 +418,11 @@ class HistoryPage(QWidget):
 class PaymentSteps(QFrame):
     def __init__(self):
         super().__init__();self.setObjectName('FusionInset');layout=QHBoxLayout(self);layout.setContentsMargins(16,13,16,13);self.labels=[]
-        self._step_keys = ('pages.prepare','pages.review','pages.approve_signature','pages.broadcast','pages.result')
+        self._step_keys = ('pages.review','pages.approve_signature','pages.broadcast')
         for i, name in enumerate(self._step_titles()):
             item=grow_with_wrapped_text(label(f'{i+1}  {name}','FusionMuted'));item.setAlignment(Qt.AlignmentFlag.AlignCenter);layout.addWidget(item,1);self.labels.append(item)
     def _step_titles(self):
-        return (
-            ui_text('pages.prepare'), ui_text('pages.review'),
-            ui_text('pages.approve_signature'), ui_text('pages.broadcast'),
-            ui_text('pages.result'))
+        return (ui_text('pages.review'), ui_text('pages.approve_signature'), ui_text('pages.broadcast'))
     def retranslate(self):
         for index, (item, name) in enumerate(zip(self.labels, self._step_titles())):
             item.setText(f'{index + 1}  {name}')
@@ -432,6 +431,8 @@ class PaymentSteps(QFrame):
         if event.type() == QEvent.Type.LanguageChange:
             self.retranslate()
     def set_stage(self,stage):
+        # Preserve callers' five-stage lifecycle while presenting three short steps.
+        stage = (0, 1, 1, 2, 3)[max(0, min(stage, 4))]
         for i,item in enumerate(self.labels):
             if i<stage:item.setObjectName('FusionVerified')
             elif i==stage:item.setObjectName('FusionGold')
@@ -557,12 +558,15 @@ class PaymentApproval(QDialog):
         layout=QVBoxLayout(self);layout.setContentsMargins(28,24,28,24);layout.setSpacing(16)
         layout.addWidget(label(ui_text('pages.explicit_transaction_approval'),'FusionKicker'));layout.addWidget(label(ui_text('pages.approve_signature') if kind=='sign' else ui_text('pages.submit_to_regtest'),'PageTitle'))
         layout.addWidget(label(ui_text('pages.sign_irreversible') if kind=='sign' else ui_text('pages.broadcast_reply_uncertain'),'FusionGold'))
-        card,cl=panel(ui_text('pages.exact_payment'));cl.addWidget(label(ui_text('pages.recipient'),'FusionKicker'));cl.addWidget(label(review.code,'ReceiveCode',True));cl.addWidget(grow_with_wrapped_text(label(approval_amount_text(review))));layout.addWidget(card)
+        card,cl=panel(ui_text('pages.exact_payment'));cl.addWidget(label(ui_text('pages.recipient'),'FusionKicker'));cl.addWidget(label(review.code,'ReceiveCode',True));cl.addWidget(grow_with_wrapped_text(label(approval_amount_text(review))));self.review_scroll=QScrollArea();self.review_scroll.setWidgetResizable(True);self.review_scroll.setFrameShape(QFrame.Shape.NoFrame);self.review_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff);self.review_scroll.setWidget(card);card.setAutoFillBackground(False);self.review_scroll.viewport().setAutoFillBackground(False);bind(self.review_scroll,accessible_name='pages.exact_payment');layout.addWidget(self.review_scroll,1)
         buttons=QDialogButtonBox();self.cancel=buttons.addButton(ui_text('pages.cancel'),QDialogButtonBox.ButtonRole.RejectRole);self.approve=buttons.addButton(ui_text('pages.approve_sign') if kind=='sign' else ui_text('pages.approve_broadcast_2'),QDialogButtonBox.ButtonRole.AcceptRole);self.approve.setObjectName('FusionPrimary');self.cancel.setDefault(True);self.approve.setAutoDefault(False);buttons.rejected.connect(self.reject);buttons.accepted.connect(self.accept);layout.addWidget(buttons)
         self._fit_height()
 
     def _fit_height(self):
-        self.resize(640, max(440, self.sizeHint().height() + 8))
+        parent = self.parentWidget()
+        screen = self.screen().availableGeometry()
+        ceiling = min(screen.height() - 64, parent.height() - 32 if parent else screen.height() - 64)
+        self.resize(min(640, screen.width() - 64), min(max(440, self.sizeHint().height() + 8), max(440, ceiling)))
 
     def _sync_layouts(self):
         if self.layout() is not None:
@@ -575,25 +579,12 @@ class PaymentApproval(QDialog):
 
     def showEvent(self,event):
         super().showEvent(event)
-        # The __init__ fit predates the stylesheet polish; polished metrics can
-        # need more height, and the layout then squeezes the wrapped review
-        # label below its measured text (FE002-GALLERY-ID-CLIP). Re-fit with
-        # the polished metrics. sizeHint() only reflects the width the layout
-        # last laid out at: after a visible resize wider than the applied 640
-        # it is stale until the children are laid out at 640, because
-        # ReadableText fixes its height only in its own resizeEvent. Activate
-        # the whole layout tree synchronously at the applied width so the
-        # dialog is at its final size, with the review label unclipped, before
-        # showEvent returns: Approve is clickable at the first Paint, so no
-        # clipped frame may exist and no event-loop timer may be involved
-        # (AGY PEER-163).
+        # Polish and lay out synchronously before approval can receive input.
+        # All exact facts remain in the scrollable card; consent and Cancel
+        # stay outside it, within the available parent/screen height.
         self._fit_height()
         self._sync_layouts()
-        target_h=max(440,self.sizeHint().height()+8)
-        if self.layout() is not None:
-            hfw=self.layout().totalHeightForWidth(640)
-            if hfw>0:target_h=max(target_h,hfw+8)
-        self.resize(640,target_h)
+        self._fit_height()
         self._sync_layouts()
 
 
@@ -654,26 +645,41 @@ class NetworkPage(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         self.scroll, layout = page(
             ui_text('pages.network'),
-            ui_text('pages.network_subtitle'),
-            ui_text('pages.v1_net_regtest'))
+            '', '')
         root.addWidget(self.scroll)
-        status, sl = panel(ui_text('pages.network_status'), ui_text('pages.unknown_until_verified'))
+        status, sl = panel(ui_text('pages.network_status'))
         self.mode_value = label(ui_text('pages.not_verified'), 'FusionCardValue')
         self.connection_value = label(ui_text('pages.core_connectivity_is_not_verified'))
         self.peer_value = label(ui_text('pages.peers_after_check'))
         self.height_value = label(ui_text('pages.height_after_snapshot'))
         self.sync_value = label(ui_text('pages.sync_unknown'))
-        self.identity_value = label(ui_text('pages.shared_identity_scope'))
+        self.identity_value = label('')
+        self.identity_value.hide()
         for widget in (self.mode_value, self.connection_value, self.peer_value,
                        self.height_value, self.sync_value, self.identity_value):
             widget.setMinimumWidth(0)
             sl.addWidget(widget)
+        self.attention_host = QVBoxLayout()
+        sl.addLayout(self.attention_host)
         layout.addWidget(status)
-        controls, cl = panel(ui_text('pages.manual_peer_controls'), ui_text('pages.v1_net_commands'))
-        self.controls_note = label(ui_text('pages.isolated_zero_peer'))
-        cl.addWidget(self.controls_note)
+        controls, cl = panel(ui_text('wallet.advanced_title'))
+        self.controls_card = controls
+        self.controls_toggle = QToolButton()
+        self.controls_toggle.setObjectName('FusionAdvanced')
+        bind(self.controls_toggle, text='wallet.advanced_title', accessible_name='wallet.advanced_title')
+        self.controls_toggle.setCheckable(True)
+        cl.addWidget(self.controls_toggle)
+        self.controls_body = QWidget()
+        body_layout = QVBoxLayout(self.controls_body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        self.controls_note = label(ui_text('pages.manual_peer'))
+        body_layout.addWidget(self.controls_note)
         self.controls_host = QVBoxLayout()
-        cl.addLayout(self.controls_host)
+        body_layout.addLayout(self.controls_host)
+        cl.addWidget(self.controls_body)
+        self.controls_body.hide()
+        self.controls_toggle.toggled.connect(self.controls_body.setVisible)
+        controls.hide()
         layout.addWidget(controls)
         layout.addStretch()
 
@@ -690,6 +696,7 @@ class NetworkPage(QWidget):
 
     def render(self, *, shared=False, connected=None, peer_count=None, height=None,
                tip=None, coordinator=None, core_alive=None, identity=None):
+        self.controls_card.setVisible(shared)
         self._last_render = dict(
             shared=shared, connected=connected, peer_count=peer_count, height=height,
             tip=tip, coordinator=coordinator, core_alive=core_alive, identity=identity)
@@ -704,8 +711,6 @@ class NetworkPage(QWidget):
             self.peer_value.setText(
                 ui_text('pages.peer_count').format(count=peer_count)
                 + ('' if connected is None else (ui_text('pages.connected') if connected else ui_text('pages.disconnected'))))
-        elif not shared:
-            self.peer_value.setText(ui_text('pages.zero_peer_isolated_profile'))
         else:
             self.peer_value.setText(ui_text('pages.peers_after_check'))
         if type(height) is int:
@@ -723,7 +728,8 @@ class NetworkPage(QWidget):
         elif coordinator is False:
             self.identity_value.setText(ui_text('pages.participant'))
         else:
-            self.identity_value.setText(ui_text('pages.shared_identity_scope'))
+            self.identity_value.setText('')
+        self.identity_value.setVisible(bool(identity or coordinator is not None))
         self.controls_note.setText(
             ui_text('pages.manual_peer')
             if shared else ui_text('pages.isolated_zero_peer'))

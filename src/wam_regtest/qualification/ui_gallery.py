@@ -277,6 +277,9 @@ def _render_window(language, width, height, theme_index, theme, shoot, settle, f
             window.navigation.setCurrentRow(row)
             scene(name)
 
+        window.settings_categories[3].click()
+        scene('08b-settings-language')
+
         def lock_scene(name, broadcast, non_broadcast, status_key):
             shown = dict(result)
             shown['reservation_lock_summary'] = summarize_reservation_locks(
@@ -310,6 +313,8 @@ def _render_window(language, width, height, theme_index, theme, shoot, settle, f
         window.send_result.setText(t('wallet.no_broadcast_result'))
         window._render_verified(result)
         window.status.setText('')
+        window.navigation.setCurrentRow(6)
+        window.settings_categories[4].click()
         window.advanced_toggle.setChecked(True)
         scene('09-settings-advanced')
         window.advanced_toggle.setChecked(False)

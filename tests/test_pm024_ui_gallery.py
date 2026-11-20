@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / 'src/wam_regtest/qualification/ui_gallery.py'
-SCENES_PER_WINDOW = 30
+SCENES_PER_WINDOW = 31
 
 
 class GalleryIsInert(unittest.TestCase):

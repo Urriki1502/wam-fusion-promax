@@ -228,7 +228,7 @@ class LiveLanguageTests(unittest.TestCase):
             _norm(window.language.itemText(0)),
             _norm(text('settings.language_system', language)))
         self.assertNotIn(RETIRED_NEXT_WINDOW[language], current)
-        self.assertIn(_norm(text('settings.language_next_window', language)), current)
+        self.assertNotIn('settings.language_next_window', CATALOG[language])
 
     def test_runtime_switch_retranslates_every_surface_and_keeps_page_icons(self):
         window = self._window()
@@ -380,20 +380,19 @@ class LiveLanguageTests(unittest.TestCase):
 
     def test_screen_sources_have_no_hardcoded_english_literals(self):
         for language, retired in RETIRED_NEXT_WINDOW.items():
-            self.assertNotEqual(CATALOG[language]['settings.language_next_window'], retired)
-            self.assertNotIn('opened after', CATALOG[language]['settings.language_next_window'].lower())
+            self.assertNotIn('settings.language_next_window', CATALOG[language])
         offenders = []
         for relative in SCREEN_SOURCES:
             for line, value in hardcoded_english_literals(ROOT / relative):
                 offenders.append('%s:%d: %r' % (relative, line, value))
         self.assertEqual(offenders, [])
 
-    def test_language_subtitle_is_immediate_in_every_locale(self):
-        for language, retired in RETIRED_NEXT_WINDOW.items():
-            value = CATALOG[language]['settings.language_next_window']
-            self.assertNotEqual(value, retired, language)
-            self.assertNotIn('opened after', value.lower(), language)
-            self.assertGreaterEqual(len(value.strip()), 4, language)
+    def test_language_tiles_apply_immediately_in_every_locale(self):
+        window = self._window()
+        for language in SWITCH:
+            window.language_tiles[language].click()
+            self.assertEqual(window.language.currentData(), language)
+            self.assertEqual(window.navigation.item(0).text(), text('fusion.overview', language))
 
 
 if __name__ == '__main__':

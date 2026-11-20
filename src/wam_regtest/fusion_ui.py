@@ -254,7 +254,7 @@ def fusion_stylesheet(mode):
     }}
     QToolButton#FusionQuick:hover:enabled {{border:1px solid {c['accent']};background:{c['hover']};}}
     QToolButton#FusionQuick:disabled {{color:{c['muted']};}}
-    QFrame#FusionThemeThumb {{background:{c['accent']};border:0;border-radius:{r['badge']}px;}}
+    QFrame#FusionThemeThumb {{background:{c['cta_start']};border:0;border-radius:{r['badge']}px;}}
     QFrame#FusionDimmer {{background:{c['dimmer']};border:0;}}
     QFrame#FusionFlyout {{
         background:{c['surface']};border:1px solid {c['border']};border-radius:{r['panel']}px;
@@ -270,11 +270,11 @@ def fusion_stylesheet(mode):
     QLabel#FusionCardValue {{font-size:{t['number']}px;font-weight:{w['semibold']};}}
     QLabel#FusionMuted,QLabel#StatusText,QLabel#FusionEmpty {{color:{c['text_secondary']};font-size:{t['body']}px;}}
     QLabel#SecondaryLabel {{color:{c['muted']};font-size:{t['secondary']}px;}}
-    QLabel#FusionScope {{color:{c['onaccent']};background:{c['accent']};border:0;border-radius:{r['badge']}px;padding:5px 10px;font-size:{t['caption']}px;font-weight:{w['bold']};}}
+    QLabel#FusionScope {{color:{c['onaccent']};background:{c['cta_start']};border:0;border-radius:{r['badge']}px;padding:5px 10px;font-size:{t['caption']}px;font-weight:{w['bold']};}}
     QLabel#FusionVerified {{color:{c['success']};font-weight:{w['semibold']};}}
     QLabel#FusionInfo {{color:{c['blue']};}}
     QLabel#FusionGold {{color:{c['warning_text']};font-weight:{w['semibold']};}}
-    QLabel#FusionBadge {{color:{c['onaccent']};background:{c['accent']};border:0;border-radius:{r['badge']}px;padding:5px 10px;font-size:{t['caption']}px;font-weight:{w['bold']};}}
+    QLabel#FusionBadge {{color:{c['onaccent']};background:{c['cta_start']};border:0;border-radius:{r['badge']}px;padding:5px 10px;font-size:{t['caption']}px;font-weight:{w['bold']};}}
     QLabel#Warning {{color:{c['warning_text']};background:{c['warning']};border-radius:{r['segment']}px;padding:10px;min-height:{SHELL['warning_min']}px;font-size:{t['caption']}px;}}
     QLabel#ReceiveCode,QPlainTextEdit#ReceiveCode {{
         font-size:{t['body']}px;background:{c['panel']};border:1px solid {c['border']};border-radius:{r['control']}px;padding:{s['lg']}px;
@@ -305,11 +305,11 @@ def fusion_stylesheet(mode):
         color:{c['onaccent']};border:1px solid {c['cta_end']};
     }}
     QPushButton#FusionPrimary{kf},QPushButton#PrimaryButton{kf} {{border:{ring}px solid {c['onaccent']};padding:11px 16px;}}
-    QPushButton#FusionSecondary {{background:{c['tint']};color:{c['text']};border:1px solid {c['border']};}}
-    QPushButton#FusionDestructive {{background:{c['surface']};color:{c['error']};border:1px solid {c['border']};}}
+    QPushButton#FusionSecondary {{background:{c['tint']};color:{c['text']};border:1px solid {c['control']};}}
+    QPushButton#FusionDestructive {{background:{c['surface']};color:{c['error']};border:1px solid {c['control']};}}
     QPushButton:hover:enabled,QComboBox:hover {{background:{c['hover']};border:1px solid {c['focus']};}}
     QPushButton#FusionPrimary:hover:enabled,QPushButton#PrimaryButton:hover:enabled {{
-        background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 {c['cta_start']},stop:1 {c['accent']});
+        background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 {c['cta_start']},stop:1 {c['cta_end']});
         border:1px solid {c['onaccent']};
     }}
     QPushButton:pressed:enabled {{background:{c['selection']};}}
@@ -904,6 +904,37 @@ def vector_icon(name, tone, dpr=2):
         line(15, 5, 8, 12); line(8, 12, 15, 19)
     elif name == 'chevron_right':
         line(9, 5, 16, 12); line(16, 12, 9, 19)
+    elif name == 'review':
+        p.drawRoundedRect(QRectF(5, 3, 14, 18), 2, 2)
+        line(8, 8, 16, 8); line(8, 12, 16, 12); line(8, 16, 13, 16)
+    elif name == 'broadcast':
+        p.drawEllipse(QRectF(10, 10, 4, 4))
+        p.drawArc(QRectF(6, 6, 12, 12), -55 * 16, 110 * 16)
+        p.drawArc(QRectF(2, 2, 20, 20), -55 * 16, 110 * 16)
+        p.drawArc(QRectF(6, 6, 12, 12), 125 * 16, 110 * 16)
+        p.drawArc(QRectF(2, 2, 20, 20), 125 * 16, 110 * 16)
+    elif name == 'cancel':
+        p.drawEllipse(QRectF(3, 3, 18, 18)); line(8, 8, 16, 16); line(8, 16, 16, 8)
+    elif name == 'fund':
+        p.drawEllipse(QRectF(3, 3, 16, 16)); line(8, 7, 8, 14); line(12, 7, 12, 14)
+        line(16, 18, 22, 18); line(19, 15, 19, 21)
+    elif name == 'confirm':
+        p.drawRoundedRect(QRectF(3, 4, 18, 17), 2, 2)
+        line(3, 8, 21, 8); line(7, 14, 11, 18); line(11, 18, 17, 11)
+    elif name == 'search':
+        p.drawEllipse(QRectF(3, 3, 13, 13)); line(15, 15, 21, 21)
+    elif name == 'signed':
+        p.drawRoundedRect(QRectF(4, 3, 16, 18), 2, 2)
+        line(8, 7, 16, 7); line(8, 11, 12, 11); line(9, 17, 17, 13)
+    elif name == 'resume':
+        p.drawArc(QRectF(3, 3, 18, 18), 45 * 16, 285 * 16)
+        p.drawPolygon(QPolygonF([QPointF(10, 7), QPointF(16, 12), QPointF(10, 17)]))
+    elif name == 'quit':
+        line(12, 2, 12, 12); p.drawArc(QRectF(4, 4, 16, 17), 135 * 16, 270 * 16)
+    elif name == 'advanced':
+        p.drawPolygon(QPolygonF([QPointF(3, 8), QPointF(12, 3), QPointF(21, 8), QPointF(12, 13)]))
+        line(3, 12, 12, 17); line(12, 17, 21, 12)
+        line(3, 16, 12, 21); line(12, 21, 21, 16)
     elif name == 'globe':
         p.drawEllipse(QRectF(4, 4, 16, 16))
         p.drawEllipse(QRectF(8, 4, 8, 16))
@@ -1054,8 +1085,14 @@ class ResponsiveRow(QWidget):
         self._grid.addWidget(widget, row, column)
         return widget
 
-    def resizeEvent(self, event):
+    def _arrange(self):
         needed = self._break
+        # Translated canonical buttons and their icons determine the real
+        # two-column boundary, rather than an English-only breakpoint.
+        widths = [max(child.minimumWidth(), 0 if child.sizePolicy().horizontalPolicy()
+                      == QSizePolicy.Policy.Ignored else child.minimumSizeHint().width())
+                  for child in self._children]
+        needed = max(needed, sum(widths) + self._grid.spacing() * (len(widths) - 1))
         if self._min_side:
             needed = max(needed, self._min_side)
         vertical = self.width() < needed
@@ -1066,7 +1103,14 @@ class ResponsiveRow(QWidget):
             for i, w in enumerate(self._weights):
                 self._grid.setColumnStretch(i, 0 if vertical else w)
                 self._grid.setRowStretch(i, w if vertical else 0)
+    def resizeEvent(self, event):
+        self._arrange()
         super().resizeEvent(event)
+
+    def event(self, event):
+        if event.type() == QEvent.Type.LayoutRequest and hasattr(self, '_grid') and self.isVisible():
+            self._arrange()
+        return super().event(event)
 
 
 class FlowGrid(QWidget):
@@ -1149,27 +1193,22 @@ class Hero(QFrame):
     def resizeEvent(self, event):
         layout = self.layout()
         stacked = self.width() < 880
-        self.setMinimumHeight(248 if stacked else 208)
-        if layout is not None:
-            layout.setContentsMargins(22, 18, 22, 18)
-            if isinstance(layout, QGridLayout) and stacked != self._stacked:
-                self._stacked = stacked
-                copy = self.findChild(QWidget, 'FusionHeroCopy')
-                chart = self.findChild(BalanceHistoryChart)
-                if copy is not None and chart is not None:
-                    chart.setVisible(True)
-                    if stacked:
-                        layout.addWidget(copy, 0, 0)
-                        layout.addWidget(chart, 1, 0)
-                        layout.setColumnStretch(0, 1)
-                        layout.setColumnStretch(1, 0)
-                        chart.setMinimumHeight(120)
-                    else:
-                        layout.addWidget(copy, 0, 0)
-                        layout.addWidget(chart, 0, 1)
-                        layout.setColumnStretch(0, 5)
-                        layout.setColumnStretch(1, 4)
-                        chart.setMinimumHeight(168)
+        self.setMinimumHeight(208)
+        if isinstance(layout, QGridLayout) and stacked != self._stacked:
+            self._stacked = stacked
+            copy = self.findChild(QWidget, 'FusionHeroCopy')
+            chart = self.findChild(BalanceHistoryChart)
+            if copy is not None and chart is not None:
+                # The balance and actions keep priority at compact widths.
+                # Keep the verified chart model; do not stack a second hero row.
+                layout.removeWidget(copy)
+                layout.removeWidget(chart)
+                layout.addWidget(copy, 0, 0, 1, 2 if stacked else 1)
+                chart.setVisible(not stacked)
+                if not stacked:
+                    layout.addWidget(chart, 0, 1)
+                layout.setColumnStretch(0, 5)
+                layout.setColumnStretch(1, 0 if stacked else 4)
         super().resizeEvent(event)
 
     def paintEvent(self, event):
@@ -1774,7 +1813,10 @@ class FusionOverview(QScrollArea):
         self.core_card.apply(*classify('core', **facts), animate=not locked)
         self.chain_card.apply(*classify('chain', **facts), animate=not locked)
         self.security_card.apply(*classify('security', **facts), animate=False)
-        self.network_card.apply(*classify('network', **facts), animate=not locked)
+        network_state, network_title, network_detail = classify('network', **facts)
+        if type(network.get('peer_count')) is not int:
+            network_detail = ui_text('pages.peers_after_check')
+        self.network_card.apply(network_state, network_title, network_detail, animate=not locked)
         unlocked = not locked and operational and snap is not None
         self.custody_switch.blockSignals(True)
         self.custody_switch.setChecked(unlocked)

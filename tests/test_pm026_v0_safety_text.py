@@ -36,12 +36,13 @@ class SafetyTextLayout(unittest.TestCase):
         return (policy.verticalPolicy() == QSizePolicy.Policy.Minimum
                 and policy.hasHeightForWidth() and widget.wordWrap())
 
-    def test_sidebar_safety_notice_grows_with_its_wrapped_text(self):
+    def test_sidebar_uses_scope_badge_without_redundant_notice(self):
         from PySide6.QtWidgets import QLabel
         from wam_regtest.bip39_locale import t
         notices = [w for w in self.window.findChildren(QLabel) if w.text() == t('wallet.sidebar_notice')]
-        self.assertEqual(len(notices), 1)
-        self.assertTrue(self._grows(notices[0]))
+        self.assertEqual(notices, [])
+        self.assertTrue(any(w.text() == t('desktop.regtest_badge')
+                            for w in self.window.findChildren(QLabel)))
 
     def test_payment_step_labels_grow_with_their_wrapped_text(self):
         from wam_regtest.fusion_pages import PaymentSteps

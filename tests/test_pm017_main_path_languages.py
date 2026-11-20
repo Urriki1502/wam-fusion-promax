@@ -23,6 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = json.loads((ROOT / 'tests/pm017_english_literals.json').read_text())
 PM043 = json.loads((ROOT / 'tests/pm043_copy_ledger.json').read_text())
 PM045 = json.loads((ROOT / 'tests/pm045_copy_ledger.json').read_text())
+PM103 = json.loads((ROOT / 'tests/pm103_copy_changes.json').read_text())
+RETIRED = set(json.loads((ROOT / 'tests/pm103_retired_keys.json').read_text()))
 
 
 def shape(node):
@@ -61,9 +63,11 @@ class MainPathCatalogTests(unittest.TestCase):
         for module, data in FIXTURE['modules'].items():
             for record in data['moved']:
                 key = record['key']
+                if key in RETIRED:
+                    continue  # PM-103 removed visual copy; original AST proof below is unchanged
                 with self.subTest(module=module, key=key):
                     # D5-B changes only these catalog values; retain the original AST proof.
-                    expected = PM045['english'].get(key, PM043['english'].get(key, record['english']))
+                    expected = PM103[key][0] if key in PM103 else PM045['english'].get(key, PM043['english'].get(key, record['english']))
                     self.assertEqual(text(key, 'en').encode(), expected.encode())
                     original = ast.parse('(' + record['original'] + ')', mode='eval')
                     replacement = ast.parse(record['replacement'], mode='eval')
@@ -91,7 +95,7 @@ class MainPathCatalogTests(unittest.TestCase):
                     def render(tree):
                         tree = ast.fix_missing_locations(Substitute().visit(tree))
                         return eval(compile(tree, '<source-copy-fixture>', 'eval'),
-                                    {'__builtins__': {}, 't': lambda k: PM045['previous']['en'].get(k, PM043['previous']['en'].get(k, text(k, 'en')))})
+                                    {'__builtins__': {}, 't': lambda k: record['english'] if k == key and key in PM103 else PM045['previous']['en'].get(k, PM043['previous']['en'].get(k, text(k, 'en')))})
                     self.assertEqual(render(original).encode(), render(replacement).encode())
 
     def test_source_structure_matches_before_move(self):
@@ -139,7 +143,7 @@ class MainPathCatalogTests(unittest.TestCase):
                 while parent is not None and not isinstance(parent, (ast.FunctionDef, ast.Lambda)):
                     parent = parents.get(parent)
                 self.assertIsNotNone(parent, module)
-        self.assertLessEqual(set(FIXTURE['new_keys']), seen)
+        self.assertLessEqual(set(FIXTURE['new_keys']) - RETIRED, seen)
 
     def test_no_untranslated_prose_remains(self):
         # Complete allowlist for prose-shaped non-copy constants in these modules.
@@ -161,7 +165,7 @@ class MainPathCatalogTests(unittest.TestCase):
 
     def test_named_placeholders_and_identifier_shapes(self):
         formatter = string.Formatter()
-        for key in FIXTURE['new_keys']:
+        for key in set(FIXTURE['new_keys']) - RETIRED:
             english = CATALOG['en'][key]
             expected = [(name, spec, conv) for _, name, spec, conv in formatter.parse(english)
                         if name is not None]
@@ -178,7 +182,7 @@ class MainPathCatalogTests(unittest.TestCase):
         from mnemonic import Mnemonic
         words = set(Mnemonic('english').wordlist)
         for entries in CATALOG.values():
-            for key in FIXTURE['new_keys']:
+            for key in set(FIXTURE['new_keys']) - RETIRED:
                 tokens = entries[key].split()
                 self.assertFalse(len(tokens) >= 12 and all(token in words for token in tokens), key)
 

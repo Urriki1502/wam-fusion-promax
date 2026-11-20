@@ -153,9 +153,11 @@ def wallet_route(choice):
 def welcome_dialog():
     """One native Qt welcome screen; no Core, seed or credential is opened."""
     from PySide6.QtCore import Qt
+    from PySide6.QtGui import QPixmap
+    from .branding import brand_image
     from PySide6.QtWidgets import (
         QApplication, QDialog, QFrame, QVBoxLayout,
-        QScrollArea, QWidget,
+        QScrollArea, QWidget, QToolButton,
     )
     from .fusion_i18n import I18nCheckBox, bind, retranslate_tree
     from .fusion_ui import action, label, panel, fusion_palette, fusion_stylesheet, vector_icon
@@ -170,7 +172,10 @@ def welcome_dialog():
     dialog.selection = None
     dialog.buttons = {}
     hint = QApplication.styleHints()
-    mode = "dark" if hint.colorScheme() == Qt.ColorScheme.Dark else "light"
+    from .ui_settings import ui_settings
+    choice = ui_settings().value('fusion_appearance', 2, type=int)
+    mode = ('dark' if choice == 2 else 'light' if choice == 1 else
+            'dark' if hint.colorScheme() == Qt.ColorScheme.Dark else 'light')
     dialog.setStyleSheet(fusion_stylesheet(mode))
     palette = fusion_palette(mode)
 
@@ -186,28 +191,34 @@ def welcome_dialog():
     root = QVBoxLayout(content)
     root.setContentsMargins(28, 28, 28, 24)
     root.setSpacing(18)
-    root.addWidget(label(ui_text('welcome.wam_fusion'), "FusionKicker"))
+    logo = label('')
+    logo.setPixmap(QPixmap(str(brand_image())).scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+    root.addWidget(logo, alignment=Qt.AlignmentFlag.AlignHCenter)
+    root.addWidget(label(ui_text('wallet.brand'), 'BrandTitle'))
     root.addWidget(label(ui_text('welcome.welcome_to_your_wallet'), "PageTitle"))
-    root.addWidget(label(
-        ui_text('welcome.begin')
-    ))
     root.addWidget(label(ui_text('welcome.regtest_preview_no_real_funds'), "FusionBadge"))
     dialog.shared_mode = I18nCheckBox(ui_text('welcome.shared_regtest_manual_core_p2p'))
     dialog.shared_mode.setAccessibleName(ui_text('welcome.shared_regtest_manual_core_p2p'))
     dialog.shared_mode.setToolTip(ui_text('welcome.shared_tooltip'))
+    advanced_network = QToolButton()
+    bind(advanced_network, text=ui_text('wallet.advanced_title'), accessible_name=ui_text('wallet.advanced_title'))
+    advanced_network.setCheckable(True)
+    dialog.shared_mode.hide()
+    advanced_network.toggled.connect(dialog.shared_mode.setVisible)
+    root.addWidget(advanced_network)
     root.addWidget(dialog.shared_mode)
 
     choices, layout = panel(
         ui_text('welcome.your_wallet'),
-        ui_text('welcome.experience'),
+        '',
     )
     for key, title, detail, icon_name, primary in (
         ("create", ui_text('welcome.create_a_new_wallet'),
-         ui_text('welcome.create_detail'), "overview", True),
+         '', "overview", True),
         ("open", ui_text('welcome.open_existing_wallet'),
-         ui_text('welcome.open_detail'), "unlock", False),
+         '', "unlock", False),
         ("restore", ui_text('welcome.restore_from_12_words'),
-         ui_text('welcome.restore_detail'), "backup", False),
+         '', "backup", False),
     ):
         button = action(title, icon_name, primary)
         button.setAccessibleName(title)
@@ -216,7 +227,6 @@ def welcome_dialog():
             icon_name, palette["onaccent"] if primary else palette["accent"]))
         dialog.buttons[key] = button
         layout.addWidget(button)
-        layout.addWidget(label(detail, "FusionMuted"))
     root.addWidget(choices)
     QWidget.setTabOrder(dialog.buttons["create"], dialog.buttons["open"])
     QWidget.setTabOrder(dialog.buttons["open"], dialog.buttons["restore"])

@@ -188,7 +188,9 @@ class SettingsIsolationAndKeysTests(unittest.TestCase):
             window, executor, _ = _make_window()
             try:
                 baseline = _snapshot_ini(ini_path)
-                # Change theme via settings_theme -> Dark (2)
+                # PM-103 defaults Dark; first choose Light so this is a real change.
+                window.settings_theme.buttons[1].click()
+                baseline = _snapshot_ini(ini_path)
                 window.settings_theme.buttons[2].click()
                 QApplication.processEvents()
                 self.assertEqual(window.settings_theme.currentIndex(), 2)
@@ -287,7 +289,7 @@ class SettingsIsolationAndKeysTests(unittest.TestCase):
                 self.assertFalse(window.custody_switch.isChecked())
                 self.assertFalse(window.custody_switch.isEnabled())
                 self.assertTrue(window.quit.isEnabled())
-                self.assertTrue(window.backup_review.isEnabled())
+                self.assertIs(window.backup_review, window.recovery)  # PM-103 canonical recovery action
                 self.assertFalse(window.recovery.isEnabled())
                 self.assertEqual(window.security_state.text(), t("wallet.security_locked"))
 

@@ -43,17 +43,17 @@ class FusionDesignContracts(unittest.TestCase):
         for mode, palette in (("dark", dark), ("light", light)):
             self.assertRegex(palette["accent"],r"^#[0-9A-Fa-f]{6}$")
             self.assertGreaterEqual(contrast(palette["text"],palette["bg"]),7.0)
-            self.assertGreaterEqual(contrast(palette["onaccent"],palette["accent"]),4.5)
+            self.assertGreaterEqual(contrast(palette["onaccent"],palette["cta_end"]),4.5)
             self.assertGreaterEqual(contrast(palette["accent"],palette["surface"]),4.5)
-            self.assertNotEqual(palette["accent"],palette["brand"])
+            self.assertGreaterEqual(contrast(palette["onaccent"], palette["cta_start"]), 4.5)
             self.assertIn("FusionPrimary", fusion_stylesheet(mode))
             self.assertIn("FusionActivityTable", fusion_stylesheet(mode))
             self.assertIn("FusionSegmented", fusion_stylesheet(mode))
             self.assertIn("FusionThemeThumb", fusion_stylesheet(mode))
         # One consistent action color family; WAM brand gold is not reused as
         # a focus/button tint. No dependence on deprecated 2026 Q05 hex values.
-        self.assertEqual(dark["accent"], "#E0C36A")
-        self.assertEqual(light["accent"], "#7A5A12")
+        self.assertEqual(dark["accent"], "#E9C56B")
+        self.assertEqual(light["accent"], "#76520C")
         self.assertNotEqual(dark["bg"], light["bg"])
 
     def test_invalid_theme_fails_closed(self):

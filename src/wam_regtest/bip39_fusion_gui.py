@@ -12,11 +12,11 @@ from PySide6.QtGui import QFontDatabase, QIcon, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QFrame, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMenu, QMessageBox, QDialog, QToolButton,
-    QCheckBox, QComboBox, QApplication, QSizePolicy,
+    QCheckBox, QComboBox, QApplication, QSizePolicy, QGridLayout, QButtonGroup, QStackedWidget,
 )
 
 from .bip39_owner_gui import Bip39TrialWindow
-from .presentation.action_state import SharedInputs, apply_shared_profile, available_actions, fusion_actions
+from .presentation.action_state import SharedInputs, apply_shared_profile, available_actions, fusion_actions, visible_actions
 from .domain.payment_state import BROADCAST, reserved_rows_needing_attention
 
 from .bip39_locale import effective_choice, t, _lang
@@ -247,9 +247,6 @@ class Bip39FusionWindow(Bip39TrialWindow):
             item.setData(Qt.ItemDataRole.UserRole, page_id)
             self.navigation.addItem(item)
         side.addWidget(self.navigation, 1)
-        notice = grow_with_wrapped_text(label(t('wallet.sidebar_notice'), 'FusionMuted'))
-        notice.setMinimumWidth(0)
-        side.addWidget(notice)
         shell.addWidget(sidebar)
 
         main = QWidget()
@@ -303,13 +300,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.stack.addWidget(self.history_page)
 
         send_page, send_layout = page(
-            t('fusion.send'),
-            t('wallet.send_subtitle'),
-            t('wallet.send_kicker'),
+            t('fusion.send'), '', '',
         )
         self.payment_steps = PaymentSteps()
         send_layout.addWidget(self.payment_steps)
-        form, fl = panel(t('wallet.prepare_title'), t('wallet.prepare_subtitle'))
+        form, fl = panel(t('wallet.prepare_title'), '')
         self.recipient_input = I18nLineEdit()
         self.recipient_input.setMaxLength(256)
         self.recipient_input.setPlaceholderText(t('wallet.recipient_hint'))
@@ -325,6 +320,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         fl.addWidget(label(t('wallet.amount_caption'), "FusionKicker"))
         fl.addWidget(self.amount_input)
         fee_note = grow_with_wrapped_text(_HeightForWidthLabel(t('wallet.fee_is_network')))
+        bind(fee_note, text='wallet.fee_is_network')
         fee_note.setObjectName('FusionMuted')
         fee_note.setWordWrap(True)
         fee_note.setMinimumWidth(0)
@@ -333,11 +329,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.send.setAccessibleName(t('wallet.review_payment'))
         self.send.setAccessibleDescription(t('wallet.review_payment_description'))
         self.send.setObjectName("FusionPrimary")
-        self.send.setProperty("fusion_icon", "send")
+        self.send.setProperty("fusion_icon", "review")
         fl.addWidget(self.send)
         review, rl = panel(
             t('wallet.review_title'),
-            t('wallet.review_subtitle'),
+            '',
         )
         self.review_summary = _WrappingStatusLabel()
         self.review_summary.setWordWrap(True)
@@ -352,8 +348,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.broadcast.setText(t('pages.approve_broadcast'))
         self.broadcast.setAccessibleName(t('pages.approve_broadcast'))
         self.broadcast.setAccessibleDescription(t('wallet.approve_broadcast_description'))
-        self.broadcast.setObjectName("FusionSecondary")
-        self.broadcast.setProperty("fusion_icon", "send")
+        self.broadcast.setObjectName("FusionPrimary")
+        self.broadcast.setProperty("fusion_icon", "broadcast")
         self.cancel.setText(t('owner.cancel_draft'))
         self.cancel.setAccessibleName(t('owner.cancel_draft'))
         self.cancel.setAccessibleDescription(t('wallet.cancel_draft_description'))
@@ -361,20 +357,24 @@ class Bip39FusionWindow(Bip39TrialWindow):
         rl.addWidget(self.activate)
         rl.addWidget(self.broadcast)
         rl.addWidget(self.cancel)
+        rl.addWidget(self.resume)
+        rl.addWidget(self.inspect)
+        for control, icon in ((self.cancel, 'cancel'), (self.resume, 'resume'),
+                              (self.inspect, 'search'), (self.fund, 'fund'),
+                              (self.confirm, 'confirm'), (self.intents, 'signed'),
+                              (self.recovery, 'backup'), (self.quit, 'quit')):
+            control.setProperty('fusion_icon', icon)
         self.send_result = grow_with_wrapped_text(label(t('wallet.no_broadcast_result')))
         self.send_result.setMinimumWidth(0)
         rl.addWidget(self.send_result)
-        rl.addWidget(label(t('wallet.no_automatic_retry'), "FusionGold"))
         send_layout.addWidget(ResponsiveRow(form, review, weights=[3, 2]))
         send_layout.addStretch()
         self.stack.addWidget(send_page)
 
         security_page, security_layout = page(
-            t('fusion.security'),
-            t('wallet.security_subtitle'),
-            t('wallet.security_kicker'),
+            t('fusion.security'), '', '',
         )
-        wallet_card, wl = panel(t('wallet.protection_title'), t('wallet.protection_subtitle'))
+        wallet_card, wl = panel(t('wallet.protection_title'), '')
         self.security_state = label(t('wallet.awaiting_wallet'), "FusionCardValue")
         wl.addWidget(self.security_state)
         self.lock.setText(t('wallet.lock'))
@@ -406,21 +406,16 @@ class Bip39FusionWindow(Bip39TrialWindow):
         # restore scope stays discoverable in every session and after restart.
         self.restore_scope_notice = grow_with_wrapped_text(
             _HeightForWidthLabel(t('wallet.restore_scope_notice')))
+        bind(self.restore_scope_notice, text='wallet.restore_scope_notice')
         self.restore_scope_notice.setObjectName('RestoreScopeNotice')
         self.restore_scope_notice.setWordWrap(True)
         self.restore_scope_notice.setMinimumWidth(0)
         rl.addWidget(self.restore_scope_notice)
         rl.addWidget(self.recovery)
-        rl.addWidget(label(
-            t('wallet.reservations_retained'),
-            "FusionGold",
-        ))
-        backup_card, bl = panel(t('wallet.backup_status'), t('wallet.backup_requirement'))
-        bl.addWidget(label(t('wallet.recovery_support_warning')))
-        self.backup_review = action(t('wallet.review_backup'), 'backup')
-        self.backup_review.setAccessibleName(t('wallet.review_backup'))
-        self.backup_review.clicked.connect(self._quick_backup)
-        bl.addWidget(self.backup_review)
+        self.reservation_notice = label(t('wallet.reservations_retained'), 'FusionGold')
+        self.reservation_notice.hide()
+        rl.addWidget(self.reservation_notice)
+        self.backup_review = self.recovery
         # Propagate height-for-width past the panels and the row: without
         # this the page layout sizes the row from a wider-width sizeHint
         # and squeezes the wrapped notice below its applied-width height.
@@ -440,7 +435,6 @@ class Bip39FusionWindow(Bip39TrialWindow):
             root_policy.setHeightForWidth(True)
             security_root.setSizePolicy(root_policy)
         security_layout.addWidget(security_row)
-        security_layout.addWidget(backup_card)
         security_layout.addStretch()
         self.stack.addWidget(security_page)
 
@@ -448,13 +442,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.stack.addWidget(self.network_page)
 
         settings_page, settings_layout = page(
-            t('fusion.settings'),
-            t('wallet.settings_subtitle'),
-            t('wallet.settings_kicker'),
+            t('fusion.settings'), '', '',
         )
         appearance, appearance_layout = panel(
             t('wallet.appearance'),
-            t('wallet.appearance_body'))
+            '')
         self.settings_theme = ThemeSlider(compact=False)
         appearance_layout.addWidget(self.settings_theme, 0, Qt.AlignmentFlag.AlignLeft)
         self.appearance_group = self.settings_theme.group
@@ -468,11 +460,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
             or stored.value("fusion_reduce_motion", False, type=bool))
         self.reduce_motion.toggled.connect(self._set_reduce_motion)
         appearance_layout.addWidget(self.reduce_motion)
-        settings_layout.addWidget(appearance)
+
 
         language_card, language_layout = panel(
             t("settings.language"),
-            t("settings.language_next_window"))
+            '')
         self.language = QComboBox()
         self.language.setObjectName("FusionLanguage")
         bind(self.language, accessible_name='settings.language')
@@ -492,22 +484,49 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.language.setCurrentIndex(language_index if language_index >= 0 else 0)
         self.language.blockSignals(False)
         self.language.currentIndexChanged.connect(self._language_chosen)
-        language_layout.addWidget(self.language)
-        settings_layout.addWidget(language_card)
+        # Keep the PM-101 canonical selection model; tiles choose its index.
+        self.language.hide()
+        self.language.setParent(language_card)
+        self.language_tiles = {}
+        self.language_group = QButtonGroup(self)
+        self.language_group.setExclusive(True)
+        tiles = QGridLayout()
+        flags = ('🇺🇸', '🇨🇳', '🇻🇳', '🇰🇷', '🇮🇩', '🇯🇵')
+        for n, flag in enumerate(flags, 1):
+            code = self.language.itemData(n)
+            tile = QToolButton()
+            tile.setObjectName('FusionLanguageTile')
+            tile.setText(flag + '  ' + self.language.itemText(n))
+            tile.setAccessibleName(self.language.itemText(n))
+            tile.setCheckable(True)
+            tile.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+            tile.setMinimumHeight(56)
+            self.language_group.addButton(tile, n)
+            tile.clicked.connect(lambda _checked=False, index=n: self.language.setCurrentIndex(index))
+            tiles.addWidget(tile, (n-1)//2, (n-1)%2)
+            self.language_tiles[code] = tile
+        language_layout.addLayout(tiles)
+        self.system_language = QToolButton()
+        self.system_language.setObjectName('FusionCategory')
+        bind(self.system_language, text=t('settings.language_system'), accessible_name=t('settings.language_system'))
+        self.system_language.setCheckable(True)
+        self.language_group.addButton(self.system_language, 0)
+        self.system_language.clicked.connect(lambda: self.language.setCurrentIndex(0))
+        language_layout.addWidget(self.system_language)
+        self.language.currentIndexChanged.connect(self._sync_language_tiles)
+        self._sync_language_tiles()
+
 
         about, about_layout = panel(
             t('wallet.about_title'),
-            t('wallet.about_body'))
+            '')
         self._protocol_line = label(core_compat.DISPLAY_NAME + str(t('wallet.protocol_summary')))
         about_layout.addWidget(self._protocol_line)
-        about_layout.addWidget(label(
-            t('wallet.preview_notice')))
-        settings_layout.addWidget(about)
         self.network_state = self.network_page.connection_value
         if shared_profile is not None:
             self.reconcile_button = action(t('wallet.reconcile_retained'), 'security')
             self.reconcile_button.clicked.connect(self._reconcile_shared)
-            self.network_page.controls_host.addWidget(self.reconcile_button)
+            self.network_page.attention_host.addWidget(self.reconcile_button)
             self._last_reconciliation = None
             for title, command in ((t('wallet.verify_peer_chain'), ('network_status',)),
                                    (t('wallet.disconnect_p2p'), ('network_active', False)),
@@ -518,7 +537,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
 
         advanced_card, advanced_layout = panel(
             t('wallet.advanced_title'),
-            t('wallet.advanced_body'))
+            '')
         self.advanced_toggle = _AdvancedControlsToggle()
         self.advanced_toggle.setObjectName("FusionAdvanced")
         self.advanced_toggle.setCheckable(True)
@@ -539,9 +558,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
             "FusionGold"))
         advanced_body.addWidget(self.fund)
         advanced_body.addWidget(self.confirm)
-        advanced_body.addWidget(self.inspect)
         advanced_body.addWidget(self.intents)
-        advanced_body.addWidget(self.resume)
         advanced_body.addWidget(label(t('wallet.session_kicker'), "FusionKicker"))
         advanced_body.addWidget(self.account)
         advanced_body.addWidget(self.balance)
@@ -556,10 +573,52 @@ class Bip39FusionWindow(Bip39TrialWindow):
             text.setSizePolicy(policy)
         advanced_body.addWidget(label(t('wallet.last_broadcast_kicker'), "FusionKicker"))
         advanced_body.addWidget(self.last_txid)
+        advanced_body.addWidget(about)
         advanced_layout.addWidget(self.advanced_container)
         self.advanced_container.hide()
         self.advanced_toggle.toggled.connect(self._toggle_advanced)
-        settings_layout.addWidget(advanced_card)
+        self.settings_sections = QStackedWidget()
+        for section in (appearance, language_card, advanced_card):
+            self.settings_sections.addWidget(section)
+        settings_rail = QWidget()
+        rail_layout = QVBoxLayout(settings_rail)
+        rail_layout.setContentsMargins(0, 0, 0, 0)
+        rail_layout.setSpacing(8)
+        self.settings_categories = []
+        categories = QButtonGroup(self)
+        for index, (key, icon, section, route) in enumerate((
+                (t('settings.general'), 'settings', 0, None),
+                (t('fusion.security'), 'security', None, 4),
+                (t('fusion.network'), 'network', None, 5),
+                (t('settings.language'), 'globe', 1, None),
+                (t('wallet.advanced_title'), 'advanced', 2, None))):
+            button = QToolButton()
+            button.setObjectName('FusionCategory')
+            bind(button, text=key, accessible_name=key)
+            button.setProperty('fusion_icon', icon)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            button.setCheckable(True)
+            button.setMinimumHeight(44)
+            categories.addButton(button, index)
+            if route is None:
+                button.clicked.connect(lambda _checked=False, target=section: self.settings_sections.setCurrentIndex(target))
+            else:
+                button.clicked.connect(lambda _checked=False, target=route: self.navigation.setCurrentRow(target))
+            button.clicked.connect(self._apply_fusion_theme)
+            rail_layout.addWidget(button)
+            self.settings_categories.append(button)
+        self.settings_categories[0].setChecked(True)
+        rail_layout.addStretch()
+        settings_rail.setMaximumWidth(210)
+        self.settings_sections.setMinimumWidth(0)
+        policy = self.settings_sections.sizePolicy()
+        policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
+        self.settings_sections.setSizePolicy(policy)
+        settings_row = ResponsiveRow(settings_rail, self.settings_sections, weights=[1, 3], breakpoint=700)
+        settings_rail.setParent(settings_row)
+        self.settings_sections.setParent(settings_row)
+        settings_layout.addWidget(settings_row)
+        self._translatable_panels = (form, review, wallet_card, recovery_card, appearance, language_card, advanced_card)
         settings_layout.addStretch()
         self.stack.addWidget(settings_page)
 
@@ -591,7 +650,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self._press_feedback = PressFeedback(self)
         self._theme_sync = False
         self.settings_theme.currentChanged.connect(self._theme_chosen)
-        saved = ui_settings().value("fusion_appearance", 0, type=int)
+        saved = ui_settings().value("fusion_appearance", 2, type=int)
         if saved in (0, 1, 2):
             self.settings_theme.setCurrentIndex(saved, animate=False)
         self._apply_reduce_motion(self.reduce_motion.isChecked())
@@ -630,6 +689,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
         install_keyboard_focus_mark(self)
         self._set_actions()
 
+    def _sync_language_tiles(self, *_):
+        button = self.language_group.button(self.language.currentIndex())
+        if button is not None:
+            button.setChecked(True)
+
     def _language_chosen(self, index):
         value = self.language.itemData(index)
         if type(value) is not str or getattr(self, '_retranslating', False):
@@ -664,7 +728,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
             retranslate_tree(self)
             # Responsive layout can temporarily detach this panel from the
             # window tree. Its populated review/result still belong to us.
-            retranslate_tree(self.review_summary.parentWidget())
+            for surface in self._translatable_panels:
+                retranslate_tree(surface)
             self._protocol_line.setText(
                 core_compat.DISPLAY_NAME + str(t('wallet.protocol_summary')))
             inputs = self._action_inputs()
@@ -741,8 +806,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
             tone = colors["onaccent"] if index == selected else colors["muted"]
             page_id = item.data(Qt.ItemDataRole.UserRole)
             item.setIcon(nav_icon_for(page_id, tone, max(1, self.devicePixelRatioF())))
-        for button in self.findChildren(__import__(
-                "PySide6.QtWidgets", fromlist=["QPushButton"]).QPushButton):
+        from PySide6.QtWidgets import QPushButton
+        buttons = self.findChildren(QPushButton)
+        for surface in getattr(self, '_translatable_panels', ()):
+            buttons.extend(surface.findChildren(QPushButton))
+        for button in dict.fromkeys(buttons):
             icon = button.property("fusion_icon")
             if icon:
                 tone = colors["onaccent"] if button.objectName() == "FusionPrimary" else colors["accent"]
@@ -752,7 +820,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         for button in self.findChildren(QToolButton):
             icon = button.property("fusion_icon")
             if icon:
-                on_thumb = (button.objectName() == "FusionSegment" and button.isChecked())
+                on_thumb = (button.objectName() in ("FusionSegment", "FusionCategory", "FusionLanguageTile") and button.isChecked())
                 button.setIcon(vector_icon(
                     icon, colors["onaccent"] if on_thumb else colors["accent"], dpr))
         for icon_label in self.findChildren(QLabel):
@@ -779,6 +847,9 @@ class Bip39FusionWindow(Bip39TrialWindow):
                 self.navigation.blockSignals(False)
             return
         self.page_title.setText(self.navigation.item(index).text())
+        if index == 6:
+            category = (0, 3, 4)[self.settings_sections.currentIndex()]
+            self.settings_categories[category].setChecked(True)
         reduced = self.reduce_motion.isChecked() or motion_reduced(self)
         self.stack.set_current(index, reduced=reduced)
         self._apply_fusion_theme()
@@ -886,7 +957,19 @@ class Bip39FusionWindow(Bip39TrialWindow):
                 self._payment_form_values()
             except (ValueError, ArithmeticError):
                 actions['send'] = False
+        focused_action = QApplication.focusWidget()
         self._apply_actions(actions)
+        if hasattr(self, 'review_summary'):
+            visibility = visible_actions(inputs)
+            review = getattr(self, '_last_review', None)
+            visibility['broadcast'] = bool(
+                visibility['broadcast'] and review is not None
+                and review.commitment == self._approved_commitment)
+            for name, visible in visibility.items():
+                control = getattr(self, name)
+                if not visible and control is focused_action:
+                    self.recipient_input.setFocus(Qt.FocusReason.OtherFocusReason)
+                control.setVisible(visible)
         if (not self._payment_scope_valid()
                 or (getattr(self, '_payment_decision', None) is not None
                     and self._payment_decision_commitment != self._approved_commitment)
@@ -947,6 +1030,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
                     3 if self._signed_ready else
                     2 if self._approved_commitment is not None else 0
                 )
+            count = getattr(self.overview, '_last_render', {}).get('reservation_count')
+            self.reservation_notice.setVisible(type(count) is int and count > 0)
             self._render_network()
 
     def _present_backup_ack(self, result):
