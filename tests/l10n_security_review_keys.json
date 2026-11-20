@@ -402,6 +402,10 @@
       "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
     },
     {
+      "key": "errors.SHARED_PORT_IN_USE",
+      "reason": "Public failure text. Say close the other wallet or wait, and keep retry, reset, and lock-release prohibitions independent."
+    },
+    {
       "key": "errors.SHARED_SINGLE_COORDINATOR_REQUIRED",
       "reason": "Public failure text. Say what stays protected, and keep retry, reset, and lock-release prohibitions independent."
     },

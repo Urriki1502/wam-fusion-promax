@@ -255,6 +255,7 @@ ID = {
     "errors.Q06_SHARED_RECONCILIATION_DENIED": "Rekonsiliasi rantai bersama ditolak. Checkpoint native, bukti yang ditandatangani, dan reservasi dipertahankan. Verifikasi profil asli, kata sandi, dan rantai; jangan hapus berkas runtime.",
     "errors.Q06_RECONCILIATION_NOT_NEEDED": "Sesi kustodi yang aktif sehat. Segarkan rantai sebelum meminta pemulihan.",
     "errors.SHARED_CONFIRMED_PEER_REQUIRED": "Peer Core yang dikonfigurasi terputus atau belum terverifikasi. Sambungkan kembali dan verifikasi rantai bersama; pembayaran yang ditandatangani dan tertunda tetap dipertahankan.",
+    "errors.SHARED_PORT_IN_USE": "Port jaringan sedang digunakan. Tutup dompet lain atau tunggu sebentar, lalu buka lagi.",
     "errors.SHARED_SINGLE_COORDINATOR_REQUIRED": "Hanya koordinator Shared REGTEST yang ditunjuk secara eksplisit yang boleh menambang. Peserta ini hanya menerima dan memvalidasi blok.",
     "errors.WALLET_EXECUTOR_OPERATION_STILL_PENDING": "Operasi masih berjalan. Tunggu sampai selesai; penandatanganan atau siaran tidak akan diulang secara otomatis.",
     "errors.WALLET_EXECUTOR_BUSY_OR_CLOSED": "Operasi dompet sedang berjalan atau sesi ditutup. Tunggu sampai selesai atau buka lagi dompet secara eksplisit.",

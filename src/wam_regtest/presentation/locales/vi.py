@@ -255,6 +255,7 @@ VI = {
     "errors.Q06_SHARED_RECONCILIATION_DENIED": "Đối soát chuỗi dùng chung đã bị từ chối. Điểm kiểm gốc, bằng chứng đã ký và các khoản giữ chỗ được giữ nguyên. Hãy xác minh hồ sơ gốc, mật khẩu và chuỗi; đừng xóa tệp runtime.",
     "errors.Q06_RECONCILIATION_NOT_NEEDED": "Phiên lưu ký đang hoạt động vẫn lành mạnh. Hãy làm mới chuỗi trước khi yêu cầu khôi phục.",
     "errors.SHARED_CONFIRMED_PEER_REQUIRED": "Peer Core đã cấu hình bị ngắt hoặc chưa được xác minh. Hãy kết nối lại và xác minh chuỗi dùng chung; các khoản đã ký và đang chờ vẫn được giữ.",
+    "errors.SHARED_PORT_IN_USE": "Cổng mạng đang được sử dụng. Hãy đóng ví khác hoặc chờ một lát rồi mở lại.",
     "errors.SHARED_SINGLE_COORDINATOR_REQUIRED": "Chỉ điều phối viên Shared REGTEST được chỉ định rõ mới được khai thác. Người tham gia này chỉ nhận và kiểm tra khối.",
     "errors.WALLET_EXECUTOR_OPERATION_STILL_PENDING": "Thao tác vẫn đang chạy. Hãy chờ hoàn tất; việc ký hoặc phát sẽ không tự động lặp lại.",
     "errors.WALLET_EXECUTOR_BUSY_OR_CLOSED": "Một thao tác ví đang diễn ra hoặc phiên đã đóng. Hãy chờ hoàn tất hoặc mở lại ví một cách rõ ràng.",

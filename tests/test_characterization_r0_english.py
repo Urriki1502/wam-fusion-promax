@@ -49,6 +49,7 @@ ENGLISH_GUI_ERRORS = {'FEE_ABSOLUTE_LIMIT': 'The fee exceeds 0.01 WAM. Nothing w
  'SHARED_CONFIRMED_PEER_REQUIRED': 'The configured Core peer is disconnected or not yet verified. '
                                    'Reconnect and verify the shared chain; signed and pending '
                                    'payments remain preserved.',
+ 'SHARED_PORT_IN_USE': 'Network port is in use. Close the other wallet or wait a moment, then open again.',
  'SHARED_SINGLE_COORDINATOR_REQUIRED': 'Only the explicitly designated Shared REGTEST coordinator '
                                        'may mine. This participant only receives and validates '
                                        'blocks.',

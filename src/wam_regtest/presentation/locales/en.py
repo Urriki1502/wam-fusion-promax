@@ -253,6 +253,7 @@ EN = {
     "errors.Q06_SHARED_RECONCILIATION_DENIED": "Shared-chain reconciliation was refused. Native checkpoints, signed evidence and reservations are preserved. Verify the original profile, password and chain; do not remove runtime files.",
     "errors.Q06_RECONCILIATION_NOT_NEEDED": "The active custody session is healthy. Refresh the chain before requesting recovery.",
     "errors.SHARED_CONFIRMED_PEER_REQUIRED": "The configured Core peer is disconnected or not yet verified. Reconnect and verify the shared chain; signed and pending payments remain preserved.",
+    "errors.SHARED_PORT_IN_USE": "Network port is in use. Close the other wallet or wait a moment, then open again.",
     "errors.SHARED_SINGLE_COORDINATOR_REQUIRED": "Only the explicitly designated Shared REGTEST coordinator may mine. This participant only receives and validates blocks.",
     "errors.WALLET_EXECUTOR_OPERATION_STILL_PENDING": "The operation is still running. Wait for completion; signing or broadcast will not be repeated automatically.",
     "errors.WALLET_EXECUTOR_BUSY_OR_CLOSED": "A wallet operation is in progress or the session is closed. Wait for completion or explicitly reopen the wallet.",

@@ -1,9 +1,43 @@
 """Policy negatives; these tests do NOT certify a real P2P network."""
 import unittest
 import sys
-from wam_regtest.shared_regtest import SharedRegtestProfile, SharedRegtestError, validate_peers
+import errno
+import socket
+from wam_regtest.shared_regtest import SharedRegtestProfile, SharedRegtestError, validate_peers, reserve_ports
 from wam_regtest.network_policy import parse_local_config, NetworkPolicyError
 from wam_regtest.cli_rpc import validate, CliRpcError
+
+
+def _free_port():
+    sock = socket.socket()
+    sock.bind(('127.0.0.1', 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
+def _leave_timewait(port):
+    """Active-close a server-side connection so its local port enters TIME_WAIT."""
+    srv = socket.socket()
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(('127.0.0.1', port))
+    srv.listen(1)
+    cli = socket.create_connection(('127.0.0.1', port), timeout=5)
+    conn, _ = srv.accept()
+    conn.close()  # server closes first -> TIME_WAIT stays on this local port
+    cli.close()
+    srv.close()
+
+
+def _timewait_present(port):
+    probe = socket.socket()
+    try:
+        probe.bind(('127.0.0.1', port))
+    except OSError as error:
+        return error.errno == errno.EADDRINUSE
+    finally:
+        probe.close()
+    return False
 
 
 class SharedPolicyContracts(unittest.TestCase):
@@ -174,6 +208,52 @@ class SharedPolicyContracts(unittest.TestCase):
             (blocks/'blk00000.dat').unlink()
             (blocks/'blk00000.dat').symlink_to(blocks/'xor.dat')
             with self.assertRaises(OSError):block_magic(directory)
+
+
+class ReservePortsTimeWait(unittest.TestCase):
+    def _profile(self, rpc_port, p2p_port):
+        return SharedRegtestProfile(peer_host='127.0.0.2', rpc_port=rpc_port,
+                                    p2p_port=p2p_port)
+
+    def test_bind_succeeds_while_timewait_sockets_exist(self):
+        rpc = _free_port()
+        p2p = _free_port()
+        _leave_timewait(rpc)
+        # Prove the precondition: the port is genuinely held by TIME_WAIT.
+        self.assertTrue(_timewait_present(rpc),
+                        'precondition: TIME_WAIT must be present on the port')
+        with reserve_ports(self._profile(rpc, p2p)):
+            pass
+
+    def test_reservation_still_fails_while_a_live_listener_holds_the_port(self):
+        rpc = _free_port()
+        p2p = _free_port()
+        holder = socket.socket()
+        holder.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        holder.bind(('127.0.0.1', rpc))
+        holder.listen(1)
+        try:
+            with self.assertRaises(SharedRegtestError) as cm:
+                with reserve_ports(self._profile(rpc, p2p)):
+                    pass
+            self.assertEqual(cm.exception.args, ('SHARED_PORT_IN_USE',))
+        finally:
+            holder.close()
+
+    def test_port_in_use_surfaces_the_specific_code_not_a_generic_error(self):
+        rpc = _free_port()
+        p2p = _free_port()
+        holder = socket.socket()
+        holder.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        holder.bind(('127.0.0.1', rpc))
+        holder.listen(1)
+        try:
+            with self.assertRaises(SharedRegtestError) as cm:
+                with reserve_ports(self._profile(rpc, p2p)):
+                    pass
+            self.assertEqual(cm.exception.args, ('SHARED_PORT_IN_USE',))
+        finally:
+            holder.close()
 
 
 if __name__ == '__main__':unittest.main()

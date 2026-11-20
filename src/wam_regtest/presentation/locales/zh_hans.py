@@ -255,6 +255,7 @@ ZH_HANS = {
     "errors.Q06_SHARED_RECONCILIATION_DENIED": "共享链对账已被拒绝。本机检查点、已签名证据和预留均予保留。请验证原始配置文件、密码和链；不要删除运行时文件。",
     "errors.Q06_RECONCILIATION_NOT_NEEDED": "当前托管会话是健康的。请求恢复之前请先刷新链。",
     "errors.SHARED_CONFIRMED_PEER_REQUIRED": "已配置的 Core peer 已断开或尚未验证。请重新连接并验证共享链；已签名和待处理的付款仍然保留。",
+    "errors.SHARED_PORT_IN_USE": "网络端口正在使用中。请关闭另一个钱包，或稍等片刻后再打开。",
     "errors.SHARED_SINGLE_COORDINATOR_REQUIRED": "只有被明确指定的 Shared REGTEST 协调者可以挖矿。此参与者只接收并验证区块。",
     "errors.WALLET_EXECUTOR_OPERATION_STILL_PENDING": "操作仍在运行。请等待完成；签名或广播不会自动重复。",
     "errors.WALLET_EXECUTOR_BUSY_OR_CLOSED": "钱包操作正在进行，或会话已关闭。请等待完成，或明确重新打开钱包。",

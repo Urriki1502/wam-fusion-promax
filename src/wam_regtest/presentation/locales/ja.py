@@ -255,6 +255,7 @@ JA = {
     "errors.Q06_SHARED_RECONCILIATION_DENIED": "共有チェーンの照合は拒否されました。ネイティブチェックポイント、署名済み証拠、予約は保持されています。元のプロファイル、パスワード、チェーンを検証してください。ランタイムファイルは削除しないでください。",
     "errors.Q06_RECONCILIATION_NOT_NEEDED": "有効な保管セッションは正常です。リカバリーを求める前にチェーンを更新してください。",
     "errors.SHARED_CONFIRMED_PEER_REQUIRED": "設定済みの Core peer は切断されているか、まだ検証されていません。再接続して共有チェーンを検証してください。署名済みおよび保留中の支払いは保持されます。",
+    "errors.SHARED_PORT_IN_USE": "ネットワークポートが使用中です。他のウォレットを閉じるか、少し待ってから再度開いてください。",
     "errors.SHARED_SINGLE_COORDINATOR_REQUIRED": "明示的に指定された Shared REGTEST コーディネーターだけが採掘できます。この参加者はブロックの受信と検証だけを行います。",
     "errors.WALLET_EXECUTOR_OPERATION_STILL_PENDING": "操作はまだ実行中です。完了を待ってください。署名やブロードキャストが自動で繰り返されることはありません。",
     "errors.WALLET_EXECUTOR_BUSY_OR_CLOSED": "ウォレット操作の実行中か、セッションが閉じています。完了を待つか、明示的にウォレットを開き直してください。",

@@ -255,6 +255,7 @@ KO = {
     "errors.Q06_SHARED_RECONCILIATION_DENIED": "공유 체인 대조가 거부되었습니다. 네이티브 체크포인트, 서명된 증거, 예약은 보존됩니다. 원본 프로필, 비밀번호, 체인을 검증하십시오. 런타임 파일을 제거하지 마십시오.",
     "errors.Q06_RECONCILIATION_NOT_NEEDED": "활성 보관 세션은 정상입니다. 복구를 요청하기 전에 체인을 새로 고치십시오.",
     "errors.SHARED_CONFIRMED_PEER_REQUIRED": "구성된 Core peer 가 끊겼거나 아직 검증되지 않았습니다. 다시 연결하고 공유 체인을 검증하십시오. 서명된 결제와 대기 중인 결제는 보존됩니다.",
+    "errors.SHARED_PORT_IN_USE": "네트워크 포트가 사용 중입니다. 다른 지갑을 닫거나 잠시 기다린 후 다시 여십시오.",
     "errors.SHARED_SINGLE_COORDINATOR_REQUIRED": "명시적으로 지정된 Shared REGTEST 조정자만 채굴할 수 있습니다. 이 참여자는 블록을 받고 검증하기만 합니다.",
     "errors.WALLET_EXECUTOR_OPERATION_STILL_PENDING": "작업이 아직 실행 중입니다. 완료를 기다리십시오. 서명이나 브로드캐스트는 자동으로 반복되지 않습니다.",
     "errors.WALLET_EXECUTOR_BUSY_OR_CLOSED": "지갑 작업이 진행 중이거나 세션이 닫혔습니다. 완료를 기다리거나 지갑을 명시적으로 다시 여십시오.",

@@ -6,6 +6,7 @@ implemented here: signed WAM Core owns TCP, handshake, relay and consensus.
 """
 from dataclasses import dataclass, asdict
 from contextlib import contextmanager
+import errno
 import ipaddress
 import os
 import secrets
@@ -100,7 +101,21 @@ def reserve_ports(profile):
             sockets.append(sock)
             if sys.platform == 'win32':
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-            sock.bind((host, port))
+            else:
+                # Tolerate TIME_WAIT connections an earlier Core left on this
+                # fixed shared port (POSIX/BSD ~30 s after close), exactly like
+                # core_supervisor._listener. A LIVE listener still refuses the
+                # bind below with EADDRINUSE. Never SO_REUSEPORT: that would
+                # let two real listeners coexist on one shared port.
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind((host, port))
+            except OSError as error:
+                if error.errno == errno.EADDRINUSE:
+                    # Specific public code instead of a generic/OSError fallback.
+                    # Fail-closed: no retry, no port change, no peer adoption.
+                    raise SharedRegtestError('SHARED_PORT_IN_USE') from None
+                raise
         yield
     finally:
         for sock in sockets:
