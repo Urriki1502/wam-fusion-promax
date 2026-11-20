@@ -671,7 +671,9 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self.overview.retranslate(
                 network=self._network_view(self._last_verified),
                 busy=inputs.busy, locked=inputs.locked,
-                operational=not inputs.locked and inputs.ready,
+                # 'operational' is a verified snapshot permission fact
+                # (signer_allowed and broadcast_allowed); keep the value the
+                # last verified render used — never re-derive it here.
                 faulted=inputs.faulted, core_alive=inputs.core_alive)
             self.language.blockSignals(True)
             self.language.setItemText(0, str(t('settings.language_system')))

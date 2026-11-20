@@ -307,6 +307,24 @@ class LiveLanguageTests(unittest.TestCase):
                 self.assertFalse(window.overview.currentness.isHidden())
                 self.assertTrue(window.executor.busy)
 
+    def test_read_only_permission_fact_survives_language_switch(self):
+        """A read-only profile must not turn 'Operational' on a language switch."""
+        from test_fusion_v21_layout import verified_snapshot
+        from wam_regtest.wallet_executor import ExecutorState
+        window = self._window()
+        snap = verified_snapshot()
+        window.executor.state = ExecutorState(locked=False, core_alive=True)
+        window._last_verified = snap
+        window._ready = True
+        window.overview.render_snapshot(snap, locked=False, operational=False,
+                                        core_alive=True, busy=False)
+        window._set_actions()
+        for language in ('en', 'vi', 'ja'):
+            with self.subTest(language=language):
+                window.language.setCurrentIndex(window.language.findData(language))
+                self.assertEqual(window.overview.wallet_profile.text(),
+                                 text('fusion.read_only_regtest_wallet', language))
+
     def test_populated_payment_result_rec_and_operation_text_retranslate(self):
         from wam_regtest.bip39_locale import t
         from wam_regtest.fusion_pages import fusion_review_text, describe_broadcast_result
