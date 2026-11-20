@@ -1119,6 +1119,109 @@ def publish():
                 root = self._make_tree(storage_src, VALID_FULLFLUSH)
                 self.assertIs(audit.storage_contract(root), False)
 
+    def test_forbidden_import_aliasing_forms_fail_in_storage_and_fullflush(self):
+        """PM-096: Reject Import/ImportFrom of importlib, builtins/__builtin__, sys.modules helpers."""
+        import ast
+
+        audit = _load_audit()
+        forbidden_imports = [
+            ("import_importlib", "import importlib"),
+            ("import_importlib_alias", "import importlib as x"),
+            ("import_importlib_submodule", "import importlib.util"),
+            ("import_importlib_submodule_alias", "import importlib.util as iu"),
+            ("import_importlib_machinery", "import importlib.machinery"),
+            ("from_importlib_import_module", "from importlib import import_module"),
+            ("from_importlib_import_module_alias", "from importlib import import_module as _imp"),
+            ("from_importlib_star", "from importlib import *"),
+            ("from_importlib_util", "from importlib.util import spec_from_file_location as s"),
+            ("from_rel_import_importlib", "from . import importlib"),
+            ("import_builtins", "import builtins"),
+            ("import_builtins_alias", "import builtins as b"),
+            ("import_builtins_submodule", "import builtins.something"),
+            ("from_builtins_getattr", "from builtins import getattr as _g"),
+            ("from_builtins_eval_alias", "from builtins import eval as _e"),
+            ("from_builtins_star", "from builtins import *"),
+            ("from_rel_import_builtins", "from . import builtins"),
+            ("import_dunder_builtin", "import __builtin__"),
+            ("import_dunder_builtin_alias", "import __builtin__ as b"),
+            ("import_dunder_builtin_submodule", "import __builtin__.something"),
+            ("from_dunder_builtin_eval_alias", "from __builtin__ import eval as _e"),
+            ("from_dunder_builtin_star", "from __builtin__ import *"),
+            ("from_rel_import_dunder_builtin", "from . import __builtin__"),
+            ("from_sys_import_modules", "from sys import modules"),
+            ("from_sys_import_modules_alias", "from sys import modules as _m"),
+            ("from_sys_import_star", "from sys import *"),
+            ("import_sys_modules", "import sys.modules"),
+            ("import_sys_modules_alias", "import sys.modules as _sm"),
+            ("from_sys_modules_import", "from sys.modules import anything"),
+            ("import_sys_alias", "import sys as _s"),
+            ("from_sys_meta_path_alias", "from sys import meta_path as _mp"),
+            ("from_sys_path_hooks_alias", "from sys import path_hooks as _ph"),
+            ("from_sys_path_importer_cache_alias", "from sys import path_importer_cache as _pic"),
+            ("from_sys_getframe_alias", "from sys import _getframe as _gf"),
+        ]
+
+        legacy_fsync_storage = (
+            "import os\n"
+            "def publish():\n"
+            "    os.fchmod(1, 0o600)\n"
+            "    os.fsync(1)\n"
+            "    os.link('a', 'b')\n"
+        )
+
+        # Valid fixtures remain accepted by _has_forbidden_runtime_ops.
+        self.assertIs(audit._has_forbidden_runtime_ops(ast.parse(VALID_FULLFLUSH)), False)
+        self.assertIs(
+            audit._has_forbidden_runtime_ops(
+                ast.parse(VALID_ENCRYPTED_STORAGE), allow_dynamic_getattr=True
+            ),
+            False,
+        )
+
+        for label, stmt in forbidden_imports:
+            with self.subTest(target="direct_op", form=label):
+                self.assertIs(audit._has_forbidden_runtime_ops(ast.parse(stmt)), True)
+
+            with self.subTest(target="encrypted_storage_fullflush", form=label):
+                storage_src = f"{stmt}\n{VALID_ENCRYPTED_STORAGE}"
+                root = self._make_tree(storage_src, VALID_FULLFLUSH)
+                self.assertIs(audit.storage_contract(root), False)
+
+            with self.subTest(target="encrypted_storage_legacy_fsync", form=label):
+                storage_src = f"{stmt}\n{legacy_fsync_storage}"
+                root = self._make_tree(storage_src)
+                self.assertIs(audit.storage_contract(root), False)
+
+            with self.subTest(target="fullflush_module_level", form=label):
+                ff_src = f"{stmt}\n{VALID_FULLFLUSH}"
+                root = self._make_tree(VALID_ENCRYPTED_STORAGE, ff_src)
+                self.assertIs(audit.storage_contract(root), False)
+
+            with self.subTest(target="fullflush_inside_function", form=label):
+                ff_src = f"{VALID_FULLFLUSH}\ndef _helper():\n    {stmt}\n"
+                root = self._make_tree(VALID_ENCRYPTED_STORAGE, ff_src)
+                self.assertIs(audit.storage_contract(root), False)
+
+        # Also reject indirect sys.modules attribute access / constant getattr in encrypted_storage.py
+        indirect_storage_mutants = [
+            (
+                "local_sys_alias_modules_attr",
+                "import sys\n" + VALID_ENCRYPTED_STORAGE + "def _tamper():\n    s = sys\n    return s.modules\n",
+            ),
+            (
+                "getattr_sys_modules_constant",
+                "import sys\n" + VALID_ENCRYPTED_STORAGE + "def _tamper():\n    return getattr(sys, 'modules')\n",
+            ),
+            (
+                "dunder_builtin_call",
+                VALID_ENCRYPTED_STORAGE + "def _tamper():\n    return __builtin__.eval('1')\n",
+            ),
+        ]
+        for label, storage_src in indirect_storage_mutants:
+            with self.subTest(target="encrypted_storage_indirect", form=label):
+                root = self._make_tree(storage_src, VALID_FULLFLUSH)
+                self.assertIs(audit.storage_contract(root), False)
+
 
 if __name__ == "__main__":
     unittest.main()

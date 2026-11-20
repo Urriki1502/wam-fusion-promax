@@ -179,27 +179,54 @@ def _has_dynamic_rebind(tree,targets,module_targets=()):
 _ALL_CAPS_CONST_RE=re.compile(r'^_?[A-Z][A-Z0-9_]*$')
 _FORBIDDEN_FN_CALLS=frozenset({'exec','eval','compile','globals','locals','vars','setattr','delattr','__import__'})
 _FORBIDDEN_FN_ATTRS=frozenset({'__dict__','__globals__','__code__','__builtins__'})
+_FORBIDDEN_IMPORT_ROOTS=frozenset({'importlib','builtins','__builtin__'})
+_SYS_MODULES_HELPERS=frozenset({'modules','meta_path','path_hooks','path_importer_cache','_getframe','__dict__'})
+_SYS_SUBMODULES=frozenset(f'sys.{m}' for m in ('modules','meta_path','path_hooks','path_importer_cache'))
+
+def _is_forbidden_import(node):
+    if isinstance(node,ast.Import):
+        for alias in node.names:
+            root=alias.name.split('.',1)[0]
+            if root in _FORBIDDEN_IMPORT_ROOTS: return True
+            if alias.name in _SYS_SUBMODULES or any(alias.name.startswith(s+'.') for s in _SYS_SUBMODULES):
+                return True
+            if alias.name=='sys' and alias.asname is not None: return True
+    elif isinstance(node,ast.ImportFrom):
+        mod=node.module or ''
+        mod_root=mod.split('.',1)[0]
+        if mod_root in _FORBIDDEN_IMPORT_ROOTS: return True
+        if mod in _SYS_SUBMODULES or any(mod.startswith(s+'.') for s in _SYS_SUBMODULES): return True
+        if mod=='sys' and any(a.name=='*' or a.name in _SYS_MODULES_HELPERS for a in node.names):
+            return True
+        if any(a.name in _FORBIDDEN_IMPORT_ROOTS for a in node.names): return True
+    return False
 
 def _has_forbidden_runtime_ops(node,*,allow_dynamic_getattr=False):
     for n in ast.walk(node):
-        if isinstance(n,ast.Call):
+        if isinstance(n,(ast.Import,ast.ImportFrom)):
+            if _is_forbidden_import(n): return True
+        elif isinstance(n,ast.Call):
             fn_name=name(n.func)
-            bare=fn_name[9:] if fn_name.startswith('builtins.') else fn_name
+            bare=fn_name[9:] if fn_name.startswith('builtins.') else (
+                fn_name[12:] if fn_name.startswith('__builtin__.') else fn_name)
             if bare in _FORBIDDEN_FN_CALLS: return True
             if fn_name=='importlib' or fn_name.startswith('importlib.'): return True
             if fn_name=='sys.modules' or fn_name.startswith('sys.modules.'): return True
-            if not allow_dynamic_getattr and bare=='getattr':
-                if n.keywords or len(n.args) not in (2,3): return True
-                attr_arg=n.args[1]
-                if not (isinstance(attr_arg,ast.Constant) and type(attr_arg.value) is str): return True
-                if attr_arg.value in _FORBIDDEN_FN_ATTRS or attr_arg.value=='modules' or attr_arg.value.startswith('__'):
+            if bare=='getattr':
+                if len(n.args)>=2 and isinstance(n.args[1],ast.Constant) and type(n.args[1].value) is str:
+                    if (n.args[1].value in _FORBIDDEN_FN_ATTRS
+                            or n.args[1].value in _SYS_MODULES_HELPERS
+                            or n.args[1].value.startswith('__')):
+                        return True
+                elif not allow_dynamic_getattr:
                     return True
+                if not allow_dynamic_getattr and (n.keywords or len(n.args) not in (2,3)): return True
         elif isinstance(n,ast.Attribute):
             if n.attr in _FORBIDDEN_FN_ATTRS: return True
-            if n.attr=='modules' and name(n.value)=='sys': return True
-            if isinstance(n.value,ast.Name) and n.value.id=='importlib': return True
+            if n.attr=='modules' or (n.attr in _SYS_MODULES_HELPERS and name(n.value)=='sys'): return True
+            if isinstance(n.value,ast.Name) and n.value.id in _FORBIDDEN_IMPORT_ROOTS: return True
         elif isinstance(n,ast.Name):
-            if n.id in _FORBIDDEN_FN_CALLS or n.id in _FORBIDDEN_FN_ATTRS or n.id in ('importlib','builtins'):
+            if n.id in _FORBIDDEN_FN_CALLS or n.id in _FORBIDDEN_FN_ATTRS or n.id in _FORBIDDEN_IMPORT_ROOTS:
                 return True
     return False
 
@@ -237,7 +264,7 @@ def _resolve_fullflush_calls(storage):
     if 'os' in shadowed: return None
     if imported_locals&shadowed: return None
     if imported_locals and _has_dynamic_rebind(storage,imported_locals): return None
-    if imported_locals and _has_forbidden_runtime_ops(storage,allow_dynamic_getattr=True): return None
+    if _has_forbidden_runtime_ops(storage,allow_dynamic_getattr=True): return None
     return imported_locals
 
 def _is_darwin_platform_check(test):
@@ -355,7 +382,7 @@ def _is_safe_annotation(node):
     if isinstance(node,ast.Name):
         return (node.id not in _FORBIDDEN_FN_CALLS
                 and node.id not in _FORBIDDEN_FN_ATTRS
-                and node.id not in ('importlib','builtins'))
+                and node.id not in _FORBIDDEN_IMPORT_ROOTS)
     return False
 
 def _check_fullflush_fn_node(node,in_darwin_branch=False):
@@ -381,7 +408,7 @@ def _is_allowlisted_fullflush_function(fn):
     all_args=[*fn.args.posonlyargs,*fn.args.args,*fn.args.kwonlyargs]
     if fn.args.vararg is not None: all_args.append(fn.args.vararg)
     if fn.args.kwarg is not None: all_args.append(fn.args.kwarg)
-    blocked_names=({'os','sys','fcntl','Path','importlib','builtins'}
+    blocked_names=({'os','sys','fcntl','Path'}|_FORBIDDEN_IMPORT_ROOTS
                    |_FULLFLUSH_PRIMITIVES|_FORBIDDEN_FN_CALLS|_FORBIDDEN_FN_ATTRS)
     if any(a.arg in blocked_names or not _is_safe_annotation(a.annotation) for a in all_args): return False
     if not _is_safe_annotation(fn.returns): return False
@@ -438,6 +465,7 @@ def _verify_fullflush(root):
     try: tree=ast.parse(path.read_text())
     except (OSError,SyntaxError): return False
     if not _is_allowlisted_fullflush_module(tree): return False
+    if _has_forbidden_runtime_ops(tree,allow_dynamic_getattr=False): return False
     if {'os','sys','fcntl'}&_assigned_names(tree,allow_stdlib=('os','sys','fcntl')): return False
     counts,invalid=_count_module_bindings(tree,_FULLFLUSH_PRIMITIVES)
     if invalid or any(counts.get(n)!=1 for n in _FULLFLUSH_PRIMITIVES): return False
