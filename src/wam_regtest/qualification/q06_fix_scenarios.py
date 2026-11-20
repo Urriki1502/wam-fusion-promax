@@ -62,6 +62,8 @@ _S4_BOOL = (
 _S4_INT = ("signed_reservation_count", "payment_confirmed_atoms") + tuple(
     f"fund{n}_{key}" for n in (1, 2, 3, 4)
     for key in ("before_atoms", "after_atoms", "reservation_count", "raw_reservation_count"))
+_S4_STRING = ("inner_failure_code",)
+_MISSING = object()
 
 
 def s4_passed(section):
@@ -196,6 +198,29 @@ def exact_confirmed_balance(funded, payment, fee, change, confirmed, available, 
             and total == confirmed)
 
 
+def confirmed_payment_in_history(txid, history, verified_height=_MISSING):
+    """Require one real history row for txid with an exact positive int height."""
+    if type(txid) is not str or _HEX64.match(txid) is None:
+        return False
+    if type(history) not in (list, tuple):
+        return False
+    matches = []
+    for row in history:
+        if type(row) is dict and row.get("txid") == txid:
+            matches.append(row)
+    if len(matches) != 1:
+        return False
+    height = matches[0].get("height")
+    if type(height) is not int or height <= 0:
+        return False
+    if verified_height is not _MISSING:
+        if type(verified_height) is not int or verified_height <= 0:
+            return False
+        if height > verified_height:
+            return False
+    return True
+
+
 def _public_bools(section, names):
     if type(section) is not dict:
         return None
@@ -216,6 +241,17 @@ def _public_ints(section, names):
     for name in names:
         value = section.get(name)
         if type(value) is int and 0 <= value <= _ATOM_MAX:
+            kept[name] = value
+    return kept
+
+
+def _public_strings(section, names):
+    if type(section) is not dict:
+        return {}
+    kept = {}
+    for name in names:
+        value = section.get(name)
+        if _token(value) and _CODE.match(value):
             kept[name] = value
     return kept
 
@@ -265,11 +301,12 @@ def public_evidence(raw):
     s3 = _public_bools(raw.get("s3"), _S3_BOOL)
     if s3 is not None:
         out["s3"] = s3
-    # S4 has no string-valued public fields, including diagnostic strings.
+    # S4 public strings are limited to explicit code-shaped diagnostics.
     section = raw.get("s4")
     if type(section) is dict:
         s4 = {key: section[key] for key in _S4_BOOL if type(section.get(key)) is bool}
         s4.update(_public_ints(section, _S4_INT))
+        s4.update(_public_strings(section, _S4_STRING))
         out["s4"] = s4
     if status != "PASS":
         code = raw.get("failure_code")
@@ -1086,8 +1123,12 @@ def scenario_repeat_funding(app, adapter, core, source, report):
                 lambda: window._pending_confirm_txid is None, "S4_CONFIRM")
         settle()
         after_payment = executor.request("snapshot", timeout=240)
-        confirmed = (any(row["txid"] == txid and row["confirmations"] > 0
-                         for row in after_payment["history"])
+        if type(after_payment) is not dict:
+            raise ValueError("Q06_FIX_S4_CONFIRMATION_DENIED")
+        verified_height = (after_payment.get("height")
+                           if "height" in after_payment else _MISSING)
+        history = after_payment.get("history")
+        confirmed = (confirmed_payment_in_history(txid, history, verified_height)
                      and txid in _history_txids(window)
                      and window.send_result.text().startswith("Confirmed")
                      and txid in window.send_result.text())
@@ -1108,8 +1149,11 @@ def scenario_repeat_funding(app, adapter, core, source, report):
     except Exception as error:
         # Shared helpers can report GUI/wait/backup failures; keep S4's public
         # failure namespace stable without copying exception messages.
-        if failure_code(error).startswith("Q06_FIX_S4_"):
+        inner_code = failure_code(error)
+        if inner_code.startswith("Q06_FIX_S4_"):
             raise
+        if _token(inner_code) and _CODE.match(inner_code):
+            _note(report, "s4", inner_failure_code=inner_code)
         raise ValueError("Q06_FIX_S4_OPERATION_DENIED") from error
     finally:
         retained = _shutdown(state)

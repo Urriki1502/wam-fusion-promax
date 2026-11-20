@@ -191,7 +191,14 @@ class RepeatFundingScenario(unittest.TestCase):
                     "pending_confirm_txid": window._pending_confirm_txid,
                     "payment_review": None,
                     "recovered_unsigned_cancel_available": False,
-                    "history": [{"txid": "a" * 64, "confirmations": 1}] if status["confirmed"] and fault != "history" else []}
+                    "height": 1,
+                    "history": (
+                        [] if not status["confirmed"] or fault == "history" else
+                        [{"txid": "a" * 64, "atoms": 0,
+                          **({} if fault == "missing_height" else
+                             {"height": (0 if fault == "zero_height" else
+                                         None if fault == "null_height" else 1)})}
+                        ])}
 
         executor = SimpleNamespace(request=request)
         def open_owner(state, *_args):
@@ -275,6 +282,9 @@ class RepeatFundingScenario(unittest.TestCase):
                 ("signed_snapshot", "SIGNED_PAYMENT_MISSING"),
                 ("history", "CONFIRMATION_DENIED"), ("confirmed", "CONFIRMATION_DENIED"),
                 ("pending", "CONFIRMATION_DENIED"), ("post_button", "FUND_BUTTON_DISABLED"),
+                ("missing_height", "CONFIRMATION_DENIED"),
+                ("zero_height", "CONFIRMATION_DENIED"),
+                ("null_height", "CONFIRMATION_DENIED"),
                 ("post_fund", "BALANCE_NOT_INCREASED"),
                 ("retained", "OWNER_RETAINED"), ("operation", "OPERATION_DENIED")):
             with self.subTest(fault=fault):
@@ -282,6 +292,8 @@ class RepeatFundingScenario(unittest.TestCase):
                 self.assertIsNotNone(error)
                 self.assertEqual(stage.failure_code(error), "Q06_FIX_S4_" + code)
                 self.assertFalse(stage.s4_passed(report.get("s4")))
+                if fault == "operation":
+                    self.assertNotIn("inner_failure_code", report["s4"])
 
     def test_frozen_entry_runs_s4_before_final_command_q(self):
         with (patch.object(stage, "_identify"), patch.object(stage, "_require_cocoa"),
@@ -297,6 +309,22 @@ class RepeatFundingScenario(unittest.TestCase):
 
 
 class FixScenarioArithmetic(unittest.TestCase):
+    def test_confirmed_payment_requires_real_history_row_height(self):
+        txid = "bb" * 32
+        good = [{"txid": txid, "atoms": 100_000_000, "height": 101}]
+        self.assertTrue(stage.confirmed_payment_in_history(txid, good, 101))
+        self.assertFalse(stage.confirmed_payment_in_history(txid, [], 101))
+        self.assertFalse(stage.confirmed_payment_in_history(
+            txid, [{"txid": txid, "atoms": 100_000_000}], 101))
+        self.assertFalse(stage.confirmed_payment_in_history(
+            txid, [{"txid": txid, "atoms": 100_000_000, "height": 0}], 101))
+        self.assertFalse(stage.confirmed_payment_in_history(
+            txid, [{"txid": txid, "atoms": 100_000_000, "height": None}], 101))
+        self.assertFalse(stage.confirmed_payment_in_history(
+            txid, [{"txid": txid, "atoms": 100_000_000, "height": 102}], 101))
+        self.assertFalse(stage.confirmed_payment_in_history(
+            txid, [good[0], good[0]], 101))
+
     def test_confirmed_balance_identity(self):
         funded, payment, fee = 500_000_000, 100_000_000, 10_000
         change = funded - payment - fee
@@ -390,6 +418,19 @@ class FixScenarioEvidence(unittest.TestCase):
                 "failure_exception": bad_exc,
             })
             self.assertNotIn("failure_exception", sanitized)
+
+    def test_public_evidence_whitelists_only_code_shaped_inner_diagnostic(self):
+        raw = {
+            "status": "FAIL",
+            "scenarios": {"S1": "PASS", "S2": "PASS", "S3": "PASS", "S4": "FAIL"},
+            "s4": dict(_s4_passing(), inner_failure_code="Q06_FIX_S4_CONFIRMATION_DENIED"),
+            "failure_code": "Q06_FIX_S4_OPERATION_DENIED",
+        }
+        evidence = stage.public_evidence(raw)
+        self.assertEqual(evidence["s4"]["inner_failure_code"], "Q06_FIX_S4_CONFIRMATION_DENIED")
+        raw["s4"]["inner_failure_code"] = "secret never copied"
+        evidence = stage.public_evidence(raw)
+        self.assertNotIn("inner_failure_code", evidence["s4"])
 
     def test_drive_prints_pass_markers_and_writes_public_evidence(self):
         def s1(report):
