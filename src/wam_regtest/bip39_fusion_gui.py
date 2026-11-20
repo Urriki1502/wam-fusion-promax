@@ -27,6 +27,7 @@ from .fusion_ui import (
     FusionOverview, fusion_stylesheet, fusion_palette, page, panel,
     label, WrappedLabel, ResponsiveRow, vector_icon, nav_icon_for, FUSION_NAV_PAGES, fusion_nav_pages,
     StateSwitch, action, ThemeSlider, grow_with_wrapped_text, ReadableText,
+    _HeightForWidthLabel,
     SHELL, present_brand_title, install_keyboard_focus_mark,
 )
 from .fusion_motion import fade_widget, PressFeedback, TransitionHost, STAGGER_MS, STANDARD_MS, motion_reduced
@@ -119,44 +120,6 @@ class _WrappingStatusLabel(WrappedLabel):
         select_all.triggered.connect(self._select_all)
         menu.popup(event.globalPos())
         event.accept()
-
-
-class _HeightForWidthLabel(QLabel):
-    """Wrapped label whose minimum height follows heightForWidth(width).
-
-    grow_with_wrapped_text() marks the label itself height-for-width, but
-    the recovery panel and the ResponsiveRow grid between it and the page
-    layout do not propagate that, so the page could allocate the height
-    the text needed at a wider width and clip it at the applied width.
-    Keeping the minimum at the applied width's heightForWidth lets the
-    panel, row and scroll page grow (and scroll) instead of squeezing it.
-    """
-
-    def _sync_minimum_height(self):
-        width = self.width()
-        if width <= 0:
-            return
-        # Clear an earlier minimum first: it was measured at a possibly
-        # narrower width and must not floor this width's measurement.
-        if self.minimumHeight() != 0:
-            self.setMinimumHeight(0)
-        needed = self.heightForWidth(width)
-        if needed > 0 and self.minimumHeight() != needed:
-            self.setMinimumHeight(needed)
-
-    def setText(self, text):
-        capture(self, 'text', text)
-        super().setText(text if isinstance(text, str) else '')
-        self._sync_minimum_height()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._sync_minimum_height()
-
-    def changeEvent(self, event):
-        super().changeEvent(event)
-        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
-            self._sync_minimum_height()
 
 
 class _AdvancedControlsToggle(QToolButton):
@@ -396,7 +359,14 @@ class Bip39FusionWindow(Bip39TrialWindow):
         bind(security_page, tooltip=t('wallet.security_kicker'),
              accessible_description=t('wallet.security_kicker'))
         wallet_card, wl = panel(t('wallet.protection_title'), t('wallet.protection_subtitle'))
-        self.security_state = label(t('wallet.awaiting_wallet'), "FusionCardValue")
+        self.security_state = grow_with_wrapped_text(
+            _HeightForWidthLabel(t('wallet.awaiting_wallet')))
+        # The lock-status line is lock / re-authentication guidance (a
+        # sentence), not a giant numeric "value": it must wrap and grow with
+        # its wrapped height instead of rendering as one overflowing number.
+        self.security_state.setObjectName("FusionMuted")
+        self.security_state.setWordWrap(True)
+        self.security_state.setMinimumWidth(0)
         wl.addWidget(self.security_state)
         self.lock.setText(t('wallet.lock'))
         self.lock.setObjectName("FusionSecondary")

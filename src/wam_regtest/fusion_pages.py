@@ -4,7 +4,7 @@ from .bip39_locale import t as ui_text
 from PySide6.QtCore import Qt, Signal, QRectF, QTimer, QEvent
 from PySide6.QtGui import QColor,QPainter,QFont,QFontDatabase
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QLineEdit,QComboBox,QCheckBox,QTableWidget,QTableWidgetItem,QHeaderView,QApplication,QDialog,QDialogButtonBox,QFrame,QToolButton,QButtonGroup,QScrollArea
-from .fusion_ui import SHELL,label,panel,page,action,ResponsiveRow,AdaptiveButtonRow,keyboard_table,vector_icon,fusion_palette,activity_by_block,grow_with_wrapped_text,direction_tone,QR,pending_amount_text
+from .fusion_ui import SHELL,label,panel,page,action,ResponsiveRow,AdaptiveButtonRow,keyboard_table,vector_icon,fusion_palette,activity_by_block,grow_with_wrapped_text,direction_tone,QR,pending_amount_text,_HeightForWidthLabel
 from .fusion_i18n import bind, bind_headers, bind_items, retranslate_tree
 from .presentation.strings import text as catalog_text
 from .wallet_read import format_wam
@@ -140,7 +140,10 @@ class ReceivePage(QWidget):
         self._copy_timer=QTimer(self);self._copy_timer.setSingleShot(True)
         self._copy_timer.timeout.connect(lambda: self.copy_status.setText(ui_text('pages.copy_complete') if self.code else ui_text('pages.address_locked')))
         cl.addWidget(ResponsiveRow(qrbox,address,weights=[2,3],breakpoint=610));layout.addWidget(card)
-        self.received=label(ui_text('pages.no_verified_receiving_activity'));layout.addWidget(self.received);layout.addStretch()
+        self.received = grow_with_wrapped_text(_HeightForWidthLabel(ui_text('pages.no_verified_receiving_activity')))
+        self.received.setWordWrap(True)
+        self.received.setMinimumWidth(0)
+        layout.addWidget(self.received);layout.addStretch()
     def retranslate(self):
         retranslate_tree(self)
         self.qr.update()
@@ -659,16 +662,31 @@ class NetworkPage(QWidget):
              accessible_description=ui_text('pages.v1_net_regtest'))
         root.addWidget(self.scroll)
         status, sl = panel(ui_text('pages.network_status'), ui_text('pages.unknown_until_verified'))
-        self.mode_value = label(ui_text('pages.not_verified'), 'FusionCardValue')
-        self.connection_value = label(ui_text('pages.core_connectivity_is_not_verified'))
-        self.peer_value = label(ui_text('pages.peers_after_check'))
-        self.height_value = label(ui_text('pages.height_after_snapshot'))
-        self.sync_value = label(ui_text('pages.sync_unknown'))
-        self.identity_value = label(ui_text('pages.shared_identity_scope'))
+        # Every status/peer/identity line here is a sentence, not a giant
+        # numeric value: give it the body style and let it grow with its
+        # wrapped height (same rule as the Security page lock-status line).
+        self.mode_value = grow_with_wrapped_text(_HeightForWidthLabel(ui_text('pages.not_verified')))
+        self.mode_value.setObjectName('FusionMuted')
+        self.mode_value.setWordWrap(True)
+        self.mode_value.setMinimumWidth(0)
+        self.connection_value = grow_with_wrapped_text(_HeightForWidthLabel(ui_text('pages.core_connectivity_is_not_verified')))
+        self.connection_value.setWordWrap(True)
+        self.connection_value.setMinimumWidth(0)
+        self.peer_value = grow_with_wrapped_text(_HeightForWidthLabel(ui_text('pages.peers_after_check')))
+        self.peer_value.setWordWrap(True)
+        self.peer_value.setMinimumWidth(0)
+        self.height_value = grow_with_wrapped_text(_HeightForWidthLabel(ui_text('pages.height_after_snapshot')))
+        self.height_value.setWordWrap(True)
+        self.height_value.setMinimumWidth(0)
+        self.sync_value = grow_with_wrapped_text(_HeightForWidthLabel(ui_text('pages.sync_unknown')))
+        self.sync_value.setWordWrap(True)
+        self.sync_value.setMinimumWidth(0)
+        self.identity_value = grow_with_wrapped_text(_HeightForWidthLabel(ui_text('pages.shared_identity_scope')))
+        self.identity_value.setWordWrap(True)
+        self.identity_value.setMinimumWidth(0)
         self.identity_value.hide()
         for widget in (self.mode_value, self.connection_value, self.peer_value,
                        self.height_value, self.sync_value, self.identity_value):
-            widget.setMinimumWidth(0)
             sl.addWidget(widget)
         self.attention_host = QVBoxLayout()
         sl.addLayout(self.attention_host)
@@ -687,7 +705,9 @@ class NetworkPage(QWidget):
         self.controls_body = QWidget()
         body_layout = QVBoxLayout(self.controls_body)
         body_layout.setContentsMargins(0, 0, 0, 0)
-        self.controls_note = label(ui_text('pages.manual_peer'))
+        self.controls_note = grow_with_wrapped_text(_HeightForWidthLabel(ui_text('pages.manual_peer')))
+        self.controls_note.setWordWrap(True)
+        self.controls_note.setMinimumWidth(0)
         body_layout.addWidget(self.controls_note)
         self.controls_host = QVBoxLayout()
         body_layout.addLayout(self.controls_host)

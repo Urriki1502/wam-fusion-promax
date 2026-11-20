@@ -597,6 +597,51 @@ class WrappedLabel(I18nLabel):
             self._fit_wrapped()
 
 
+class _HeightForWidthLabel(QLabel):
+    """Wrapped label whose minimum height follows heightForWidth(width).
+
+    grow_with_wrapped_text() marks the label itself height-for-width, but
+    panels/rows between the label and the page layout do not propagate that,
+    so the page could allocate the height the text needed at a wider width
+    and clip it at the applied width. Keeping the minimum at the applied
+    width's heightForWidth lets the panel, row and scroll page grow (and
+    scroll) instead of squeezing it.
+    """
+
+    def __init__(self, text=''):
+        # Capture the constructor text (as I18nLabel does) so retranslate
+        # round-trips it; QLabel(text) bypasses the overridden setText.
+        super().__init__()
+        if text:
+            self.setText(text)
+
+    def _sync_minimum_height(self):
+        width = self.width()
+        if width <= 0:
+            return
+        # Clear an earlier minimum first: it was measured at a possibly
+        # narrower width and must not floor this width's measurement.
+        if self.minimumHeight() != 0:
+            self.setMinimumHeight(0)
+        needed = self.heightForWidth(width)
+        if needed > 0 and self.minimumHeight() != needed:
+            self.setMinimumHeight(needed)
+
+    def setText(self, text):
+        capture(self, 'text', text)
+        super().setText(text if isinstance(text, str) else '')
+        self._sync_minimum_height()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._sync_minimum_height()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            self._sync_minimum_height()
+
+
 def grow_with_wrapped_text(widget):
     """Let a word-wrapped label take the height its wrapped text needs.
 
