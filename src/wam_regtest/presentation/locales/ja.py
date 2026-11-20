@@ -414,6 +414,7 @@ JA = {
     "wallet.shared_badge": "共有 REGTEST",
     "wallet.navigation_accessible": "WAM Fusion ウォレットのナビゲーション",
     "wallet.sidebar_notice": "WAM Fusion  ·  Qt  ·  WAM Core (REGTEST)\n実資金や mainnet の鍵は使用しないでください。",
+    "wallet.sidebar_scope_badge": "REGTEST · テスト資金のみ",
     "wallet.snapshot_unverified": "スナップショット未検証",
     "wallet.refresh_tooltip": "所有する WAM Core で最新状態を検証",
     "wallet.refresh_accessible": "検証済みブロックチェーン状態を更新",

@@ -237,4 +237,7 @@ class SidebarBrandFit(unittest.TestCase):
                 # English fits one line, so the visible words stay the catalog string.
                 self.assertNotIn('\n', shown)
             if language == 'ja':
-                self.assertIn('\n', shown)
+                # The sidebar now fits the Japanese brand on one line, so the
+                # catalog string shows unbroken (no orphaned single CJK char,
+                # which the per-line check above already forbids everywhere).
+                self.assertNotIn('\n', shown)

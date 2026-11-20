@@ -412,6 +412,7 @@ EN = {
     "wallet.shared_badge": "SHARED REGTEST",
     "wallet.navigation_accessible": "WAM Fusion wallet navigation",
     "wallet.sidebar_notice": "WAM Fusion  ·  Qt  ·  WAM Core (REGTEST)\nNo real funds or mainnet keys.",
+    "wallet.sidebar_scope_badge": "REGTEST · TEST FUNDS ONLY",
     "wallet.snapshot_unverified": "Snapshot not verified",
     "wallet.refresh_tooltip": "Verify the latest state with your owned WAM Core",
     "wallet.refresh_accessible": "Refresh verified blockchain state",

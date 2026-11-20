@@ -239,7 +239,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         brand.addWidget(self._brand_title)
         side.addLayout(brand)
         scope_badge = label(
-            t('wallet.shared_badge') if shared_profile else t('desktop.regtest_badge'),
+            t('wallet.shared_badge') if shared_profile else t('wallet.sidebar_scope_badge'),
             "FusionBadge")
         # The scope badge is always visible, and the exact full safety
         # sentence rides on its help surfaces AND the navigation a11y below.

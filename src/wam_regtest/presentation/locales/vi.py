@@ -414,6 +414,7 @@ VI = {
     "wallet.shared_badge": "REGTEST CHIA SẺ",
     "wallet.navigation_accessible": "Điều hướng ví WAM Fusion",
     "wallet.sidebar_notice": "WAM Fusion  ·  Qt  ·  WAM Core (REGTEST)\nKhông dùng tiền thật hoặc khóa mainnet.",
+    "wallet.sidebar_scope_badge": "REGTEST · CHỈ TIỀN THỬ",
     "wallet.snapshot_unverified": "Chưa xác minh ảnh chụp trạng thái",
     "wallet.refresh_tooltip": "Xác minh trạng thái mới nhất với WAM Core thuộc quyền quản lý",
     "wallet.refresh_accessible": "Làm mới trạng thái blockchain đã xác minh",

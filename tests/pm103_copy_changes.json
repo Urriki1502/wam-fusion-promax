@@ -46,5 +46,13 @@
     "고급",
     "Lanjutan",
     "高级"
+  ],
+  "wallet.sidebar_scope_badge": [
+    "REGTEST · TEST FUNDS ONLY",
+    "REGTEST · CHỈ TIỀN THỬ",
+    "REGTEST · テスト資金のみ",
+    "REGTEST · 테스트 자금만",
+    "REGTEST · HANYA DANA UJI",
+    "REGTEST · 仅限测试资金"
   ]
 }

@@ -39,7 +39,7 @@ def _retired_count():
     return len(json.loads((Path(__file__).parent / 'pm103_retired_keys.json').read_text()))
 
 
-CATALOG_KEYS = 830 + (15 - _retired_count())  # r4 base 830 with all 15 retired; each restored key re-enters
+CATALOG_KEYS = 830 + (15 - _retired_count()) + 1  # r4 base 830 with all 15 retired; each restored key re-enters; PM-103 r7 adds wallet.sidebar_scope_badge
 TXID = TX(0x3000)
 TXID_B = TX(0x3001)
 TXID_C = TX(0x3002)

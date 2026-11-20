@@ -414,6 +414,7 @@ KO = {
     "wallet.shared_badge": "공유 REGTEST",
     "wallet.navigation_accessible": "WAM Fusion 지갑 탐색",
     "wallet.sidebar_notice": "WAM Fusion  ·  Qt  ·  WAM Core (REGTEST)\n실제 자금이나 mainnet 키는 없습니다.",
+    "wallet.sidebar_scope_badge": "REGTEST · 테스트 자금만",
     "wallet.snapshot_unverified": "스냅샷이 검증되지 않음",
     "wallet.refresh_tooltip": "소유한 WAM Core 로 최신 상태를 검증",
     "wallet.refresh_accessible": "검증된 블록체인 상태 새로고침",

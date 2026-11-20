@@ -36,10 +36,29 @@ class SafetyTextLayout(unittest.TestCase):
         return (policy.verticalPolicy() == QSizePolicy.Policy.Minimum
                 and policy.hasHeightForWidth() and widget.wordWrap())
 
-    def test_sidebar_scope_badge_is_visible_and_carries_the_full_safety_sentence(self):
-        "The scope badge stays visible and the exact full safety sentence is its toolTip + accessibleDescription and the navigation's accessibleDescription (pm026, V0-A1/A3)."
+    def test_sidebar_scope_badge_visible_safety_scope_in_every_locale(self):
+        "The scope badge's VISIBLE text says REGTEST test-funds-only (r1-r3 scope) in every locale, and the exact full safety sentence is its toolTip + accessibleDescription + the navigation's accessibleDescription (pm026 V0-A1/A3, PM-103 r7). The badge must render fully visible at both window sizes in all six locales with no clipping or elision."
+        from PySide6.QtCore import QRect, Qt
         from PySide6.QtWidgets import QLabel
         from wam_regtest.bip39_locale import t
+        from wam_regtest.fusion_ui import SHELL
+        from wam_regtest.presentation.strings import CATALOG
+        expected = {
+            'en': 'REGTEST · TEST FUNDS ONLY',
+            'vi': 'REGTEST · CHỈ TIỀN THỬ',
+            'zh-Hans': 'REGTEST · 仅限测试资金',
+            'ko': 'REGTEST · 테스트 자금만',
+            'id': 'REGTEST · HANYA DANA UJI',
+            'ja': 'REGTEST · テスト資金のみ',
+        }
+        test_only_phrase = {
+            'en': 'TEST FUNDS ONLY',
+            'vi': 'CHỈ TIỀN THỬ',
+            'zh-Hans': '仅限测试资金',
+            'ko': '테스트 자금만',
+            'id': 'HANYA DANA UJI',
+            'ja': 'テスト資金のみ',
+        }
         sentence = t('wallet.sidebar_notice')
         notices = [w for w in self.window.findChildren(QLabel)
                    if w.text() == sentence]
@@ -48,9 +67,46 @@ class SafetyTextLayout(unittest.TestCase):
         self.assertFalse(badge.isHidden())
         self.assertEqual(badge.toolTip(), sentence)
         self.assertEqual(badge.accessibleDescription(), sentence)
-        self.assertTrue(any(w.text() == t('desktop.regtest_badge')
-                            for w in self.window.findChildren(QLabel)))
         self.assertEqual(self.window.navigation.accessibleDescription(), sentence)
+        content_avail = SHELL['sidebar_width'] - 2 * SHELL['sidebar_pad_x']
+        for lang in ('en', 'vi', 'zh-Hans', 'ko', 'id', 'ja'):
+            with self.subTest(language=lang):
+                self.window.language.setCurrentIndex(self.window.language.findData(lang))
+                for _ in range(6):
+                    self.app.processEvents()
+                self.assertEqual(CATALOG[lang]['wallet.sidebar_scope_badge'],
+                                 expected[lang], lang)
+                self.assertEqual(badge.text(), expected[lang],
+                                 'visible badge text must equal the new key: %s' % lang)
+                self.assertIn(test_only_phrase[lang], expected[lang], lang)
+                self.assertFalse(badge.isHidden(), lang)
+                for width, height in ((900, 630), (1100, 720)):
+                    with self.subTest(width=width, height=height):
+                        self.window.resize(width, height)
+                        self.window.show()
+                        for _ in range(6):
+                            self.app.processEvents()
+                        # The badge must get the full size it requests so the
+                        # Max-policy label never elides or clips its one line.
+                        self.assertLessEqual(badge.sizeHint().width(),
+                                             content_avail,
+                                             (lang, width, height,
+                                              badge.text(), content_avail))
+                        self.assertGreaterEqual(badge.width(),
+                                                badge.sizeHint().width(),
+                                                (lang, width, height,
+                                                 badge.text(), badge.width()))
+                        self.assertNotIn('…', badge.text(), (lang, width, height))
+                        needed = badge.fontMetrics().boundingRect(
+                            QRect(0, 0, max(1, badge.width()), 10000),
+                            int(Qt.TextFlag.TextWordWrap),
+                            badge.text()).height()
+                        self.assertGreaterEqual(
+                            badge.contentsRect().height(), needed,
+                            (lang, width, height, needed,
+                             badge.contentsRect().height()))
+        self.window.hide()
+        self.window.language.setCurrentIndex(0)
 
     def test_payment_step_labels_grow_with_their_wrapped_text(self):
         from wam_regtest.fusion_pages import PaymentSteps

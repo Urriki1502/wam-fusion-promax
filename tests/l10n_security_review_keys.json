@@ -790,6 +790,10 @@
       "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
     },
     {
+      "key": "wallet.sidebar_scope_badge",
+      "reason": "Mainnet and real-fund prohibition. Always-visible test-funds-only notice on the sidebar scope badge."
+    },
+    {
       "key": "wallet.send_subtitle",
       "reason": "Signing, broadcast, or reservation copy. A retry prohibition and a lock-release prohibition are separate sentences."
     },

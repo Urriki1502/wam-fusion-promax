@@ -44,7 +44,7 @@ FOCUS = 2
 # The remaining values are the current shell metrics, named so the sidebar,
 # top bar, page header and cards do not carry raw pixel literals.
 SHELL = {
-    'sidebar_width': 232,
+    'sidebar_width': 256,
     'sidebar_pad_x': 18,
     'sidebar_pad_top': SPACING['xl'],
     'sidebar_pad_bottom': 18,

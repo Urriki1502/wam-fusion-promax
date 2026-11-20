@@ -414,6 +414,7 @@ ID = {
     "wallet.shared_badge": "REGTEST BERSAMA",
     "wallet.navigation_accessible": "Navigasi dompet WAM Fusion",
     "wallet.sidebar_notice": "WAM Fusion  ·  Qt  ·  WAM Core (REGTEST)\nTidak ada dana nyata atau kunci mainnet.",
+    "wallet.sidebar_scope_badge": "REGTEST · HANYA DANA UJI",
     "wallet.snapshot_unverified": "Snapshot belum terverifikasi",
     "wallet.refresh_tooltip": "Verifikasi keadaan terbaru dengan WAM Core yang Anda miliki",
     "wallet.refresh_accessible": "Segarkan keadaan blockchain yang terverifikasi",

@@ -414,6 +414,7 @@ ZH_HANS = {
     "wallet.shared_badge": "共享 REGTEST",
     "wallet.navigation_accessible": "WAM Fusion 钱包导航",
     "wallet.sidebar_notice": "WAM Fusion  ·  Qt  ·  WAM Core (REGTEST)\n不得使用真实资金或 mainnet 密钥。",
+    "wallet.sidebar_scope_badge": "REGTEST · 仅限测试资金",
     "wallet.snapshot_unverified": "快照未验证",
     "wallet.refresh_tooltip": "通过自有 WAM Core 验证最新状态",
     "wallet.refresh_accessible": "刷新已验证的区块链状态",
