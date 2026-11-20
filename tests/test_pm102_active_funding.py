@@ -112,6 +112,30 @@ class ActiveFundingContracts(unittest.TestCase):
             self.assertEqual(native.NativeCandidateContracts.read(self)[1]['generation'], generation)
             self.assertEqual((self.snapshot_folder / 'snapshot-000000001.enc').read_bytes(), self.first_cipher)
 
+    def test_allow_requires_readable_empty_owned_mempool_spend_evidence(self):
+        queries = []
+        self.scan.store.db.set_trace_callback(queries.append)
+        try:
+            self.assertFalse(self.backend._fund_in_flight())
+        finally:
+            self.scan.store.db.set_trace_callback(None)
+        self.assertTrue(any('mempool_spends' in q and 'coins' in q for q in queries))
+        # An unrelated Core mempool input is not this wallet's payment.
+        self.scan.store.db.execute('INSERT INTO mempool_spends VALUES(?,?,?)',
+                                   ('f' * 64, 0, 'e' * 64))
+        self.assertFalse(self.backend._fund_in_flight())
+        self.scan.store.db.execute('DROP TABLE mempool_spends')
+        self.assertTrue(self.backend._fund_in_flight())
+
+    def test_owned_mempool_payment_refuses_even_without_a_reservation(self):
+        self.chain.fund(None, self.backend._public['receive_code'], None, {})
+        self.scan.sync(self.chain)
+        txid, vout = self.scan.store.db.execute('SELECT txid,vout FROM coins').fetchone()
+        self.scan.store.db.execute('INSERT INTO mempool_spends VALUES(?,?,?)',
+                                   (txid, vout, 'e' * 64))
+        self.assertEqual(self.scan.store.db.execute('SELECT count(*) FROM reservations').fetchone()[0], 0)
+        self._assert_no_rpc()
+
     def test_anchored_non_session_funding_still_requires_reconciliation(self):
         self.backend._spend_session = None
         with self.assertRaisesRegex(Q06ReadOnlyError, 'ANCHORED_SCANNER_REQUIRES_RECONCILIATION'):

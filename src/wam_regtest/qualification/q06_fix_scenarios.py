@@ -1,4 +1,4 @@
-"""Frozen macOS qualification for three fixes the spend stage never exercises.
+"""Frozen macOS qualification for fixes the spend stage never exercises.
 
 Disposable REGTEST only. This module does not change wallet behaviour. The
 real scenarios run inside the frozen app (native cocoa). Source tests drive
@@ -29,7 +29,7 @@ _TOKEN = re.compile(r"[A-Z][A-Za-z0-9_]{0,94}\Z")
 _CODE = re.compile(r"[A-Z][A-Z0-9]*_[A-Z0-9_]{0,80}\Z")
 _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 _GIT = re.compile(r"[0-9a-f]{40}\Z")
-_SCENARIOS = ("S1", "S2", "S3")
+_SCENARIOS = ("S1", "S2", "S3", "S4")
 _S1_BOOL = (
     "same_txid_shown", "pending_matches", "confirm_enabled",
     "status_awaiting_confirmation", "reservation_held", "tx_in_verified_history",
@@ -49,6 +49,41 @@ _S3_BOOL = (
     "welcome_visible", "not_modal", "quit_menu_enabled",
     "command_q_quit", "wallet_route_called",
 )
+
+_S4_BOOL = (
+    "activation_preserved", "payment_signed", "fund_button_disabled",
+    "backend_refused_exact", "owner_retained_after_shutdown",
+) + tuple(f"fund{n}_{key}" for n in (1, 2, 3)
+          for key in ("button_enabled", "mainnet_allowed")) + tuple(
+    f"fund{n}_{key}" for n in (2, 3)
+    for key in ("signer_allowed", "broadcast_allowed", "spend_enabled"))
+_S4_INT = ("signed_reservation_count",) + tuple(
+    f"fund{n}_{key}" for n in (1, 2, 3)
+    for key in ("before_atoms", "after_atoms", "reservation_count"))
+
+
+def s4_passed(section):
+    """Public, strict oracle shared by source evidence and the frozen gate."""
+    if type(section) is not dict:
+        return False
+    if any(type(section.get(key)) is not bool for key in _S4_BOOL):
+        return False
+    if any(type(section.get(key)) is not int or not 0 <= section[key] <= _ATOM_MAX
+           for key in _S4_INT):
+        return False
+    false_fields = {"owner_retained_after_shutdown"} | {
+        f"fund{n}_mainnet_allowed" for n in (1, 2, 3)}
+    if any(section[key] is not (key not in false_fields) for key in _S4_BOOL):
+        return False
+    if section["signed_reservation_count"] <= 0:
+        return False
+    for n in (1, 2, 3):
+        if (section[f"fund{n}_after_atoms"] <= section[f"fund{n}_before_atoms"]
+                or section[f"fund{n}_reservation_count"] != 0):
+            return False
+        if n > 1 and section[f"fund{n}_before_atoms"] != section[f"fund{n-1}_after_atoms"]:
+            return False
+    return True
 
 
 def _stage(name):
@@ -186,7 +221,8 @@ def public_evidence(raw):
         value = scenarios.get(key)
         clean_scenarios[key] = value if value in ("PASS", "FAIL", "NOT_RUN") else "FAIL"
     status = "PASS" if (raw.get("status") == "PASS"
-                        and all(clean_scenarios[key] == "PASS" for key in _SCENARIOS)) else "FAIL"
+                        and all(clean_scenarios[key] == "PASS" for key in _SCENARIOS)
+                        and s4_passed(raw.get("s4"))) else "FAIL"
     out = {
         "status": status,
         "network": "regtest",
@@ -220,6 +256,12 @@ def public_evidence(raw):
     s3 = _public_bools(raw.get("s3"), _S3_BOOL)
     if s3 is not None:
         out["s3"] = s3
+    # S4 has no string-valued public fields, including diagnostic strings.
+    section = raw.get("s4")
+    if type(section) is dict:
+        s4 = {key: section[key] for key in _S4_BOOL if type(section.get(key)) is bool}
+        s4.update(_public_ints(section, _S4_INT))
+        out["s4"] = s4
     if status != "PASS":
         code = raw.get("failure_code")
         out["failure_code"] = code if _token(code) and _CODE.match(code) else "INTERNAL"
@@ -262,6 +304,10 @@ def drive(steps, preamble=None, evidence_path=None, setup_error=None):
             function(evidence)
             evidence["scenarios"][key] = "PASS"
             _stage(key + "_PASS")
+        if any(evidence["scenarios"][key] != "PASS" for key in _SCENARIOS):
+            raise ValueError("Q06_FIX_SCENARIOS_INCOMPLETE")
+        if not s4_passed(evidence.get("s4")):
+            raise ValueError("Q06_FIX_S4_EVIDENCE_DENIED")
         evidence["status"] = "PASS"
         _stage("ALL_PASS")
         code = 0
@@ -916,8 +962,105 @@ def scenario_welcome_quit(app, core, source, report):
     _stage("S3_COMMAND_Q_NO_ROUTE_PASS")
 
 
+def scenario_repeat_funding(app, adapter, core, source, report):
+    """S4. GUI funding before activation, twice after, refused after signing."""
+    from mnemonic import Mnemonic
+    from ..bip39_12 import Bip39Regtest12Keys
+    state = {"app": app, "window": None, "executor": None}
+    failed = True
+    try:
+        idle, wait_for, approve = _bind(state, app, report, "s4")
+        executor, window = _open_owner(state, _profile(), core, source, adapter, "create")
+        wait_for(lambda: idle() and window._backup_flow_active, "S4_CREATE")
+        _finish_backup(window, idle, wait_for)
+        _stage("S4_CREATE_BACKUP_PASS")
+
+        def settle():
+            for _ in range(3):
+                wait_for(lambda: idle() and window._pending_action is None, "S4_SETTLE")
+                app.processEvents()
+
+        for n in (1, 2, 3):
+            before = executor.request("snapshot", timeout=240)
+            enabled = window.fund.isEnabled()
+            _note(report, "s4", **{f"fund{n}_button_enabled": enabled})
+            if not enabled:
+                raise ValueError("Q06_FIX_S4_FUND_BUTTON_DISABLED")
+            approve(window.fund, "Approve", lambda: True, f"S4_FUND{n}")
+            settle()
+            after = executor.request("snapshot", timeout=240)
+            fields = {f"fund{n}_before_atoms": before["confirmed_atoms"],
+                      f"fund{n}_after_atoms": after["confirmed_atoms"],
+                      f"fund{n}_reservation_count": after["reservation_count"],
+                      f"fund{n}_mainnet_allowed": after["mainnet_allowed"]}
+            if n > 1:
+                fields.update({f"fund{n}_signer_allowed": after["signer_allowed"],
+                               f"fund{n}_broadcast_allowed": after["broadcast_allowed"],
+                               f"fund{n}_spend_enabled": window._spend_enabled})
+            _note(report, "s4", **fields)
+            if after["confirmed_atoms"] <= before["confirmed_atoms"]:
+                raise ValueError("Q06_FIX_S4_BALANCE_NOT_INCREASED")
+            if after["mainnet_allowed"] is not False:
+                raise ValueError("Q06_FIX_S4_MAINNET_DENIED")
+            if after["reservation_count"] != 0:
+                raise ValueError("Q06_FIX_S4_UNEXPECTED_RESERVATION")
+            if n > 1 and not (after["signer_allowed"] is True
+                               and after["broadcast_allowed"] is True
+                               and window._spend_enabled):
+                raise ValueError("Q06_FIX_S4_SPEND_STATE_CHANGED")
+            _stage(f"S4_FUND{n}_PASS")
+            if n == 1:
+                approve(window.activate, "Approve", lambda: window._spend_enabled, "S4_ENABLE")
+                settle()
+                active = executor.request("snapshot", timeout=240)
+                activated = (active["signer_allowed"] is True
+                             and active["broadcast_allowed"] is True and window._spend_enabled)
+                _note(report, "s4", activation_preserved=bool(activated))
+                if not activated:
+                    raise ValueError("Q06_FIX_S4_ACTIVATION_DENIED")
+                _stage("S4_ENABLE_PASS")
+
+        with Bip39Regtest12Keys(Mnemonic("english").to_mnemonic(bytes([7] * 16)),
+                                source=source, authorized_disposable=True) as payee:
+            destination = payee.public_metadata()["receive_code"]
+        window.recipient_input.setText(destination)
+        window.amount_input.setText("1.00000000")
+        approve(window.send, "Approve Sign", lambda: window._signed_ready, "S4_SIGN")
+        settle()
+        disabled = not window.fund.isEnabled()
+        refused = False
+        try:
+            executor.request("mine", timeout=240)
+        except Exception as error:
+            refused = failure_code(error) == "Q06_GUI_TEST_FUNDING_IN_FLIGHT"
+        signed = executor.request("snapshot", timeout=240)
+        _note(report, "s4", fund_button_disabled=disabled, backend_refused_exact=refused,
+              payment_signed=signed["payment_signed"],
+              signed_reservation_count=signed["reservation_count"])
+        if not disabled or not refused:
+            raise ValueError("Q06_FIX_S4_IN_FLIGHT_NOT_REFUSED")
+        if signed["payment_signed"] is not True or signed["reservation_count"] <= 0:
+            raise ValueError("Q06_FIX_S4_SIGNED_PAYMENT_MISSING")
+        _stage("S4_IN_FLIGHT_REFUSAL_PASS")
+        failed = False
+    except Exception as error:
+        # Shared helpers can report GUI/wait/backup failures; keep S4's public
+        # failure namespace stable without copying exception messages.
+        if failure_code(error).startswith("Q06_FIX_S4_"):
+            raise
+        raise ValueError("Q06_FIX_S4_OPERATION_DENIED") from error
+    finally:
+        retained = _shutdown(state)
+        _note(report, "s4", owner_retained_after_shutdown=bool(retained))
+        if retained and not failed:
+            raise ValueError("Q06_FIX_S4_OWNER_RETAINED")
+    if not s4_passed(report.get("s4")):
+        raise ValueError("Q06_FIX_S4_EVIDENCE_DENIED")
+    _stage("S4_SHUTDOWN_PASS")
+
+
 def run(core, source):
-    """Entry from the frozen app. 0 only when S1, S2 and S3 all PASS."""
+    """Entry from the frozen app. 0 only when S1–S4 all PASS."""
     preamble = {
         "network": "regtest",
         "mainnet_allowed": False,
@@ -934,5 +1077,7 @@ def run(core, source):
     return drive((
         ("S1", lambda report: scenario_unconfirmed_restart(app, adapter, Path(core), Path(source), report)),
         ("S2", lambda report: scenario_backup_leave(app, adapter, Path(core), Path(source), report)),
+        # Keep the real Command+Q scenario last.
+        ("S4", lambda report: scenario_repeat_funding(app, adapter, Path(core), Path(source), report)),
         ("S3", lambda report: scenario_welcome_quit(app, Path(core), Path(source), report)),
     ), preamble)

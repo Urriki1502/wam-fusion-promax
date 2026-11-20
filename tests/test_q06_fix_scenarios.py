@@ -8,10 +8,12 @@ import ast
 import importlib.util
 import io
 import json
-from contextlib import redirect_stdout
+from contextlib import ExitStack, redirect_stdout
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from wam_regtest.foundation import diagnostics
 from wam_regtest.qualification import q06_fix_scenarios as stage
@@ -38,6 +40,198 @@ def _passing(report):
         "confirmed_atoms": 390_000_000, "available_atoms": 390_000_000,
         "txid_sha256": "ab" * 32, "mnemonic_once": "abandon " * 12,
     }
+
+
+def _s4_passing():
+    result = {
+        "activation_preserved": True, "payment_signed": True,
+        "fund_button_disabled": True, "backend_refused_exact": True,
+        "signed_reservation_count": 1, "owner_retained_after_shutdown": False,
+    }
+    for n in (1, 2, 3):
+        result.update({
+            f"fund{n}_button_enabled": True,
+            f"fund{n}_before_atoms": (n - 1) * 500_000_000,
+            f"fund{n}_after_atoms": n * 500_000_000,
+            f"fund{n}_reservation_count": 0,
+            f"fund{n}_mainnet_allowed": False,
+        })
+        if n > 1:
+            result.update({f"fund{n}_signer_allowed": True,
+                           f"fund{n}_broadcast_allowed": True,
+                           f"fund{n}_spend_enabled": True})
+    return result
+
+
+class RepeatFundingOracle(unittest.TestCase):
+    def test_complete_s4_oracle_requires_every_fact_and_strict_increases(self):
+        good = _s4_passing()
+        self.assertTrue(stage.s4_passed(good))
+        for key in good:
+            with self.subTest(missing=key):
+                bad = dict(good)
+                bad.pop(key)
+                self.assertFalse(stage.s4_passed(bad))
+        for key, value in (("fund2_after_atoms", 500_000_000),
+                           ("fund3_before_atoms", 0),
+                           ("fund3_reservation_count", 1),
+                           ("fund2_signer_allowed", False),
+                           ("backend_refused_exact", False),
+                           ("signed_reservation_count", 0),
+                           ("owner_retained_after_shutdown", True),
+                           ("fund1_after_atoms", True)):
+            with self.subTest(key=key):
+                self.assertFalse(stage.s4_passed(dict(good, **{key: value})))
+
+    def test_s4_public_schema_is_only_booleans_and_ints_and_cannot_forge_pass(self):
+        good = _s4_passing()
+        raw = {"status": "PASS", "scenarios": dict.fromkeys(("S1", "S2", "S3", "S4"), "PASS"),
+               "s4": dict(good, receive_code="secret", seed="secret", gui_denied="SECRET_CODE")}
+        evidence = stage.public_evidence(raw)
+        self.assertEqual(evidence["status"], "PASS")
+        self.assertEqual(evidence["s4"], good)
+        self.assertTrue(all(type(v) in (bool, int) for v in evidence["s4"].values()))
+        raw["s4"]["backend_refused_exact"] = False
+        self.assertEqual(stage.public_evidence(raw)["status"], "FAIL")
+
+    def test_drive_rejects_pass_markers_without_complete_s4_facts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / stage.EVIDENCE_NAME
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                code = stage.drive(tuple((key, lambda report: None)
+                                         for key in ("S1", "S2", "S3", "S4")), evidence_path=path)
+            self.assertEqual(code, 2)
+            self.assertNotIn("ALL_PASS", buffer.getvalue())
+            evidence = json.loads(path.read_text())
+            self.assertEqual(evidence["status"], "FAIL")
+            self.assertEqual(evidence["failure_code"], "Q06_FIX_S4_EVIDENCE_DENIED")
+
+    def test_drive_refuses_a_missing_s4_and_keeps_its_fixed_failure_code(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / stage.EVIDENCE_NAME
+            with redirect_stdout(io.StringIO()):
+                code = stage.drive(tuple((key, lambda report: None) for key in ("S1", "S2", "S3")),
+                                   evidence_path=path)
+            self.assertEqual(code, 2)
+            self.assertEqual(json.loads(path.read_text())["failure_code"], "Q06_FIX_SCENARIOS_INCOMPLETE")
+            path.unlink()
+            def s4(report):
+                report["s4"] = {"backend_refused_exact": False, "seed": "secret"}
+                raise ValueError("Q06_FIX_S4_IN_FLIGHT_NOT_REFUSED")
+            with redirect_stdout(io.StringIO()):
+                code = stage.drive((("S4", s4),), evidence_path=path)
+            evidence = json.loads(path.read_text())
+            self.assertEqual(code, 2)
+            self.assertEqual(evidence["failure_code"], "Q06_FIX_S4_IN_FLIGHT_NOT_REFUSED")
+            self.assertEqual(evidence["scenarios"]["S4"], "FAIL")
+            self.assertNotIn("secret", path.read_text())
+
+
+class RepeatFundingScenario(unittest.TestCase):
+    """Exercise S4's real orchestration with fake GUI/RPC, never Core/Cocoa."""
+    def run_s4(self, fault=None):
+        report, approvals = {}, []
+        status = {"balance": 0, "funds": 0, "signed": False}
+        window = SimpleNamespace(
+            _backup_flow_active=True, _pending_action=None, _spend_enabled=False,
+            _signed_ready=False, recipient_input=Mock(), amount_input=Mock())
+        window.fund = SimpleNamespace(isEnabled=lambda: (
+            not status["signed"] and fault != "button"))
+        window.activate, window.send = object(), object()
+
+        def request(action, **kwargs):
+            if action == "mine":
+                if fault == "backend_allowed":
+                    return {}
+                raise ValueError("Q06_GUI_WRONG_REFUSAL" if fault == "backend_wrong"
+                                 else "Q06_GUI_TEST_FUNDING_IN_FLIGHT")
+            self.assertEqual(action, "snapshot")
+            active = window._spend_enabled and not (fault == "state" and status["funds"] > 1)
+            return {"confirmed_atoms": status["balance"],
+                    "reservation_count": (1 if status["signed"] else
+                                          int(fault == "reservation" and status["funds"] > 0)),
+                    "signer_allowed": active, "broadcast_allowed": active,
+                    "mainnet_allowed": fault == "mainnet",
+                    "payment_signed": status["signed"] and fault != "signed_snapshot"}
+
+        executor = SimpleNamespace(request=request)
+        def open_owner(state, *_args):
+            state.update(executor=executor, window=window)
+            return executor, window
+
+        def approve(button, caption, done, label):
+            approvals.append((label, caption))
+            if button is window.fund:
+                status["funds"] += 1
+                if fault != "balance":
+                    status["balance"] += 500_000_000
+            elif button is window.activate:
+                window._spend_enabled = fault != "activation"
+            else:
+                window._signed_ready = True
+                status["signed"] = fault != "signed"
+                if fault == "gui_enabled":
+                    window.fund.isEnabled = lambda: True
+
+        def wait_for(predicate, label):
+            if fault == "operation":
+                raise RuntimeError("secret never copied")
+            self.assertTrue(predicate(), label)
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(stage, "_bind", return_value=(lambda: True, wait_for, approve)))
+            stack.enter_context(patch.object(stage, "_open_owner", side_effect=open_owner))
+            stack.enter_context(patch.object(stage, "_finish_backup"))
+            stack.enter_context(patch.object(stage, "_profile", return_value=Path("fake-profile")))
+            shutdown = stack.enter_context(patch.object(stage, "_shutdown", return_value=fault == "retained"))
+            keys = stack.enter_context(patch("wam_regtest.bip39_12.Bip39Regtest12Keys"))
+            keys.return_value.__enter__.return_value.public_metadata.return_value = {"receive_code": "public-fixture"}
+            error = None
+            with redirect_stdout(io.StringIO()):
+                try:
+                    stage.scenario_repeat_funding(SimpleNamespace(processEvents=lambda: None),
+                                                  object(), Path("core"), Path("wsp"), report)
+                except Exception as caught:
+                    error = caught
+            shutdown.assert_called_once()
+        return report, approvals, error
+
+    def test_gui_funding_approvals_activation_sign_and_shutdown_are_required(self):
+        report, approvals, error = self.run_s4()
+        self.assertIsNone(error)
+        self.assertTrue(stage.s4_passed(report["s4"]))
+        self.assertEqual(approvals, [("S4_FUND1", "Approve"), ("S4_ENABLE", "Approve"),
+                                    ("S4_FUND2", "Approve"), ("S4_FUND3", "Approve"),
+                                    ("S4_SIGN", "Approve Sign")])
+
+    def test_specific_s4_failures_always_shutdown_and_never_accept_wrong_refusal(self):
+        for fault, code in (
+                ("button", "FUND_BUTTON_DISABLED"), ("balance", "BALANCE_NOT_INCREASED"),
+                ("mainnet", "MAINNET_DENIED"), ("reservation", "UNEXPECTED_RESERVATION"),
+                ("state", "SPEND_STATE_CHANGED"), ("activation", "ACTIVATION_DENIED"),
+                ("gui_enabled", "IN_FLIGHT_NOT_REFUSED"),
+                ("backend_allowed", "IN_FLIGHT_NOT_REFUSED"),
+                ("backend_wrong", "IN_FLIGHT_NOT_REFUSED"),
+                ("signed_snapshot", "SIGNED_PAYMENT_MISSING"),
+                ("retained", "OWNER_RETAINED"), ("operation", "OPERATION_DENIED")):
+            with self.subTest(fault=fault):
+                report, _, error = self.run_s4(fault)
+                self.assertIsNotNone(error)
+                self.assertEqual(stage.failure_code(error), "Q06_FIX_S4_" + code)
+                self.assertFalse(stage.s4_passed(report.get("s4")))
+
+    def test_frozen_entry_runs_s4_before_final_command_q(self):
+        with (patch.object(stage, "_identify"), patch.object(stage, "_require_cocoa"),
+              patch("wam_regtest.q05_platforms.DarwinArm64Adapter"),
+              patch.object(stage, "scenario_repeat_funding") as s4,
+              patch.object(stage, "drive") as drive):
+            stage.run(Path("core"), Path("wsp"))
+            steps = drive.call_args.args[0]
+            self.assertEqual([key for key, _ in steps], ["S1", "S2", "S4", "S3"])
+            report = {}
+            steps[2][1](report)
+            self.assertIs(s4.call_args.args[-1], report)
 
 
 class FixScenarioArithmetic(unittest.TestCase):
@@ -80,7 +274,8 @@ class FixScenarioEvidence(unittest.TestCase):
     def test_public_evidence_drops_secrets_and_passes_only_when_all_scenarios_pass(self):
         raw = stage.public_evidence({
             "status": "PASS",
-            "scenarios": {"S1": "PASS", "S2": "PASS", "S3": "PASS"},
+            "scenarios": {"S1": "PASS", "S2": "PASS", "S3": "PASS", "S4": "PASS"},
+            "s4": _s4_passing(),
             "frozen": True,
             "source_sha": "a" * 40,
             "mnemonic_once": "abandon abandon",
@@ -97,7 +292,7 @@ class FixScenarioEvidence(unittest.TestCase):
         self.assertNotIn("diagnostics", raw)
         refused = stage.public_evidence({
             "status": "PASS",
-            "scenarios": {"S1": "PASS", "S2": "FAIL", "S3": "NOT_RUN"},
+            "scenarios": {"S1": "PASS", "S2": "FAIL", "S3": "NOT_RUN", "S4": "NOT_RUN"},
             "failure_code": "seed words are not a code",
             "diagnostics": [{"stage": "CONFIRM_PENDING", "category": "ValueError",
                              "open_stage": None},
@@ -111,7 +306,7 @@ class FixScenarioEvidence(unittest.TestCase):
 
         with_valid_exc = stage.public_evidence({
             "status": "FAIL",
-            "scenarios": {"S1": "FAIL", "S2": "NOT_RUN", "S3": "NOT_RUN"},
+            "scenarios": {"S1": "FAIL", "S2": "NOT_RUN", "S3": "NOT_RUN", "S4": "NOT_RUN"},
             "failure_code": "INTERNAL",
             "failure_exception": "BrokenPipeError",
         })
@@ -119,7 +314,7 @@ class FixScenarioEvidence(unittest.TestCase):
 
         with_null_exc = stage.public_evidence({
             "status": "FAIL",
-            "scenarios": {"S1": "FAIL", "S2": "NOT_RUN", "S3": "NOT_RUN"},
+            "scenarios": {"S1": "FAIL", "S2": "NOT_RUN", "S3": "NOT_RUN", "S4": "NOT_RUN"},
             "failure_code": "INTERNAL",
             "failure_exception": None,
         })
@@ -128,7 +323,7 @@ class FixScenarioEvidence(unittest.TestCase):
         for bad_exc in ("/Users/alice/secret", "1Bad", "A" * 65, "Err\n", 123):
             sanitized = stage.public_evidence({
                 "status": "FAIL",
-                "scenarios": {"S1": "FAIL", "S2": "NOT_RUN", "S3": "NOT_RUN"},
+                "scenarios": {"S1": "FAIL", "S2": "NOT_RUN", "S3": "NOT_RUN", "S4": "NOT_RUN"},
                 "failure_code": "INTERNAL",
                 "failure_exception": bad_exc,
             })
@@ -153,18 +348,19 @@ class FixScenarioEvidence(unittest.TestCase):
             buffer = io.StringIO()
             with redirect_stdout(buffer):
                 code = stage.drive(
-                    (("S1", s1), ("S2", s2), ("S3", s3)),
+                    (("S1", s1), ("S2", s2), ("S4", lambda report: report.update(s4=_s4_passing())),
+                     ("S3", s3)),
                     {"frozen": False, "source_sha": "b" * 40, "network": "regtest",
                      "mainnet_allowed": False},
                     evidence_path=path)
             text = buffer.getvalue()
             self.assertEqual(code, 0)
-            for marker in ("START", "S1_PASS", "S2_PASS", "S3_PASS", "ALL_PASS"):
+            for marker in ("START", "S1_PASS", "S2_PASS", "S3_PASS", "S4_PASS", "ALL_PASS"):
                 self.assertIn("MACOS_Q06_FIX_STAGE=" + marker, text)
             self.assertNotIn("MACOS_Q06_FIX_STAGE=DENIED", text)
             evidence = json.loads(path.read_text())
             self.assertEqual(evidence["status"], "PASS")
-            self.assertEqual(evidence["scenarios"], {"S1": "PASS", "S2": "PASS", "S3": "PASS"})
+            self.assertEqual(evidence["scenarios"], {"S1": "PASS", "S2": "PASS", "S3": "PASS", "S4": "PASS"})
             self.assertNotIn("diagnostics", evidence)
             self.assertNotIn("abandon", path.read_text())
 
@@ -183,7 +379,7 @@ class FixScenarioEvidence(unittest.TestCase):
             self.assertEqual(code, 2)
             self.assertIn("MACOS_Q06_FIX_STAGE=DENIED", buffer.getvalue())
             self.assertNotIn("ALL_PASS", buffer.getvalue())
-            self.assertEqual(evidence["scenarios"], {"S1": "FAIL", "S2": "NOT_RUN", "S3": "NOT_RUN"})
+            self.assertEqual(evidence["scenarios"], {"S1": "FAIL", "S2": "NOT_RUN", "S3": "NOT_RUN", "S4": "NOT_RUN"})
             self.assertEqual(evidence["failure_code"], "Q06_FIX_S1_REOPEN_PENDING_DENIED")
             self.assertNotIn("failure_exception", evidence)
             self.assertEqual(evidence["diagnostics"][0]["stage"], "CONFIRM_PENDING")
@@ -220,7 +416,8 @@ class FixScenarioWiring(unittest.TestCase):
                 "S2_LEAVE_CLEARS_PHRASE_PASS", "S2_VERIFIED_BACKUP_PASS",
                 "S2_DEFER_PRESERVES_ACK_PASS", "S2_REOPEN_VERIFIED_PASS",
                 "S3_WELCOME_VISIBLE_PASS", "S3_QUIT_MENU_ENABLED_PASS",
-                "S3_COMMAND_Q_NO_ROUTE_PASS", "ALL_PASS", "DENIED"):
+                "S3_COMMAND_Q_NO_ROUTE_PASS", "S4_CREATE_BACKUP_PASS", "S4_ENABLE_PASS",
+                "S4_IN_FLIGHT_REFUSAL_PASS", "S4_SHUTDOWN_PASS", "ALL_PASS", "DENIED"):
             self.assertIn(marker, text)
         self.assertIn("keyEventWithType:location:modifierFlags:timestamp:windowNumber:context:", text)
         self.assertIn("sendEvent:", text)
@@ -262,6 +459,8 @@ class FixScenarioWiring(unittest.TestCase):
         self.assertIn("env=spend_env", window)
         self.assertIn("timeout=600", window)
         self.assertIn("q06-fix-scenarios-evidence.json", window)
+        self.assertIn("data['scenarios']['S4'] == 'PASS'", window)
+        self.assertIn("s4_passed(data.get('s4'))", window)
         self.assertIn("--hidden-import wam_regtest.qualification.q06_fix_scenarios", text)
         production = (ROOT / "scripts/build_macos_production.py").read_text()
         self.assertIn("'--ci-q06-fix-scenarios'", production)

@@ -273,11 +273,14 @@ else:
                        cwd=clean, env=spend_env, timeout=600, check=True)
         report = Path(clean)/'q06-fix-scenarios-evidence.json'
         data = loads(report.read_text())
+        from wam_regtest.qualification.q06_fix_scenarios import s4_passed
         assert (data['status'] == 'PASS'
+                and s4_passed(data.get('s4'))
                 and data['mainnet_allowed'] is False
                 and data['scenarios']['S1'] == 'PASS'
                 and data['scenarios']['S2'] == 'PASS'
                 and data['scenarios']['S3'] == 'PASS'
+                and data['scenarios']['S4'] == 'PASS'
                 and data.get('diagnostics') is None
                 and _valid_exc(data))
         shutil.copyfile(report, out/'q06-fix-scenarios-evidence.json')

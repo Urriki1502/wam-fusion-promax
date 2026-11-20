@@ -301,6 +301,13 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                 return True
             sc.assert_current()
             with sc.store.transaction():
+                # WSP records all mempool inputs. Only owned coins can be
+                # reserved by this wallet; their absence must be readable before
+                # allowing fixture mining, even when no reservation survives.
+                if sc.store.db.execute(
+                        "SELECT 1 FROM mempool_spends m JOIN coins c "
+                        "ON c.txid=m.txid AND c.vout=m.vout LIMIT 1").fetchone():
+                    return True
                 rows = sc.store.db.execute(
                     "SELECT txid,vout,token,state FROM reservations").fetchall()
                 confirmed = {row[0] for row in sc.store.db.execute(

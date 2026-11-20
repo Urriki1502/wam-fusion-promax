@@ -19,6 +19,22 @@ class FundingContracts(unittest.TestCase):
         b.session.ring.accounts.return_value=[Mock()]
         return b
 
+    def test_public_fixture_itself_attests_regtest_before_any_payment_work(self):
+        from wam_regtest.wsp_live import LiveCoreReadOnlyCli, _public_fixture_payment
+        for info, genesis, code in (
+                ({'chain': 'main', 'blocks': 101}, None, 'WSP_LIVE_CHAIN_DENIED'),
+                ({'chain': 'regtest', 'blocks': 101}, '0' * 64, 'WSP_LIVE_GENESIS_DENIED')):
+            with self.subTest(code=code):
+                rpc = SimpleNamespace()
+                rpc.attest = lambda: LiveCoreReadOnlyCli.attest(rpc)
+                rpc._call = Mock(side_effect=[info, genesis])
+                rpc.call = Mock(side_effect=AssertionError('must attest first'))
+                account = Mock()
+                with self.assertRaisesRegex(RealWspScanError, '^' + code + '$'):
+                    _public_fixture_payment(rpc, account, 'public-fixture')
+                rpc.call.assert_not_called()
+                account.payment_code.assert_not_called()
+
     def test_session_refusal_precedes_rpc_and_preserves_original_exception(self):
         b=self.backend();error=WalletSessionError('WALLET_MANAGED_OWNER_UNVERIFIED')
         with patch('wam_regtest.managed_wallet_session.check_session',side_effect=error), \

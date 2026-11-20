@@ -209,6 +209,7 @@ def _public_fixture_payment(rpc, account, mining_address: str, *,
     REGTEST. Signatures are produced locally by the pinned WSP demo serializer,
     then validated by real Core mempool and consensus during block generation.
     """
+    rpc.attest()  # Fresh chain/genesis/peer/Core attestation at the mutation boundary.
     from wam_sp.core import Input, pub, send
     from wam_sp.transaction import p2wpkh, signed_single_input
     # Funding spends the FIRST freshly-mined coinbase of a 101-block batch:
