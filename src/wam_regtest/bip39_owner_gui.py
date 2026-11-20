@@ -500,6 +500,8 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
         self._worker_action = action
         self._completed_result = None
         self._last_error_code = None
+        self._last_error_action = None
+        self._last_error_raw = None
         worker.ready.connect(self._receive_result, Qt.ConnectionType.QueuedConnection)
         worker.denied.connect(self._receive_denial, Qt.ConnectionType.QueuedConnection)
         worker.pending.connect(lambda _: self.status.setText(
@@ -1071,6 +1073,12 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
         self._completed_result = (action, result)
 
     def _receive_denial(self, code):
+        # Capture the failing action and PUBLIC-only raw cause from the worker
+        # before _finished clears it. Never message text, never secrets.
+        worker=self._worker
+        if worker is not None:
+            self._last_error_action = getattr(worker, 'diagnostic_action', self._worker_action)
+            self._last_error_raw = getattr(worker, 'diagnostic_raw', None)
         self._completed_result = (None, code)
 
     def _finished(self):
@@ -1102,6 +1110,8 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
                       and verification_generation != self.executor.state.generation):
                     # Reject before either compatibility labels or Fusion
                     # pages can render an invalidated verification result.
+                    self._last_error_action = action
+                    self._last_error_raw = 'WALLET_CORE_UNVERIFIED'
                     self._on_denied('WALLET_CORE_UNVERIFIED')
                 else:
                     self._on_ready(action, result)

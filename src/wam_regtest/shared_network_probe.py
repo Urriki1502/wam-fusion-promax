@@ -24,6 +24,28 @@ LAB_PORTS=((True,45954,45955,45957),(False,45956,45957,45955))
 from .qualification_gui import click_visible_approval
 
 
+def record_gui_denial(report, nodes, *, wait_label=None):
+    """Public-only GUI-denial evidence. Every field is a fixed action token, a
+    public code, or the exception TYPE name from raw_cause() — never message
+    text, secrets, paths or RPC replies. Aligned per node (windows keep their
+    last mapped action/raw/public; nodes without a window map to None)."""
+    per_node = []
+    for n in nodes:
+        w = n.get('window')
+        if w is None:
+            per_node.append(None)
+            continue
+        per_node.append({
+            'action': w._last_error_action,
+            'raw': w._last_error_raw,
+            'public': w._last_error_code,
+        })
+    report['gui_denied_nodes'] = per_node
+    report['gui_denied'] = [entry['public'] if entry else None for entry in per_node]
+    if wait_label is not None:
+        report['gui_denied_wait'] = wait_label
+
+
 def qualify(core, source):
     from .desktop import qt_application
     from .q05_platforms import DarwinArm64Adapter
@@ -71,6 +93,7 @@ def qualify(core, source):
         while not predicate():
             app.processEvents()
             if any('window' in n and idle(n) and n['window']._last_error_code for n in nodes):
+                record_gui_denial(report, nodes, wait_label=label)
                 raise ValueError('SHARED_GUI_OPERATION_DENIED')
             now = time.monotonic()
             if now >= next_beat:
@@ -291,7 +314,7 @@ def qualify(core, source):
     except Exception as error:
         if isinstance(error,ValueError) and error.args and type(error.args[0]) is str:
             report['denied']=error.args[0]
-        report['gui_denied']=[n['window']._last_error_code for n in nodes if 'window' in n]
+        record_gui_denial(report, nodes)
         raise
     finally:
         # Persist before touching Qt: even a native GUI cleanup crash must

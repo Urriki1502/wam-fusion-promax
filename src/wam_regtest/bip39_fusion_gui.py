@@ -22,7 +22,7 @@ from .domain.payment_state import BROADCAST, reserved_rows_needing_attention
 from .bip39_locale import effective_choice, t, _lang
 from .fusion_i18n import I18nCheckBox, I18nLineEdit, bind, capture, retranslate_tree
 from .desktop import resolve_theme
-from .gui_errors import error_text, operation_error, public_code
+from .gui_errors import error_text, operation_error, public_code, raw_cause
 from .fusion_ui import (
     FusionOverview, fusion_stylesheet, fusion_palette, page, panel,
     label, WrappedLabel, ResponsiveRow, vector_icon, nav_icon_for, FUSION_NAV_PAGES, fusion_nav_pages,
@@ -1167,6 +1167,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
             self.backup_page.set_challenge(challenge)
         except Exception as error:
             self.backup_page.show_verification_error('verify_unavailable')
+            self._last_error_action = 'backup_challenge'
+            self._last_error_raw = raw_cause(error)
             self._last_error_code = operation_error('backup_challenge', error)
             self.status.setText(t('wallet.backup_verify_unavailable'))
 
@@ -1174,6 +1176,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
         try:
             self.executor.request('backup_challenge_cancel', timeout=30)
         except Exception as error:
+            self._last_error_action = 'backup_challenge_cancel'
+            self._last_error_raw = raw_cause(error)
             self._last_error_code = operation_error('backup_challenge_cancel', error)
             self.status.setText(t('wallet.backup_verify_unavailable'))
 
@@ -1181,6 +1185,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
         try:
             ok = self.executor.request("backup_verify", identifier, answers, timeout=30)
         except Exception as error:
+            self._last_error_action = 'backup_verify'
+            self._last_error_raw = raw_cause(error)
             self._last_error_code = operation_error('backup_verify', error)
             self.status.setText(t('wallet.backup_verify_unavailable'))
             # The backend refused before judging the words: never report this
@@ -1209,6 +1215,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
         try:
             self.executor.request("backup_defer", timeout=30)
         except Exception as error:
+            self._last_error_action = 'backup_defer'
+            self._last_error_raw = raw_cause(error)
             self._last_error_code = operation_error('backup_defer', error)
             defer_error = t('wallet.backup_defer_unavailable')
         self._backup_flow_completed(False)

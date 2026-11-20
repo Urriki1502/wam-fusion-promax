@@ -37,7 +37,13 @@ class ControlWorker(QThread):
                     # Keep the ORIGINAL Future. No cancellation, resubmission,
                     # RPC retry, reservation change or extra signing authority.
             self.ready.emit(self.action, result)
-        except Exception as error:self.denied.emit(operation_error(self.action,error))
+        except Exception as error:
+            # Diagnostics keep the failing action and a PUBLIC-only raw cause
+            # (code-shaped token or exception type name). Never message text.
+            self.diagnostic_action = self.action
+            from .gui_errors import raw_cause
+            self.diagnostic_raw = raw_cause(error)
+            self.denied.emit(operation_error(self.action,error))
         finally:self.args=();self.kwargs={}
 
 

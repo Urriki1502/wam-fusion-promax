@@ -231,6 +231,11 @@ def _public_bools(section, names):
     denied = section.get("gui_denied")
     if _token(denied) and _CODE.match(denied):
         kept["gui_denied"] = denied
+    raw = section.get("gui_denied_raw")
+    # raw_cause produces only a code-shaped token or an exception TYPE NAME,
+    # so plain identifiers (no message text or secrets) are preserved too.
+    if type(raw) is str and _token(raw) and (_CODE.match(raw) or _TOKEN.match(raw)):
+        kept["gui_denied_raw"] = raw
     return kept or None
 
 
@@ -498,6 +503,11 @@ def _bind(state, app, report, section):
                 code = window._last_error_code
                 if _token(code) and _CODE.match(code):
                     _note(report, section, gui_denied=code)
+                    # raw_cause keeps only code-shaped tokens, else the exception
+                    # TYPE NAME (safe: no message text or secrets).
+                    if type(window._last_error_raw) is str and _token(window._last_error_raw) \
+                            and (_CODE.match(window._last_error_raw) or _TOKEN.match(window._last_error_raw)):
+                        _note(report, section, gui_denied_raw=window._last_error_raw)
                 raise ValueError("Q06_FIX_GUI_DENIED_" + label)
             if time.monotonic() >= deadline:
                 raise ValueError("Q06_FIX_WAIT_" + label)

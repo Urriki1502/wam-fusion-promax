@@ -1,7 +1,31 @@
 """Fixed public UX categories. Never format exception text or authorize recovery."""
+import re
 INPUT_ERRORS=frozenset(('WALLET_INPUT_AMOUNT_INVALID','WALLET_INPUT_FEE_INVALID',
                         'WALLET_INPUT_RECIPIENT_INVALID','WALLET_INPUT_FUNDS_UNAVAILABLE'))
 from .presentation.strings import CATALOG
+
+# Public code shape: an UPPER_CASE identifier. Only single code-shaped tokens
+# ever cross the public boundary; message text, secrets and paths never do.
+_RAW_CODE=re.compile(r'[A-Z][A-Z0-9_]{1,95}\Z')
+
+def raw_cause(error):
+    """Public-safe raw diagnostic cause for a failed operation.
+
+    Returns the exception's single code-shaped token when it carried one,
+    otherwise the exception TYPE name. Never returns str(error) or any message
+    text, so secrets, seed phrases, RPC replies, paths or hostile formatters
+    can never leak into evidence. Mirrors operation_error's exact-type gate.
+    """
+    from .wallet_session import WalletSessionError
+    from .vault import VaultError
+    from .wallet_executor import WalletExecutorError
+    from .domain.errors import Q06SpendSessionError
+    args=error.args if type(error) in (ValueError,WalletSessionError,VaultError,
+                                       WalletExecutorError,Q06SpendSessionError) else ()
+    code=args[0] if len(args)==1 and type(args[0]) is str else None
+    if code is not None and _RAW_CODE.fullmatch(code):
+        return code
+    return type(error).__name__
 
 # Public codes remain identifiers; English compatibility mapping is derived.
 _MESSAGES = {key.removeprefix('errors.'): value
