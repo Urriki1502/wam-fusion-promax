@@ -599,6 +599,12 @@ class Bip39FusionWindow(Bip39TrialWindow):
             button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
             button.setCheckable(True)
             button.setMinimumHeight(44)
+            # Equal-width rail: every category stretches to the fixed-width
+            # rail column so all buttons are the same size (left-aligned
+            # icon+label come from the FusionCategory stylesheet).
+            rail_policy = button.sizePolicy()
+            rail_policy.setHorizontalPolicy(QSizePolicy.Policy.Expanding)
+            button.setSizePolicy(rail_policy)
             categories.addButton(button, index)
             if route is None:
                 button.clicked.connect(lambda _checked=False, target=section: self.settings_sections.setCurrentIndex(target))

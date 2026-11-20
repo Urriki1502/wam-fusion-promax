@@ -128,6 +128,10 @@ class StatusGlyph(QWidget):
         self._spin.setInterval(16)
         self._spin.timeout.connect(self._tick)
         self._reveal = None
+        # The first paint must always show the complete final glyph. The
+        # reveal wipe may only play on a LATER state change, after the widget
+        # has actually been painted at least once.
+        self._painted = False
         self.setFixedSize(22, 22)
         bind(self, accessible_name='fusion.status_indicator')
 
@@ -166,7 +170,10 @@ class StatusGlyph(QWidget):
         self._spin.stop()
         self._angle = 0
         if (animate and previous != state and state in ('verified', 'warning', 'error')
-                and not motion_reduced(self)):
+                and not motion_reduced(self) and self._painted):
+            # Reveal wipe only on a later state change, after first paint.
+            # Initial render / offscreen grab / reduced-motion / the very first
+            # frame always paints the complete final glyph (never a blank).
             self._progress = 0.0
             animation = QPropertyAnimation(self, b'progress', self)
             animation.setDuration(EMPHASIS_MS if state == 'verified' else STANDARD_MS)
@@ -187,6 +194,7 @@ class StatusGlyph(QWidget):
         self.update()
 
     def paintEvent(self, event):
+        self._painted = True
         from wam_regtest.fusion_ui import fusion_palette
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)

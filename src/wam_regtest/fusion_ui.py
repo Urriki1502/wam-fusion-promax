@@ -1161,8 +1161,16 @@ class StatusCard(QFrame):
         top.addWidget(heading, 1)
         layout.addLayout(top)
         self.value = label(ui_text('fusion.not_verified'), 'FusionCardValue')
+        # The card shows only icon + title + one short value line: force the
+        # value to a single line (the label helper enables word wrap by
+        # default). The detail paragraph is never rendered under the card; its
+        # truthful text lives on this label only as a text holder (kept
+        # verbatim) and is surfaced by apply() through the card's toolTip and
+        # accessibleDescription.
+        self.value.setWordWrap(False)
+        self.value.setToolTip(self.value.text())
         self.detail = label(caption)
-        self.detail.setVisible(bool(caption))
+        self.detail.setVisible(False)
         self.detail.setWordWrap(True)
         self.detail.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         layout.addWidget(self.value)
@@ -1171,9 +1179,11 @@ class StatusCard(QFrame):
     def apply(self, state, title, detail, *, animate=True):
         self.glyph.set_state(state, animate=animate)
         self.value.setText(title)
+        self.value.setToolTip(title)
         self.detail.setText(detail)
         self.setToolTip(detail)
-        self.detail.setVisible(bool(detail))
+        self.setAccessibleDescription(detail)
+        self.detail.setVisible(False)
 
     def set_theme(self, mode):
         self.glyph.set_theme(mode)

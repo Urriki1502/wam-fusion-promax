@@ -248,3 +248,120 @@ class TargetDesign(unittest.TestCase):
         self.assertEqual(self.w.overview.network_card.detail.text(), t('pages.peers_after_check'))
         self.w.network_page.render(shared=False)
         self.assertEqual(self.w.network_page.peer_value.text(), t('pages.peers_after_check'))
+
+    def _glyph_opaque_pixel_count(self, glyph):
+        img = glyph.grab().toImage()
+        return sum(
+            1 for y in range(img.height()) for x in range(img.width())
+            if img.pixelColor(x, y).alpha() > 0)
+
+    def test_status_glyphs_paint_complete_on_first_frame_in_each_theme(self):
+        # R2 finding (a): the first paint (initial render, offscreen grab,
+        # no time advanced) must show the complete final glyph, never a
+        # blank/background block. The reveal animation may only play on a
+        # later state change. Checked in both dark and light with a fresh,
+        # never-painted Overview per theme.
+        from wam_regtest.qualification.ui_gallery import _fixture_snapshot
+        for index, theme in ((2, 'dark'), (1, 'light')):
+            w = Bip39FusionWindow(SimpleNamespace(
+                state=ExecutorState(locked=False, faulted=False, core_alive=True),
+                busy=False, closed=False))
+            w._poll.stop()
+            self.addCleanup(w.deleteLater)
+            # Isolate settings so the chosen theme is applied deterministically.
+            import tempfile as _tf
+            tmp = _tf.TemporaryDirectory()
+            self.addCleanup(tmp.cleanup)
+            old = os.environ.get('WAM_UI_SETTINGS_PATH')
+            os.environ['WAM_UI_SETTINGS_PATH'] = str(Path(tmp.name) / 'ui.ini')
+            self.addCleanup(lambda: os.environ.pop('WAM_UI_SETTINGS_PATH', None)
+                            if old is None else os.environ.__setitem__(
+                                'WAM_UI_SETTINGS_PATH', old))
+            w.appearance_buttons[index].click()
+            w._ready = w._spend_enabled = True
+            _, result = _fixture_snapshot()
+            w._render_verified(result)
+            # Grab immediately; do not advance the reveal animation to its end.
+            for card in (w.overview.core_card, w.overview.chain_card):
+                opaque = self._glyph_opaque_pixel_count(card.glyph)
+                self.assertGreater(
+                    opaque, 0,
+                    (theme, "first frame must paint the complete final glyph",
+                     card.objectName() or 'status-card', opaque))
+
+    def _render_verified_cards(self):
+        from wam_regtest.qualification.ui_gallery import _fixture_snapshot
+        self.w.executor.state = ExecutorState(locked=False, faulted=False, core_alive=True)
+        self.w._ready = self.w._spend_enabled = True
+        _, result = _fixture_snapshot()
+        self.w._render_verified(result)
+        return (self.w.overview.core_card, self.w.overview.chain_card,
+                self.w.overview.security_card, self.w.overview.network_card)
+
+    def test_overview_cards_show_only_icon_title_value_detail_moved_to_help(self):
+        # R2 finding (b): cards render only icon + title + one short value
+        # line. The wrapped detail paragraph is never shown; its truthful text
+        # stays on the card's toolTip AND accessibleDescription.
+        from wam_regtest.bip39_locale import t
+        cards = self._render_verified_cards()
+        self.w.resize(1100, 720)
+        self.w.reduce_motion.setChecked(True)
+        self.w.show()
+        for _ in range(8):
+            QApplication.processEvents()
+        for card in cards:
+            # No visible wrapped detail label under the card.
+            self.assertTrue(card.detail.isHidden(),
+                            "detail paragraph must not be visible: %s" % (card,))
+            self.assertTrue(card.detail.text(),
+                            "detail keeps its truthful key text: %s" % (card,))
+            # The truth is still available through help surfaces.
+            self.assertIn(card.detail.text(), card.toolTip(), card)
+            self.assertIn(card.detail.text(),
+                          card.accessibleDescription(), card)
+            # The value is a single line (no wrapped multi-line paragraph).
+            spacing = card.value.fontMetrics().lineSpacing()
+            self.assertLess(card.value.height(), 2 * spacing,
+                            "value must stay on one line: %s" % (card.value.text(),))
+
+    def test_overview_card_value_fits_one_line_in_all_six_locales(self):
+        cards = self._render_verified_cards()
+        self.w.resize(1100, 720)
+        self.w.reduce_motion.setChecked(True)
+        self.w.show()
+        for _ in range(8):
+            QApplication.processEvents()
+        for language in self.w.language_tiles:
+            self.w.language_tiles[language].click()
+            for _ in range(8):
+                QApplication.processEvents()
+            for card in cards:
+                # No visible wrapped detail paragraph in any locale.
+                self.assertTrue(card.detail.isHidden(), (language, card))
+                self.assertTrue(card.detail.text(), (language, card))
+                self.assertIn(card.detail.text(), card.toolTip(), (language, card))
+                # Value stays on one line (or elides with the full text in
+                # the tooltip already asserted above).
+                spacing = card.value.fontMetrics().lineSpacing()
+                self.assertLess(card.value.height(), 2 * spacing,
+                                (language, card.value.text()))
+
+    def test_settings_rail_buttons_equal_width_per_locale(self):
+        # R2 finding (c): every rail button is equal-width (Expanding inside
+        # the fixed-width rail column) with left-aligned icon+label.
+        from PySide6.QtCore import Qt
+        self.w.resize(1100, 720)
+        self.w.reduce_motion.setChecked(True)
+        self.w.show()
+        self.w.navigation.setCurrentRow(6)
+        for language in self.w.language_tiles:
+            self.w.language_tiles[language].click()
+            self.w.settings_categories[3].click()
+            for _ in range(8):
+                QApplication.processEvents()
+            widths = [button.width() for button in self.w.settings_categories]
+            self.assertEqual(1, len(set(widths)),
+                             (language, widths))
+            for button in self.w.settings_categories:
+                self.assertEqual(button.toolButtonStyle(),
+                                 Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
