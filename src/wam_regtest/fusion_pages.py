@@ -3,7 +3,7 @@ from __future__ import annotations
 from .bip39_locale import t as ui_text
 from PySide6.QtCore import Qt, Signal, QRectF, QTimer, QEvent
 from PySide6.QtGui import QColor,QPainter,QFont,QFontDatabase
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QLineEdit,QComboBox,QCheckBox,QTableWidget,QTableWidgetItem,QHeaderView,QApplication,QDialog,QDialogButtonBox,QFrame
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QLineEdit,QComboBox,QCheckBox,QTableWidget,QTableWidgetItem,QHeaderView,QApplication,QDialog,QDialogButtonBox,QFrame,QToolButton,QButtonGroup
 from .fusion_ui import SHELL,label,panel,page,action,ResponsiveRow,AdaptiveButtonRow,keyboard_table,vector_icon,fusion_palette,activity_by_block,grow_with_wrapped_text,direction_tone,QR,pending_amount_text
 from .fusion_i18n import bind, bind_headers, bind_items, retranslate_tree
 from .presentation.strings import text as catalog_text
@@ -60,6 +60,16 @@ def sole_signed_never_submitted(intents):
                 return None
             chosen = item
     return chosen
+
+
+def reveal(widget, visible):
+    """Show or hide a control and move keyboard focus if it was on the hidden one."""
+    visible = bool(visible)
+    if widget.isVisible() == visible:
+        return
+    if not visible and widget.hasFocus():
+        widget.focusNextPrevChild(True)
+    widget.setVisible(visible)
 
 
 def _name_line_clear(edit, name):
@@ -120,15 +130,15 @@ class PaymentQR(QWidget):
 class ReceivePage(QWidget):
     def __init__(self):
         super().__init__();self.code=None;self.setObjectName('FusionInner');root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
-        header=QWidget();header_layout=QVBoxLayout(header);header_layout.setContentsMargins(SHELL['page_side'],SHELL['page_top'],SHELL['page_right'],0);header_layout.setSpacing(SHELL['page_gap']);header_layout.addWidget(label(ui_text('pages.silent_payments_receive'),'FusionKicker'));header_layout.addWidget(label(ui_text('pages.receive'),'PageTitle'));header_layout.addWidget(label(ui_text('pages.receive_subtitle')));header_layout.addWidget(grow_with_wrapped_text(label(ui_text('pages.silent_payments_note'))));header_layout.addWidget(grow_with_wrapped_text(label(ui_text('pages.disposable_funds'),'FusionGold')));root.addWidget(header)
-        self.scroll,layout=page(ui_text('pages.receive'),ui_text('pages.receive_subtitle'),ui_text('pages.silent_payments_receive'),header=False)
+        header=QWidget();header_layout=QVBoxLayout(header);header_layout.setContentsMargins(SHELL['page_side'],SHELL['page_top'],SHELL['page_right'],0);header_layout.setSpacing(SHELL['page_gap']);header_layout.addWidget(label(ui_text('pages.receive'),'PageTitle'));root.addWidget(header)
+        self.scroll,layout=page(ui_text('pages.receive'),'', '',header=False)
         root.addWidget(self.scroll)
         card,cl=panel(ui_text('pages.your_silent_payment_address'),ui_text('pages.receive_scope'))
         self.qr=PaymentQR();qrbox=QWidget();ql=QVBoxLayout(qrbox);ql.setContentsMargins(0,0,0,0);ql.addWidget(self.qr,alignment=Qt.AlignmentFlag.AlignCenter);ql.addWidget(label(ui_text('pages.exact_address_qr'),'FusionKicker'),alignment=Qt.AlignmentFlag.AlignCenter)
         address=QWidget();al=QVBoxLayout(address);al.setContentsMargins(0,0,0,0);al.addWidget(label(ui_text('pages.bip352_regtest'),'FusionBadge'));self.receive_code=label('—','ReceiveCode',True);self.receive_code.setMinimumWidth(0);al.addWidget(self.receive_code)
-        self.copy_button=action(ui_text('pages.copy_full_address'),'copy',True);self.copy_button.setEnabled(False);self.copy_button.setAccessibleName(ui_text('pages.copy_full_address'));self.copy_button.setAccessibleDescription(ui_text('pages.copy_full_address_description'));self.copy_button.clicked.connect(self.copy_address);al.addWidget(self.copy_button);self.copy_status=label(ui_text('pages.copy_full_value'));al.addWidget(self.copy_status);al.addStretch()
+        self.copy_button=action(ui_text('pages.copy_full_address'),'copy',True);self.copy_button.setEnabled(False);self.copy_button.setAccessibleName(ui_text('pages.copy_full_address'));self.copy_button.setAccessibleDescription(ui_text('pages.copy_full_address_description'));self.copy_button.clicked.connect(self.copy_address);al.addWidget(self.copy_button);self.copy_status=label('');self.copy_status.hide();al.addWidget(self.copy_status);al.addStretch()
         self._copy_timer=QTimer(self);self._copy_timer.setSingleShot(True)
-        self._copy_timer.timeout.connect(lambda:self.copy_status.setText(ui_text('pages.copy_complete') if self.code else ui_text('pages.address_locked')))
+        self._copy_timer.timeout.connect(self._show_copy_state)
         cl.addWidget(ResponsiveRow(qrbox,address,weights=[2,3],breakpoint=610));layout.addWidget(card)
         self.received=label(ui_text('pages.no_verified_receiving_activity'));layout.addWidget(self.received);layout.addStretch()
     def retranslate(self):
@@ -143,29 +153,53 @@ class ReceivePage(QWidget):
     def render_snapshot(self,snap):
         self._rendered_snap = snap
         self.code=None;self.copy_button.setEnabled(False);self.receive_code.setText('—');self.qr.set_code(None)
-        candidate=snap.receive_code if snap else None;self.qr.set_code(candidate);self.code=candidate;self.receive_code.setText(self.code or '—');self.copy_button.setEnabled(bool(self.code));self.copy_status.setText(ui_text('pages.copy_complete') if self.code else ui_text('pages.address_locked'))
+        candidate=snap.receive_code if snap else None;self.qr.set_code(candidate);self.code=candidate;self.receive_code.setText(self.code or '—');self.copy_button.setEnabled(bool(self.code));self._show_copy_state()
         if snap is None:
             self.received.setText(ui_text('pages.no_verified_receiving_activity'))
         elif type(snap.receive_count) is int:
             self.received.setText(ui_text('pages.receive_count').format(count=snap.receive_count))
         else:
             self.received.setText(ui_text('pages.receive_stats_unavailable'))
+    def _show_copy_state(self):
+        if self.code:
+            self.copy_status.setText('')
+            self.copy_status.hide()
+        else:
+            self.copy_status.setText(ui_text('pages.address_locked'))
+            self.copy_status.show()
     def copy_address(self):
         if self.code:
-            QApplication.clipboard().setText(self.code);self.copy_status.setText(ui_text('pages.full_address_copied'));self._copy_timer.start(2200)
+            QApplication.clipboard().setText(self.code)
+            self.copy_status.setText(ui_text('pages.full_address_copied'))
+            self.copy_status.show()
+            self._copy_timer.start(2200)
 
 
 class HistoryPage(QWidget):
     page_requested=Signal(int)
     def __init__(self):
         super().__init__();self.setObjectName('FusionInner');self.rows=();self.mode='dark';self._offset=0;self._total=0;self._has_snapshot=False;root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
-        self.scroll,layout=page(ui_text('pages.history'),ui_text('pages.history_subtitle') + ' ' + ui_text('pending.history_subtitle'),ui_text('pages.on_chain_history'));root.addWidget(self.scroll)
-        card,cl=panel();toolbar=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText(ui_text('pages.search_placeholder'));self.search.setClearButtonEnabled(True);self.search.setAccessibleName(ui_text('pages.search_confirmed_transactions'));self.filter=QComboBox();self.filter.setAccessibleName(ui_text('pages.history_type_filter'));self.filter.view().setAccessibleName(ui_text('pages.history_type_filter'));self.filter.addItems((ui_text('pages.all_activity'),ui_text('pages.credits'),ui_text('pages.debits')));toolbar.addWidget(self.search,1);toolbar.addWidget(self.filter);_name_line_clear(self.search,ui_text('pages.search_confirmed_transactions'));cl.addLayout(toolbar)
+        self.scroll,layout=page(ui_text('pages.history'),'','');root.addWidget(self.scroll)
+        card,cl=panel();toolbar=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText(ui_text('pages.search_placeholder'));self.search.setClearButtonEnabled(True);self.search.setAccessibleName(ui_text('pages.search_confirmed_transactions'));self.filter=QComboBox();self.filter.setAccessibleName(ui_text('pages.history_type_filter'));self.filter.view().setAccessibleName(ui_text('pages.history_type_filter'));self.filter.addItems((ui_text('pages.all_activity'),ui_text('pages.credits'),ui_text('pages.debits')));toolbar.addWidget(self.search,1);self.filter.hide();_name_line_clear(self.search,ui_text('pages.search_confirmed_transactions'));cl.addLayout(toolbar)
+        self._filter_chips = []
+        self._filter_group = QButtonGroup(self)
+        self._filter_group.setExclusive(True)
+        for index in range(self.filter.count()):
+            chip = QToolButton()
+            chip.setObjectName('FusionCategory')
+            chip.setCheckable(True)
+            chip.setText(self.filter.itemText(index))
+            chip.setAccessibleName(self.filter.itemText(index))
+            self._filter_group.addButton(chip, index)
+            toolbar.addWidget(chip)
+            self._filter_chips.append(chip)
+        self._filter_chips[0].setChecked(True)
+        self._filter_group.idClicked.connect(self.filter.setCurrentIndex)
         self.table=QTableWidget(0,6);self.table.setObjectName('FusionActivityTable');self.table.setHorizontalHeaderLabels((ui_text('pages.direction'),ui_text('pages.transaction'),ui_text('pages.block'),ui_text('pages.confirmed'),ui_text('pages.credit_wam'),ui_text('pages.debit_wam')));self.table.verticalHeader().hide();self.table.setShowGrid(False);self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows);keyboard_table(self.table,ui_text('pages.history'));self.table.setMinimumHeight(220);self._size_columns();cl.addWidget(self.table);self.table.viewport().installEventFilter(self)
-        self.newer=action(ui_text('pages.newer_confirmed_history'),'history');self.older=action(ui_text('pages.older_confirmed_history'),'history');self.newer.setAccessibleName(ui_text('pages.newer_confirmed_history'));self.older.setAccessibleName(ui_text('pages.older_confirmed_history'));self.newer.setEnabled(False);self.older.setEnabled(False);self.newer.clicked.connect(self._newer);self.older.clicked.connect(self._older);cl.addWidget(AdaptiveButtonRow(self.newer,self.older))
+        self.newer=action(ui_text('pages.newer_confirmed_history'),'chevron_left');self.older=action(ui_text('pages.older_confirmed_history'),'chevron_right');self.newer.setAccessibleName(ui_text('pages.newer_confirmed_history'));self.older.setAccessibleName(ui_text('pages.older_confirmed_history'));self.newer.setEnabled(False);self.older.setEnabled(False);self.newer.hide();self.older.hide();self.newer.clicked.connect(self._newer);self.older.clicked.connect(self._older);cl.addWidget(AdaptiveButtonRow(self.newer,self.older))
         self.scope=label('');cl.addWidget(self.scope)
         self.empty=label(ui_text('history.unavailable'));cl.addWidget(self.empty);layout.addWidget(card)
-        detail,dl=panel(ui_text('pages.transaction_details'),ui_text('pages.select_row'));self.detail_id=label(ui_text('pages.no_transaction_selected'),'ReceiveCode',True);dl.addWidget(self.detail_id);self.detail_values=grow_with_wrapped_text(label(''));dl.addWidget(self.detail_values);self.copy_button=action(ui_text('pages.copy_full_transaction_id'),'copy');self.copy_button.setAccessibleName(ui_text('pages.copy_full_transaction_id'));self.copy_button.setEnabled(False);self.copy_button.clicked.connect(self.copy_txid);dl.addWidget(self.copy_button);layout.addWidget(detail);layout.addStretch()
+        detail,dl=panel(ui_text('pages.transaction_details'),ui_text('pages.select_row'));self.detail_id=label(ui_text('pages.no_transaction_selected'),'ReceiveCode',True);dl.addWidget(self.detail_id);self.detail_values=grow_with_wrapped_text(label(''));dl.addWidget(self.detail_values);self.copy_button=action(ui_text('pages.copy_full_transaction_id'),'copy');self.copy_button.setAccessibleName(ui_text('pages.copy_full_transaction_id'));self.copy_button.setEnabled(False);self.copy_button.hide();self.copy_button.clicked.connect(self.copy_txid);dl.addWidget(self.copy_button);layout.addWidget(detail);layout.addStretch()
         self.table.itemSelectionChanged.connect(self.show_details);self.search.textChanged.connect(self.apply_filter);self.filter.currentIndexChanged.connect(self.apply_filter)
         bind(self.search, placeholder='pages.search_placeholder', accessible_name='pages.search_confirmed_transactions')
         bind(self.filter, accessible_name='pages.history_type_filter')
@@ -176,9 +210,9 @@ class HistoryPage(QWidget):
         query = self.search.text()
         choice = self.filter.currentIndex()
         retranslate_tree(self)
-        subtitle = getattr(self.scroll, '_fusion_subtitle', None)
-        if subtitle is not None:
-            subtitle.setText(str(ui_text('pages.history_subtitle')) + ' ' + str(ui_text('pending.history_subtitle')))
+        for index, chip in enumerate(self._filter_chips):
+            chip.setText(self.filter.itemText(index))
+            chip.setAccessibleName(self.filter.itemText(index))
         if hasattr(self, '_rendered_snap'):
             self._render_history(self._rendered_snap)
             self.search.setText(query)
@@ -249,8 +283,12 @@ class HistoryPage(QWidget):
         self._offset=snap.history_offset if snap and type(snap.history_offset) is int else 0
         self._total=snap.history_count if snap and type(snap.history_count) is int else len(snap.history) if snap else 0
         shown=len(snap.history) if snap else 0
-        self.newer.setEnabled(bool(snap) and self._offset>0)
-        self.older.setEnabled(bool(snap) and self._offset+shown<self._total)
+        newer_page = bool(snap) and self._offset>0
+        older_page = bool(snap) and self._offset+shown<self._total
+        self.newer.setEnabled(newer_page)
+        self.older.setEnabled(older_page)
+        reveal(self.newer, newer_page)
+        reveal(self.older, older_page)
         if snap is None:
             self.scope.setText('')
         elif snap.history_complete:

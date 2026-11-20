@@ -89,6 +89,35 @@ def apply_shared_profile(actions, shared):
     return result
 
 
+def visible_actions(i):
+    """Which workflow controls stay on screen. This is not enablement.
+
+    ``available_actions`` decides whether a control can be used. Busy, lock,
+    reauthentication and an unavailable Core disable a control; they must not
+    be copied into ``setVisible``. A hidden control is one whose workflow is
+    not the user's current one.
+    """
+    unsigned = ((i.approved_commitment or i.recovered_unsigned_cancel)
+                and not i.signed_ready)
+    signed = bool(i.signed_ready and i.approved_commitment)
+    return {
+        # Before activation only. After lock, spending is not enabled, so the
+        # control returns with the unlock/Core prerequisite rather than an
+        # empty action area.
+        'activate': not i.spend_enabled,
+        # Current unsigned commitment, or a recovered unsigned cancel, and
+        # not a signed transaction. No current review object is required.
+        'cancel': unsigned,
+        # Exact current signed review and its commitment. Busy disables it.
+        'broadcast': signed,
+        # Read-only discovery stays available before any intent query,
+        # including after restart. Resume is only the one verified offer.
+        'inspect': True,
+        'intents': True,
+        'resume': bool(i.resumable_intent),
+    }
+
+
 def fusion_actions(i, actions, shared):
     """Fusion-only controls derived from the (shared-adjusted) base actions."""
     idle = not i.busy

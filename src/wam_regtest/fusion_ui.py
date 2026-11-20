@@ -29,15 +29,15 @@ from .infrastructure import core_compat
 # stylesheet and the shell layouts actually read.
 SPACING = {'xs': 4, 'sm': 8, 'md': 12, 'lg': 16, 'xl': 24, 'xxl': 32}
 TYPE = {
-    'display': 56, 'display_compact': 40, 'heading': 28, 'section': 16,
-    'brand': 18, 'denom': 24, 'number': 20, 'word': 17, 'body': 14,
-    'secondary': 13, 'caption': 12,
+    'display': 40, 'display_compact': 32, 'heading': 28, 'section': 20,
+    'brand': 18, 'denom': 24, 'number': 22, 'word': 17, 'body': 16,
+    'secondary': 14, 'caption': 12,
 }
 WEIGHT = {'semibold': 600, 'bold': 700}
 TRACKING = {'brand': 0.2, 'kicker': 0.4, 'balance': -1}
 RADIUS = {
-    'panel': 18, 'inset': 14, 'control': 12, 'nav': 11, 'badge': 10,
-    'segment': 9, 'progress': 8, 'check': 4, 'scroll': 3, 'hero': 20,
+    'panel': 16, 'inset': 14, 'control': 12, 'nav': 10, 'badge': 10,
+    'segment': 9, 'progress': 8, 'check': 4, 'scroll': 3, 'hero': 16,
 }
 FOCUS = 2
 # Shell geometry. Steps that already match the spacing scale reference it.
@@ -83,20 +83,26 @@ SHELL = {
 _THEME_COLORS = {
     'dark': dict(
         bg='#0B0B0D', surface='#141416', panel='#1C1C20', text='#F7F4EC',
-        muted='#B7B1A4', border='#2F2A22', tint='#1F1C16', accent='#E0C36A',
-        onaccent='#1A1406', warning='#3A3018', warning_text='#F1C77D',
-        green='#3DDC97', blue='#7EB6FF', red='#FF8B8F', hero_bottom='#1A150C',
+        text_secondary='#B7B1A4', muted='#9B9385', border='#34302A',
+        control='#A89878', tint='#1F1C16', accent='#E9C56B', focus='#E9C56B',
+        onaccent='#1A1406', onhero='#1A1406', cta_start='#F2D36F', cta_end='#C9922E',
+        warning='#3A3018', warning_text='#F1C77D',
+        green='#46C78B', blue='#7EB6FF', red='#FF8B8F', hero_bottom='#8A6420',
         selection='#3A3018', grid='#3A342C', chart_empty='#8E8A80',
         hover='#24221C', sidebar='#09090B', pending='#E5BE79',
-        brand='#E8C98A', segment='#1A1814'),
+        brand='#F2D36F', segment='#1A1814',
+        disabled_fg='#9B9385', disabled_bg='#1C1C20'),
     'light': dict(
         bg='#F6F3EC', surface='#FFFFFF', panel='#F3EEE3', text='#1C1914',
-        muted='#6A6458', border='#E4DCC8', tint='#EFE6D4', accent='#7A5A12',
-        onaccent='#FFF8E8', warning='#FFF4D8', warning_text='#80561A',
-        green='#0F7A52', blue='#1666CC', red='#B8424C', hero_bottom='#F4EBD6',
+        text_secondary='#514A3F', muted='#675F53', border='#E4DCC8',
+        control='#6E6250', tint='#EFE6D4', accent='#76520C', focus='#76520C',
+        onaccent='#1A1406', onhero='#1A1406', cta_start='#F2D36F', cta_end='#C9922E',
+        warning='#FFF4D8', warning_text='#80561A',
+        green='#0F7A52', blue='#1666CC', red='#B8424C', hero_bottom='#C9922E',
         selection='#F0E2BE', grid='#E4DCC8', chart_empty='#8E8A80',
         hover='#E8DCC3', sidebar='#F4EFE4', pending='#91601D',
-        brand='#9B742E', segment='#E9E1CF'),
+        brand='#76520C', segment='#E9E1CF',
+        disabled_fg='#675F53', disabled_bg='#F3EEE3'),
 }
 _DIMMER = 'rgba(12,12,14,0.38)'
 # QR modules stay paper and ink in both themes so a camera can read them.
@@ -132,7 +138,6 @@ def fusion_palette(mode):
         raise ValueError('FUSION_THEME_DENIED')
     colors = dict(base)
     # One stored colour per meaning. These names are aliases, not a second hex.
-    colors['focus'] = colors['accent']
     colors['success'] = colors['green']
     colors['error'] = colors['red']
     colors['received'] = colors['green']
@@ -263,7 +268,9 @@ def fusion_stylesheet(mode):
     QLabel#FusionKicker {{font-size:{t['caption']}px;font-weight:{w['semibold']};color:{c['muted']};letter-spacing:{TRACKING['kicker']}px;}}
     QLabel#FusionCardTitle {{font-size:{t['section']}px;font-weight:{w['semibold']};}}
     QLabel#FusionCardValue {{font-size:{t['number']}px;font-weight:{w['semibold']};}}
-    QLabel#FusionMuted,QLabel#SecondaryLabel,QLabel#StatusText,QLabel#FusionEmpty {{color:{c['muted']};font-size:{t['secondary']}px;}}
+    QLabel#FusionMuted,QLabel#StatusText,QLabel#FusionEmpty {{color:{c['text_secondary']};font-size:{t['body']}px;}}
+    QLabel#SecondaryLabel {{color:{c['muted']};font-size:{t['secondary']}px;}}
+    QLabel#FusionScope {{color:{c['onaccent']};background:{c['accent']};border:0;border-radius:{r['badge']}px;padding:5px 10px;font-size:{t['caption']}px;font-weight:{w['bold']};}}
     QLabel#FusionVerified {{color:{c['success']};font-weight:{w['semibold']};}}
     QLabel#FusionInfo {{color:{c['blue']};}}
     QLabel#FusionGold {{color:{c['warning_text']};font-weight:{w['semibold']};}}
@@ -274,12 +281,12 @@ def fusion_stylesheet(mode):
     }}
     QListWidget {{background:transparent;color:{c['muted']};border:0;padding:2px;font-size:{t['body']}px;outline:0;}}
     QListWidget::item {{padding:9px {s['md']}px;border-radius:{r['nav']}px;margin:2px 0;}}
-    QListWidget::item:selected {{background:{c['accent']};color:{c['onaccent']};font-weight:{w['bold']};}}
+    QListWidget::item:selected {{background:{c['cta_start']};color:{c['onaccent']};font-weight:{w['bold']};}}
     QListWidget::item:hover:!selected {{background:{c['hover']};color:{c['text']};}}
     QListWidget{kf} {{border:{ring}px solid {c['focus']};padding:0;}}
     QLineEdit,QTextEdit,QPlainTextEdit {{
         background:{c['panel']};color:{c['text']};selection-background-color:{c['selection']};
-        border:1px solid {c['border']};border-radius:{r['control']}px;padding:{s['md']}px;
+        border:1px solid {c['control']};border-radius:{r['control']}px;padding:{s['md']}px;
     }}
     QLineEdit{kf},QTextEdit{kf},QPlainTextEdit{kf} {{border:{ring}px solid {c['focus']};padding:11px;}}
     QPushButton{kf},QComboBox{kf} {{border:{ring}px solid {c['focus']};padding:11px 16px;}}
@@ -288,25 +295,38 @@ def fusion_stylesheet(mode):
     QToolButton#FusionSegment{kf} {{border:{ring}px solid {c['focus']};padding:6px 10px;}}
     QToolButton#FusionQuick{kf} {{border:{ring}px solid {c['focus']};padding:10px 12px;}}
     QToolButton#FusionAdvanced{kf} {{border:{ring}px solid {c['focus']};padding:8px;}}
-    QLineEdit:disabled {{color:{c['muted']};background:{c['bg']};}}
+    QLineEdit:disabled {{color:{c['disabled_fg']};background:{c['disabled_bg']};}}
     QPushButton,QComboBox {{
-        background:{c['tint']};color:{c['text']};border:1px solid {c['border']};
+        background:{c['tint']};color:{c['text']};border:1px solid {c['control']};
         border-radius:{r['control']}px;padding:{s['md']}px 17px;font-weight:{w['semibold']};
     }}
     QPushButton#PrimaryButton,QPushButton#FusionPrimary {{
-        background:{c['accent']};color:{c['onaccent']};border:1px solid {c['accent']};
+        background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 {c['cta_start']},stop:1 {c['cta_end']});
+        color:{c['onaccent']};border:1px solid {c['cta_end']};
     }}
     QPushButton#FusionPrimary{kf},QPushButton#PrimaryButton{kf} {{border:{ring}px solid {c['onaccent']};padding:11px 16px;}}
     QPushButton#FusionSecondary {{background:{c['tint']};color:{c['text']};border:1px solid {c['border']};}}
     QPushButton#FusionDestructive {{background:{c['surface']};color:{c['error']};border:1px solid {c['border']};}}
     QPushButton:hover:enabled,QComboBox:hover {{background:{c['hover']};border:1px solid {c['focus']};}}
     QPushButton#FusionPrimary:hover:enabled,QPushButton#PrimaryButton:hover:enabled {{
-        background:{c['brand']};border:1px solid {c['onaccent']};
+        background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 {c['cta_start']},stop:1 {c['accent']});
+        border:1px solid {c['onaccent']};
     }}
     QPushButton:pressed:enabled {{background:{c['selection']};}}
     QPushButton#FusionPrimary:disabled,QPushButton#PrimaryButton:disabled,
     QPushButton#FusionSecondary:disabled,QPushButton#FusionDestructive:disabled,QPushButton:disabled {{
-        background:{c['panel']};color:{c['muted']};border:1px solid {c['border']};
+        background:{c['disabled_bg']};color:{c['disabled_fg']};border:1px solid {c['border']};
+    }}
+    QToolButton#FusionLanguageTile,QToolButton#FusionCategory {{
+        background:{c['surface']};color:{c['text']};border:1px solid {c['control']};
+        border-radius:{r['control']}px;padding:10px 12px;font-weight:{w['semibold']};text-align:left;
+    }}
+    QToolButton#FusionLanguageTile:checked,QToolButton#FusionCategory:checked {{
+        background:{c['cta_start']};color:{c['onaccent']};border:2px solid {c['cta_end']};
+    }}
+    QToolButton#FusionLanguageTile{kf},QToolButton#FusionCategory{kf} {{border:{ring}px solid {c['focus']};}}
+    QToolButton#FusionLanguageTile:checked{kf},QToolButton#FusionCategory:checked{kf} {{
+        border:{ring}px solid {c['onaccent']};
     }}
     QComboBox::drop-down {{border:0;width:22px;}}
     QComboBox QAbstractItemView {{
@@ -314,7 +334,7 @@ def fusion_stylesheet(mode):
         border:1px solid {c['border']};
     }}
     QCheckBox {{color:{c['text']};spacing:{s['sm']}px;}}
-    QCheckBox::indicator {{width:17px;height:17px;border:1px solid {c['muted']};border-radius:{r['check']}px;background:{c['panel']};}}
+    QCheckBox::indicator {{width:17px;height:17px;border:1px solid {c['control']};border-radius:{r['check']}px;background:{c['panel']};}}
     QCheckBox::indicator:checked {{background:{c['accent']};border:1px solid {c['accent']};}}
     QCheckBox{kf}::indicator {{border:{ring}px solid {c['focus']};}}
     QCheckBox{kf}::indicator:checked {{background:{c['accent']};border:{ring}px solid {c['onaccent']};}}
@@ -336,6 +356,8 @@ def fusion_stylesheet(mode):
     QScrollBar::handle:vertical {{background:{c['border']};border-radius:{r['scroll']}px;min-height:30px;}}
     QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical {{height:0;}}
     QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical {{background:transparent;}}
+    QFrame#FusionHero QLabel {{color:{c['onhero']};}}
+    QFrame#FusionHero QLabel#FusionMuted,QFrame#FusionHero QLabel#FusionKicker {{color:{c['onhero']};}}
     QToolTip {{background:{c['surface']};color:{c['text']};border:1px solid {c['border']};padding:{s['sm']}px;}}
     """
 
@@ -351,17 +373,21 @@ class StateSwitch(I18nCheckBox):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        if not self.isEnabled():
-            painter.setOpacity(0.45)
         mode = self.property('fusion_mode') or 'dark'
         colors = fusion_palette(mode if mode in ('dark', 'light') else 'dark')
+        enabled = self.isEnabled()
         track = QRectF(2, (self.height() - 24) / 2, 46, 24)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(colors['success'] if self.isChecked() else colors['border']))
+        if not enabled:
+            painter.setBrush(QColor(colors['disabled_bg']))
+        else:
+            painter.setBrush(QColor(colors['success'] if self.isChecked() else colors['border']))
         painter.drawRoundedRect(track, 12, 12)
-        painter.setBrush(QColor(colors['onaccent'] if self.isChecked() else colors['text']))
+        painter.setBrush(QColor(
+            colors['disabled_fg'] if not enabled else
+            colors['onaccent'] if self.isChecked() else colors['text']))
         painter.drawEllipse(QRectF(28 if self.isChecked() else 6, track.y() + 4, 16, 16))
-        painter.setPen(QColor(colors['text']))
+        painter.setPen(QColor(colors['text'] if enabled else colors['disabled_fg']))
         painter.drawText(QRectF(58, 0, self.width() - 58, self.height()),
                          Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self.text())
         if self.property('keyboardFocus'):
@@ -762,13 +788,13 @@ def page(title, subtitle, kicker=None, header=True):
     layout.setContentsMargins(SHELL['page_side'], SHELL['page_top'], SHELL['page_right'], SHELL['page_bottom'])
     layout.setSpacing(SHELL['page_gap'])
     if header:
-        kicker_label = label(kicker, 'FusionKicker')
-        title_label = label(title, 'PageTitle')
-        subtitle_label = label(subtitle)
-        layout.addWidget(kicker_label)
-        layout.addWidget(title_label)
-        layout.addWidget(subtitle_label)
-        scroll._fusion_subtitle = subtitle_label
+        if kicker:
+            layout.addWidget(label(kicker, 'FusionKicker'))
+        layout.addWidget(label(title, 'PageTitle'))
+        if subtitle:
+            subtitle_label = label(subtitle)
+            layout.addWidget(subtitle_label)
+            scroll._fusion_subtitle = subtitle_label
     return scroll, layout
 
 
@@ -874,6 +900,14 @@ def vector_icon(name, tone, dpr=2):
         p.setBrush(color)
         p.drawPie(QRectF(4, 4, 16, 16), 90 * 16, 180 * 16)
         p.setBrush(Qt.BrushStyle.NoBrush)
+    elif name == 'chevron_left':
+        line(15, 5, 8, 12); line(8, 12, 15, 19)
+    elif name == 'chevron_right':
+        line(9, 5, 16, 12); line(16, 12, 9, 19)
+    elif name == 'globe':
+        p.drawEllipse(QRectF(4, 4, 16, 16))
+        p.drawEllipse(QRectF(8, 4, 8, 16))
+        line(4, 12, 20, 12); line(5, 8, 19, 8); line(5, 16, 19, 16)
     else:
         p.drawEllipse(QRectF(5, 5, 14, 14)); line(12, 7, 12, 17); line(7, 12, 17, 12)
     p.end()
@@ -1084,6 +1118,7 @@ class StatusCard(QFrame):
         layout.addLayout(top)
         self.value = label(ui_text('fusion.not_verified'), 'FusionCardValue')
         self.detail = label(caption)
+        self.detail.setVisible(bool(caption))
         self.detail.setWordWrap(True)
         self.detail.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         layout.addWidget(self.value)
@@ -1146,16 +1181,11 @@ class Hero(QFrame):
         path.addRoundedRect(rect, RADIUS['hero'], RADIUS['hero'])
         p.setClipPath(path)
         gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
-        gradient.setColorAt(0, QColor(c['surface']))
-        gradient.setColorAt(1, QColor(c['hero_bottom']))
+        gradient.setColorAt(0, QColor(c['cta_start']))
+        gradient.setColorAt(1, QColor(c['cta_end']))
         p.fillPath(path, gradient)
-        glow = QRadialGradient(rect.left() + 120, rect.top() + 36, 160)
-        gold = QColor(c['accent']); gold.setAlpha(28 if self.mode == 'dark' else 18)
-        glow.setColorAt(0, gold); glow.setColorAt(1, QColor(0, 0, 0, 0))
-        p.fillRect(rect, glow)
-        p.setOpacity(0.95)
         p.setClipping(False)
-        p.setPen(QPen(QColor(c['accent']), 1))
+        p.setPen(QPen(QColor(c['cta_end']), 1))
         p.drawRoundedRect(rect, RADIUS['hero'], RADIUS['hero'])
         p.end()
 
@@ -1522,7 +1552,6 @@ class FusionOverview(QScrollArea):
         home = QLabel(); home.setProperty('fusion_icon_label', 'home'); home.setFixedSize(24, 24)
         title_row.addWidget(home); title_row.addWidget(label(ui_text('fusion.overview'), 'PageTitle')); title_row.addStretch()
         titles.addLayout(title_row)
-        titles.addWidget(label(ui_text('fusion.glance')))
         head.addLayout(titles, 1)
         self.live_badge = label(ui_text('fusion.awaiting_verification'), 'FusionBadge')
         self.live_badge.hide()
@@ -1580,10 +1609,10 @@ class FusionOverview(QScrollArea):
         hero_grid.setColumnStretch(0, 5)
         hero_grid.setColumnStretch(1, 4)
 
-        self.core_card = StatusCard(ui_text('fusion.wam_core'), ui_text('fusion.pinned_binary_identity'))
-        self.chain_card = StatusCard(ui_text('fusion.chain'), ui_text('fusion.verified_tip_height'))
-        self.security_card = StatusCard(ui_text('fusion.security'), ui_text('fusion.native_custody_state'))
-        self.network_card = StatusCard(ui_text('fusion.network'), ui_text('fusion.regtest_connectivity'))
+        self.core_card = StatusCard(ui_text('fusion.wam_core'), '')
+        self.chain_card = StatusCard(ui_text('fusion.chain'), '')
+        self.security_card = StatusCard(ui_text('fusion.security'), '')
+        self.network_card = StatusCard(ui_text('fusion.network'), '')
         self.core_status = self.core_card.value
         self.chain_status = self.chain_card.value
         self.vault_status = self.security_card.value
@@ -1684,9 +1713,10 @@ class FusionOverview(QScrollArea):
         self.balance_unit.setVisible(compact)
         self.balance_value.setText(amount if compact else amount + ' WAM')
         size = TYPE['display_compact'] if compact else TYPE['display']
+        tone = fusion_palette(self.hero.mode).get('onhero', '#1A1406')
         self.balance_value.setStyleSheet(
-            'font-size:%dpx;font-weight:%d;letter-spacing:%spx;'
-            % (size, WEIGHT['bold'], TRACKING['balance']))
+            'font-size:%dpx;font-weight:%d;letter-spacing:%spx;color:%s;'
+            % (size, WEIGHT['bold'], TRACKING['balance'], tone))
 
     def _select_tx(self, row, column):
         if 0 <= row < len(self._txids):
