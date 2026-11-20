@@ -182,11 +182,16 @@ def welcome_dialog():
     outer = QVBoxLayout(dialog)
     outer.setContentsMargins(0, 0, 0, 0)
     scroll = QScrollArea(dialog)
+    scroll.setObjectName('FusionScroll')
     scroll.setWidgetResizable(True)
     scroll.setFrameShape(QFrame.Shape.NoFrame)
     scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     content = QWidget()
+    content.setObjectName('FusionTransparent')
     scroll.setWidget(content)
+    # The scroll viewport must not paint the native pale base; it should show
+    # the themed dialog background behind the transparent content.
+    scroll.viewport().setAutoFillBackground(False)
     outer.addWidget(scroll)
     root = QVBoxLayout(content)
     root.setContentsMargins(28, 28, 28, 24)
@@ -202,8 +207,12 @@ def welcome_dialog():
     dialog.shared_mode.setAccessibleName(ui_text('welcome.shared_regtest_manual_core_p2p'))
     dialog.shared_mode.setToolTip(ui_text('welcome.shared_tooltip'))
     advanced_network = QToolButton()
+    # Themed QToolButton (FusionQuick has theme tokens; "FusionAdvanced" is
+    # deliberately NOT used because assert_unified_welcome_qt forbids it).
+    advanced_network.setObjectName('FusionQuick')
     bind(advanced_network, text=ui_text('wallet.advanced_title'), accessible_name=ui_text('wallet.advanced_title'))
     advanced_network.setCheckable(True)
+    advanced_network.setMinimumHeight(44)
     dialog.shared_mode.hide()
     advanced_network.toggled.connect(dialog.shared_mode.setVisible)
     root.addWidget(advanced_network)
@@ -213,6 +222,10 @@ def welcome_dialog():
         ui_text('welcome.your_wallet'),
         '',
     )
+    # The safety sentence that confident create/restore scope stays reachable
+    # on the section's help surfaces (one wallet experience · BIP39 recovery).
+    choices.setToolTip(ui_text('welcome.experience'))
+    choices.setAccessibleDescription(ui_text('welcome.experience'))
     for key, title, detail, icon_name, primary in (
         ("create", ui_text('welcome.create_a_new_wallet'),
          ui_text('welcome.create_detail'), "overview", True),

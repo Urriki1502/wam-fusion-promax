@@ -839,4 +839,9 @@ ID = {
     "errors.REC2_UNCERTAIN_RESUBMIT_DEFERRED": "Pengiriman ulang yang hasilnya tidak pasti ditunda pada versi ini. Pembayaran tidak dikirim ulang. Input yang dipesan tetap terkunci dan tidak dilepas secara otomatis.",
     "settings.general": "Umum",
     "wallet.advanced_body": "Hanya untuk penerimaan teknis dan diagnostik rantai uji.",
+    "welcome.experience": "Satu pengalaman dompet · pemulihan BIP39 12 kata",
+    "wallet.security_kicker": "KUSTODI / KEAMANAN",
+    "wallet.settings_subtitle": "Tampilan, preferensi biasa, dan diagnostik pengembang yang terpisah.",
+    "pages.v1_net_regtest": "V1-NET / REGTEST",
+    "pages.manual_peer_controls": "Kontrol peer manual",
 }

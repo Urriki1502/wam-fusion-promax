@@ -839,4 +839,9 @@ KO = {
     "errors.REC2_UNCERTAIN_RESUBMIT_DEFERRED": "결과가 불확실한 재제출은 이 버전에서 보류됩니다. 결제는 다시 보내지지 않았습니다. 예약된 입력은 잠긴 채로 유지되며 자동으로 해제되지 않습니다.",
     "settings.general": "일반",
     "wallet.advanced_body": "기술 수용과 테스트 체인 진단 전용입니다.",
+    "welcome.experience": "하나의 지갑 경험 · BIP39 12단어 복구",
+    "wallet.security_kicker": "보관 / 보안",
+    "wallet.settings_subtitle": "모양, 일반 환경설정, 그리고 분리된 개발자 진단.",
+    "pages.v1_net_regtest": "V1-NET / REGTEST",
+    "pages.manual_peer_controls": "수동 peer 제어",
 }

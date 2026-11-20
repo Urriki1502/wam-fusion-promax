@@ -839,4 +839,9 @@ ZH_HANS = {
     "errors.REC2_UNCERTAIN_RESUBMIT_DEFERRED": "结果不确定的再次提交在此版本中被推迟。这笔付款未被重新发送。已预留的输入保持锁定，且不会自动解除。",
     "settings.general": "常规",
     "wallet.advanced_body": "仅用于技术验收和测试链诊断。",
+    "welcome.experience": "同一种钱包体验 · BIP39 12 词恢复",
+    "wallet.security_kicker": "托管 / 安全",
+    "wallet.settings_subtitle": "外观、常规偏好设置和独立的开发者诊断。",
+    "pages.v1_net_regtest": "V1-NET / REGTEST",
+    "pages.manual_peer_controls": "手动 peer 控制",
 }

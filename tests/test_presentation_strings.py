@@ -36,6 +36,12 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = json.loads((ROOT / 'tests/pm014_english_literals.json').read_text())
 PM103 = json.loads((ROOT / 'tests/pm103_copy_changes.json').read_text())
 PM103_RETIRED = set(json.loads((ROOT / 'tests/pm103_retired_keys.json').read_text()))
+# PM-103 r5 restores the five SAFETY-scope keys Copilot classified. They are
+# real catalog copy again, so the expected-union below must include them too.
+PM103_RESTORED = {
+    'welcome.experience', 'wallet.security_kicker', 'wallet.settings_subtitle',
+    'pages.v1_net_regtest', 'pages.manual_peer_controls',
+}
 PM103_HISTORY = json.loads((ROOT / 'tests/pm103_copy_history.json').read_text())
 MODULES = ('bip39_locale', 'gui_errors', 'managed_onboarding', 'fusion_ui', 'fusion_pages')
 
@@ -216,7 +222,8 @@ class CatalogTests(unittest.TestCase):
                          | set(fe003['english']) | {'backup.preparing', 'backup.checking', 'backup.scroll_accessible', 'backup.reopen', 'backup.done'}
                          | set(pm062['english']) | {'errors.WALLET_CHANGE_BELOW_DUST'}
                          | set(pm075['english']) | set(pm082['english']) | set(pm086['english'])
-                         | set(pm090['english']) | set(pm094['english']) | set(PM103)) - PM103_RETIRED)
+                         | set(pm090['english']) | set(pm094['english']) | set(PM103)
+                         | PM103_RESTORED) - PM103_RETIRED)
 
     def test_public_error_mapping_and_codes_unchanged(self):
         from wam_regtest.gui_errors import _MESSAGES, error_text, public_code

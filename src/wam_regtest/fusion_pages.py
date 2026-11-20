@@ -653,6 +653,10 @@ class NetworkPage(QWidget):
         self.scroll, layout = page(
             ui_text('pages.network'),
             ui_text('pages.network_subtitle'), '')
+        # The "V1-NET / REGTEST" scope sentence stays reachable on the
+        # section's help surfaces after the concise redesign, and retranslates.
+        bind(self.scroll, tooltip=ui_text('pages.v1_net_regtest'),
+             accessible_description=ui_text('pages.v1_net_regtest'))
         root.addWidget(self.scroll)
         status, sl = panel(ui_text('pages.network_status'), ui_text('pages.unknown_until_verified'))
         self.mode_value = label(ui_text('pages.not_verified'), 'FusionCardValue')
@@ -670,6 +674,10 @@ class NetworkPage(QWidget):
         sl.addLayout(self.attention_host)
         layout.addWidget(status)
         controls, cl = panel(ui_text('wallet.advanced_title'), ui_text('pages.v1_net_commands'))
+        # The "Manual peer controls" scope sentence stays reachable on the
+        # shared advanced-controls section's help surfaces, and retranslates.
+        bind(controls, tooltip=ui_text('pages.manual_peer_controls'),
+             accessible_description=ui_text('pages.manual_peer_controls'))
         self.controls_card = controls
         self.controls_toggle = QToolButton()
         self.controls_toggle.setObjectName('FusionAdvanced')

@@ -106,6 +106,53 @@ class TargetDesign(unittest.TestCase):
                 self.assertNotIn(repr(key), path.read_text(), str(path))
                 self.assertNotIn('"' + key + '"', path.read_text(), str(path))
 
+    def test_restored_safety_keys_are_in_every_locale_and_bound_to_sections(self):
+        # PM-103 r5: the five SAFETY keys Copilot classified are real catalog
+        # copy again in all six locales, and each is bound to its section's
+        # help surface (tooltip/accessibleDescription) or visible.
+        import json
+        from wam_regtest.presentation.strings import CATALOG, text
+        root = Path(__file__).resolve().parents[1]
+        safety = {
+            'welcome.experience', 'wallet.security_kicker',
+            'wallet.settings_subtitle', 'pages.v1_net_regtest',
+            'pages.manual_peer_controls',
+        }
+        # Present in every locale.
+        for key in safety:
+            for language, catalog in CATALOG.items():
+                self.assertIn(key, catalog, (language, key))
+                self.assertTrue(catalog[key].strip(), (language, key))
+        # Not listed as retired.
+        retired = set(json.loads(
+            (root / 'tests/pm103_retired_keys.json').read_text()))
+        self.assertFalse(safety & retired, safety & retired)
+        # Bound to live help surfaces in the built windows.
+        from PySide6.QtWidgets import QWidget
+        from wam_regtest.managed_onboarding import welcome_dialog
+        def surface_strings(root_widget):
+            for widget in [root_widget, *root_widget.findChildren(QWidget)]:
+                for surface, accessor in (
+                    ('toolTip', widget.toolTip),
+                    ('accessibleName', widget.accessibleName),
+                    ('accessibleDescription', widget.accessibleDescription),
+                    ('text', getattr(widget, 'text', None)),
+                ):
+                    if callable(accessor):
+                        val = accessor()
+                        if isinstance(val, str):
+                            yield val
+        bound = set()
+        welcome = welcome_dialog()
+        self.addCleanup(welcome.deleteLater)
+        for root_widget in (self.w, welcome):
+            for widget in surface_strings(root_widget):
+                for key in safety:
+                    bound_for = text(key, 'en')
+                    if bound_for and bound_for in widget:
+                        bound.add(key)
+        self.assertEqual(bound, safety, safety - bound)
+
     def test_focus_moves_to_recipient_when_a_workflow_action_disappears(self):
         w = self.w
         w.executor.state = ExecutorState(locked=False, core_alive=True)

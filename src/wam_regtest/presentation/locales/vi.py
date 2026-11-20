@@ -839,4 +839,9 @@ VI = {
     "errors.REC2_UNCERTAIN_RESUBMIT_DEFERRED": "Việc gửi lại một khoản thanh toán chưa rõ kết quả được hoãn trong phiên bản này. Khoản thanh toán không được gửi lại. Các đầu vào đã giữ chỗ vẫn khóa và không được giải phóng tự động.",
     "settings.general": "Chung",
     "wallet.advanced_body": "Chỉ dành cho nghiệm thu kỹ thuật và chẩn đoán chuỗi thử.",
+    "welcome.experience": "Một trải nghiệm ví · khôi phục BIP39 12 từ",
+    "wallet.security_kicker": "LƯU KÝ / BẢO MẬT",
+    "wallet.settings_subtitle": "Giao diện, tùy chọn thông thường và chẩn đoán nhà phát triển riêng biệt.",
+    "pages.v1_net_regtest": "V1-NET / REGTEST",
+    "pages.manual_peer_controls": "Điều khiển peer thủ công",
 }

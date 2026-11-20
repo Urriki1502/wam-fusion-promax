@@ -1,17 +1,12 @@
 [
-  "welcome.experience",
   "fusion.glance",
   "pages.silent_payments_receive",
   "pages.on_chain_history",
   "wallet.send_kicker",
-  "wallet.security_kicker",
   "wallet.settings_kicker",
-  "wallet.settings_subtitle",
   "wallet.appearance_body",
-  "pages.v1_net_regtest",
   "settings.language_next_window",
   "pages.prepare",
   "pages.result",
-  "pages.manual_peer_controls",
   "welcome.wam_fusion"
 ]

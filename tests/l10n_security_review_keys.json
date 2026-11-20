@@ -114,6 +114,10 @@
       "reason": "Mainnet and real-fund prohibition. Test value stays on this disposable REGTEST chain."
     },
     {
+      "key": "welcome.experience",
+      "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
       "key": "welcome.create_detail",
       "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
     },
@@ -271,6 +275,10 @@
     },
     {
       "key": "pages.v1_net_commands",
+      "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
+    },
+    {
+      "key": "pages.manual_peer_controls",
       "reason": "Network or Core identity. The sentence names which node, peer, or binary the wallet trusts."
     },
     {
@@ -808,6 +816,10 @@
     {
       "key": "wallet.security_subtitle",
       "reason": "Backup, recovery, or secret-entry copy. Recovery words, passphrases, and restore limits stay untranslated where they are protocol values."
+    },
+    {
+      "key": "wallet.security_kicker",
+      "reason": "Custody or lock-state copy. Releasing a reservation lock is not the same action as unlocking the wallet."
     },
     {
       "key": "wallet.protection_subtitle",

@@ -289,7 +289,27 @@ class SettingsIsolationAndKeysTests(unittest.TestCase):
                 self.assertFalse(window.custody_switch.isChecked())
                 self.assertFalse(window.custody_switch.isEnabled())
                 self.assertTrue(window.quit.isEnabled())
-                self.assertIs(window.backup_review, window.recovery)  # PM-103 canonical recovery action
+                self.assertIsNot(window.backup_review, window.recovery)
+                self.assertTrue(window.backup_review.isEnabled())  # PM-063 original contract: backup review enabled
+                # The backup-review control is connected to the WalletConsent
+                # flow: clicking it creates the consent dialog (proof the slot
+                # is live, not an accessibleDescription side-effect).
+                from wam_regtest import bip39_fusion_gui
+                from PySide6.QtWidgets import QDialog
+
+                class _Consent(QDialog):
+                    created = False
+
+                    def __init__(self, *args, **kwargs):
+                        super().__init__()
+                        _Consent.created = True
+
+                    def exec(self):
+                        return QDialog.DialogCode.Rejected
+
+                with patch.object(bip39_fusion_gui, 'WalletConsent', _Consent):
+                    window.backup_review.click()
+                self.assertTrue(_Consent.created)
                 self.assertFalse(window.recovery.isEnabled())
                 self.assertEqual(window.security_state.text(), t("wallet.security_locked"))
 

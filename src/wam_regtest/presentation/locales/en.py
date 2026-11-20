@@ -837,4 +837,9 @@ EN = {
     "errors.REC2_UNCERTAIN_RESUBMIT_DEFERRED": "Uncertain re-submission is deferred in this version. The payment was not re-sent. Reserved inputs stay locked and are not released automatically.",
     "settings.general": "General",
     "wallet.advanced_body": "For technical acceptance and test-chain diagnostics only.",
+    "welcome.experience": "One wallet experience · BIP39 12-word recovery",
+    "wallet.security_kicker": "CUSTODY / SECURITY",
+    "wallet.settings_subtitle": "Appearance, ordinary preferences and separate developer diagnostics.",
+    "pages.v1_net_regtest": "V1-NET / REGTEST",
+    "pages.manual_peer_controls": "Manual peer controls",
 }

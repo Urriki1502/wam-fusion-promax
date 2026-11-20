@@ -839,4 +839,9 @@ JA = {
     "errors.REC2_UNCERTAIN_RESUBMIT_DEFERRED": "結果が不確かな再送はこのバージョンでは延期されています。支払いは再送されませんでした。予約された入力はロックされたままで、自動では解除されません。",
     "settings.general": "一般",
     "wallet.advanced_body": "技術検証とテストチェーン診断専用です。",
+    "welcome.experience": "一つのウォレット体験 · BIP39 の 12 語リカバリー",
+    "wallet.security_kicker": "保管 / セキュリティ",
+    "wallet.settings_subtitle": "外観、通常の設定、独立した開発者診断。",
+    "pages.v1_net_regtest": "V1-NET / REGTEST",
+    "pages.manual_peer_controls": "手動の peer 操作",
 }

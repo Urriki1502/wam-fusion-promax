@@ -105,9 +105,24 @@ def capture_screens(output):
                       width=1100, height=720, language='vi', screenshots=names,
                       finding_count=len(findings), findings=findings,
                       public_test_vector_only=True, backend_or_core_started=False,
-                      native_or_fee3_qualification=False, accepted=False)
+                      native_or_fee3_qualification=False, accepted=False,
+                      source_sha=_source_sha())
         (output / 'capture-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\n')
         return report
+
+
+def _source_sha():
+    """The exact source commit these captures were rendered from (HEAD)."""
+    import subprocess
+    try:
+        sha = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], capture_output=True, check=True,
+            text=True, timeout=15).stdout.strip()
+    except Exception:
+        raise RuntimeError('PM103_CAPTURE_REQUIRES_GIT_SHA')
+    if not sha:
+        raise RuntimeError('PM103_CAPTURE_REQUIRES_GIT_SHA')
+    return sha
 
 
 if __name__ == '__main__':

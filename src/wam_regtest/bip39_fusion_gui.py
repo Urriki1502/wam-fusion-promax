@@ -238,9 +238,15 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self._brand_title = label(t('wallet.brand'), "BrandTitle")
         brand.addWidget(self._brand_title)
         side.addLayout(brand)
-        side.addWidget(label(
+        scope_badge = label(
             t('wallet.shared_badge') if shared_profile else t('desktop.regtest_badge'),
-            "FusionBadge"), 0, Qt.AlignmentFlag.AlignHCenter)
+            "FusionBadge")
+        # The scope badge is always visible, and the exact full safety
+        # sentence rides on its help surfaces AND the navigation a11y below.
+        scope_badge.setToolTip(t('wallet.sidebar_notice'))
+        scope_badge.setAccessibleDescription(t('wallet.sidebar_notice'))
+        side.addWidget(scope_badge, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.scope_badge = scope_badge
         self.navigation = QListWidget()
         self.navigation.setIconSize(QSize(SHELL['nav_icon'], SHELL['nav_icon']))
         self.navigation.setSpacing(SHELL['nav_gap'])
@@ -336,10 +342,15 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.send.setObjectName("FusionPrimary")
         self.send.setProperty("fusion_icon", "review")
         fl.addWidget(self.send)
-        review, rl = panel(
-            t('wallet.review_title'),
-            t('wallet.review_subtitle'),
-        )
+        review, rl = panel(t('wallet.review_title'))
+        review_subtitle = grow_with_wrapped_text(_HeightForWidthLabel(t('wallet.review_subtitle')))
+        bind(review_subtitle, text='wallet.review_subtitle')
+        review_subtitle.setObjectName('FusionMuted')
+        review_subtitle.setWordWrap(True)
+        review_subtitle.setMinimumWidth(0)
+        rl.addWidget(review_subtitle)
+        # Kept visible so the ID reaches retranslate; text is bound to the key.
+        self.review_subtitle = review_subtitle
         self.review_summary = _WrappingStatusLabel()
         self.review_summary.setWordWrap(True)
         self.review_summary.setText(t('wallet.no_prepared_payment'))
@@ -379,6 +390,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
         security_page, security_layout = page(
             t('fusion.security'), t('wallet.security_subtitle'), '',
         )
+        # The "CUSTODY / SECURITY" scope sentence stays reachable on the
+        # security section's help surfaces after the concise redesign, and
+        # retranslates live with the rest of the window.
+        bind(security_page, tooltip=t('wallet.security_kicker'),
+             accessible_description=t('wallet.security_kicker'))
         wallet_card, wl = panel(t('wallet.protection_title'), t('wallet.protection_subtitle'))
         self.security_state = label(t('wallet.awaiting_wallet'), "FusionCardValue")
         wl.addWidget(self.security_state)
@@ -421,9 +437,16 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.reservation_notice.hide()
         rl.addWidget(self.reservation_notice)
         backup_card, bl = panel(t('wallet.backup_status'), t('wallet.backup_requirement'))
-        bind(backup_card, accessible_description=t('wallet.review_backup'))
         bl.addWidget(grow_with_wrapped_text(label(t('wallet.recovery_support_warning'))))
-        self.backup_review = self.recovery  # PM-103 canonical recovery action (pm063 identity)
+        # The "About backup and recovery" control stays a real, enabled,
+        # connected button (never an accessibleDescription side-effect and
+        # never an alias of the recovery action). The WalletConsent flow only
+        # lets the user verify words; the recovery action is then run.
+        self.backup_review = action(t('wallet.review_backup'), 'backup')
+        self.backup_review.setAccessibleName(t('wallet.review_backup'))
+        self.backup_review.setMinimumHeight(48)
+        self.backup_review.clicked.connect(self._quick_backup)
+        bl.addWidget(self.backup_review)
         # Propagate height-for-width past the panels and the row: without
         # this the page layout sizes the row from a wider-width sizeHint
         # and squeezes the wrapped notice below its applied-width height.
@@ -453,6 +476,10 @@ class Bip39FusionWindow(Bip39TrialWindow):
         settings_page, settings_layout = page(
             t('fusion.settings'), '', '',
         )
+        # The settings scope sentence stays reachable on the section's help
+        # surfaces after the concise redesign, and retranslates live.
+        bind(settings_page, tooltip=t('wallet.settings_subtitle'),
+             accessible_description=t('wallet.settings_subtitle'))
         appearance, appearance_layout = panel(
             t('wallet.appearance'),
             '')
