@@ -823,15 +823,15 @@ class Bip39TrialWindow(QuitLifecycleMixin, QWidget):
                 self.status.setText(
                     t('owner.txid_unknown'))
         elif action=="intent_status":
-            intents=result["intents"] if isinstance(result, dict) else []
-            if type(intents) is not list:
-                intents=[]
+            intents=result["intents"] if isinstance(result, dict) else ()
+            if type(intents) not in (list, tuple):
+                intents=()
             # Submit is offered only for one signed intent that was never submitted.
             self._resumable_intent=sole_signed_never_submitted(intents)
             counts={}
             lines=[]
             for item in intents:
-                if type(item) is not dict:
+                if not isinstance(item, dict):
                     lines.append(rec1_status_line(None, lookup=t))
                     continue
                 classification=item.get('classification')

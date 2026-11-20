@@ -45,11 +45,11 @@ def sole_signed_never_submitted(intents):
     SIGNED_NOT_SUBMITTED_RESUMABLE and its reservation state is signed.
     Uncertain, mixed, unknown, and any other state are not offered.
     """
-    if type(intents) is not list:
+    if type(intents) not in (list, tuple):
         return None
     chosen = None
     for item in intents:
-        if type(item) is not dict:
+        if not isinstance(item, dict):
             return None
         if (item.get('classification') == _SIGNED_NEVER_SUBMITTED
                 and item.get('state') == 'signed'
@@ -71,10 +71,10 @@ def _name_line_clear(edit, name):
 def rec1_states_by_txid(intents):
     """txid -> rec1_state for the History detail. Missing states stay missing."""
     found = {}
-    if type(intents) is not list:
+    if type(intents) not in (list, tuple):
         return found
     for item in intents:
-        if type(item) is not dict:
+        if not isinstance(item, dict):
             continue
         txid = item.get('txid')
         if type(txid) is not str or not txid:
