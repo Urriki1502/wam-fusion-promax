@@ -202,11 +202,11 @@ def confirmed_payment_in_history(txid, history, verified_height=_MISSING):
     """Require one real history row for txid with an exact positive int height."""
     if type(txid) is not str or _HEX64.match(txid) is None:
         return False
-    if type(history) not in (list, tuple):
+    if not isinstance(history, (list, tuple)):
         return False
     matches = []
     for row in history:
-        if type(row) is dict and row.get("txid") == txid:
+        if isinstance(row, dict) and row.get("txid") == txid:
             matches.append(row)
     if len(matches) != 1:
         return False
@@ -1123,7 +1123,7 @@ def scenario_repeat_funding(app, adapter, core, source, report):
                 lambda: window._pending_confirm_txid is None, "S4_CONFIRM")
         settle()
         after_payment = executor.request("snapshot", timeout=240)
-        if type(after_payment) is not dict:
+        if not isinstance(after_payment, dict):
             raise ValueError("Q06_FIX_S4_CONFIRMATION_DENIED")
         verified_height = (after_payment.get("height")
                            if "height" in after_payment else _MISSING)

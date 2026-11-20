@@ -17,6 +17,7 @@ from unittest.mock import Mock, patch
 
 from wam_regtest.foundation import diagnostics
 from wam_regtest.qualification import q06_fix_scenarios as stage
+from wam_regtest.wallet_executor import immutable
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -182,7 +183,7 @@ class RepeatFundingScenario(unittest.TestCase):
                                 int(fault == "reservation" and status["funds"] > 0))
             if read_only and raw_reservations == 0:
                 raw_reservations = None
-            return {"confirmed_atoms": status["balance"],
+            return immutable({"confirmed_atoms": status["balance"],
                     "reservation_count": raw_reservations,
                     "reservation_lock_summary": summary,
                     "signer_allowed": active, "broadcast_allowed": active,
@@ -198,7 +199,7 @@ class RepeatFundingScenario(unittest.TestCase):
                           **({} if fault == "missing_height" else
                              {"height": (0 if fault == "zero_height" else
                                          None if fault == "null_height" else 1)})}
-                        ])}
+                        ])})
 
         executor = SimpleNamespace(request=request)
         def open_owner(state, *_args):
@@ -311,19 +312,31 @@ class RepeatFundingScenario(unittest.TestCase):
 class FixScenarioArithmetic(unittest.TestCase):
     def test_confirmed_payment_requires_real_history_row_height(self):
         txid = "bb" * 32
-        good = [{"txid": txid, "atoms": 100_000_000, "height": 101}]
-        self.assertTrue(stage.confirmed_payment_in_history(txid, good, 101))
-        self.assertFalse(stage.confirmed_payment_in_history(txid, [], 101))
+        snapshot = immutable({
+            "height": 101,
+            "history": [{"txid": txid, "atoms": 100_000_000, "height": 101}],
+        })
+        self.assertIsInstance(snapshot, dict)
+        self.assertIsInstance(snapshot["history"], tuple)
+        self.assertIsInstance(snapshot["history"][0], dict)
+        self.assertTrue(stage.confirmed_payment_in_history(
+            txid, snapshot["history"], snapshot["height"]))
+        missing_height = immutable({
+            "height": 101, "history": [{"txid": txid, "atoms": 100_000_000}],
+        })
         self.assertFalse(stage.confirmed_payment_in_history(
-            txid, [{"txid": txid, "atoms": 100_000_000}], 101))
+            txid, missing_height["history"], missing_height["height"]))
+        self.assertFalse(stage.confirmed_payment_in_history(txid, immutable([]), 101))
         self.assertFalse(stage.confirmed_payment_in_history(
-            txid, [{"txid": txid, "atoms": 100_000_000, "height": 0}], 101))
+            txid, immutable([{"txid": txid, "atoms": 100_000_000}]), 101))
         self.assertFalse(stage.confirmed_payment_in_history(
-            txid, [{"txid": txid, "atoms": 100_000_000, "height": None}], 101))
+            txid, immutable([{"txid": txid, "atoms": 100_000_000, "height": 0}]), 101))
         self.assertFalse(stage.confirmed_payment_in_history(
-            txid, [{"txid": txid, "atoms": 100_000_000, "height": 102}], 101))
+            txid, immutable([{"txid": txid, "atoms": 100_000_000, "height": None}]), 101))
         self.assertFalse(stage.confirmed_payment_in_history(
-            txid, [good[0], good[0]], 101))
+            txid, immutable([{"txid": txid, "atoms": 100_000_000, "height": 102}]), 101))
+        self.assertFalse(stage.confirmed_payment_in_history(
+            txid, immutable([snapshot["history"][0], snapshot["history"][0]]), 101))
 
     def test_confirmed_balance_identity(self):
         funded, payment, fee = 500_000_000, 100_000_000, 10_000
