@@ -49,6 +49,7 @@ def _s4_passing():
         "payment_confirmed_atoms": 1_399_990_000,
         "fund_button_disabled": True, "backend_refused_exact": True,
         "signed_reservation_count": 1, "owner_retained_after_shutdown": False,
+        "fund1_read_only_shape": True,
     }
     for n in (1, 2, 3, 4):
         result.update({
@@ -90,6 +91,16 @@ class RepeatFundingOracle(unittest.TestCase):
                            ("signed_reservation_count", 0),
                            ("owner_retained_after_shutdown", True),
                            ("fund1_after_atoms", True)):
+            with self.subTest(key=key):
+                self.assertFalse(stage.s4_passed(dict(good, **{key: value})))
+
+    def test_s4_gate_requires_read_only_shape_only_for_preactivation_fund(self):
+        good = _s4_passing()
+        self.assertTrue(stage.s4_passed(good))
+        for key, value in (("fund1_read_only_shape", False),
+                           ("fund1_reservation_count", 1),
+                           ("fund1_raw_reservation_count", 1),
+                           ("fund2_reservation_count", None)):
             with self.subTest(key=key):
                 self.assertFalse(stage.s4_passed(dict(good, **{key: value})))
 
@@ -161,11 +172,19 @@ class RepeatFundingScenario(unittest.TestCase):
                                  else "Q06_GUI_TEST_FUNDING_IN_FLIGHT")
             self.assertEqual(action, "snapshot")
             active = window._spend_enabled and not (fault == "state" and status["funds"] > 1)
+            read_only = ((status["funds"] == 1 and not window._spend_enabled
+                          and fault != "reservation")
+                         or (fault == "readonly_after_activation" and active))
+            summary = ({"read_only": True} if read_only else
+                       {"locked_inputs_total": (1 if status["signed"] else
+                        int(fault == "reservation" and status["funds"] > 0))})
+            raw_reservations = (1 if status["signed"] or status["confirmed"] else
+                                int(fault == "reservation" and status["funds"] > 0))
+            if read_only and raw_reservations == 0:
+                raw_reservations = None
             return {"confirmed_atoms": status["balance"],
-                    "reservation_count": (1 if status["signed"] or status["confirmed"] else
-                                          int(fault == "reservation" and status["funds"] > 0)),
-                    "reservation_lock_summary": {"locked_inputs_total": (1 if status["signed"] else
-                        int(fault == "reservation" and status["funds"] > 0))},
+                    "reservation_count": raw_reservations,
+                    "reservation_lock_summary": summary,
                     "signer_allowed": active, "broadcast_allowed": active,
                     "mainnet_allowed": fault == "mainnet",
                     "payment_signed": status["signed"] and fault != "signed_snapshot",
@@ -232,6 +251,9 @@ class RepeatFundingScenario(unittest.TestCase):
         report, approvals, error = self.run_s4()
         self.assertIsNone(error)
         self.assertTrue(stage.s4_passed(report["s4"]))
+        self.assertTrue(report["s4"]["fund1_read_only_shape"])
+        self.assertEqual(report["s4"]["fund1_reservation_count"], 0)
+        self.assertEqual(report["s4"]["fund1_raw_reservation_count"], 0)
         self.assertEqual(report["s4"]["fund4_raw_reservation_count"], 1)
         self.assertEqual(report["s4"]["fund4_reservation_count"], 0)
         self.assertGreater(report["s4"]["fund4_after_atoms"], report["s4"]["fund4_before_atoms"])
@@ -245,6 +267,7 @@ class RepeatFundingScenario(unittest.TestCase):
         for fault, code in (
                 ("button", "FUND_BUTTON_DISABLED"), ("balance", "BALANCE_NOT_INCREASED"),
                 ("mainnet", "MAINNET_DENIED"), ("reservation", "UNEXPECTED_RESERVATION"),
+                ("readonly_after_activation", "UNEXPECTED_RESERVATION"),
                 ("state", "SPEND_STATE_CHANGED"), ("activation", "ACTIVATION_DENIED"),
                 ("gui_enabled", "IN_FLIGHT_NOT_REFUSED"),
                 ("backend_allowed", "IN_FLIGHT_NOT_REFUSED"),

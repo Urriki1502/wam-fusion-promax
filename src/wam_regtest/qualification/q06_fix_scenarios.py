@@ -54,6 +54,7 @@ _S4_BOOL = (
     "activation_preserved", "payment_signed", "fund_button_disabled",
     "backend_refused_exact", "owner_retained_after_shutdown",
     "payment_broadcast", "payment_confirmed", "nothing_pending",
+    "fund1_read_only_shape",
 ) + tuple(f"fund{n}_{key}" for n in (1, 2, 3, 4)
           for key in ("button_enabled", "mainnet_allowed")) + tuple(
     f"fund{n}_{key}" for n in (2, 3, 4)
@@ -78,9 +79,14 @@ def s4_passed(section):
         return False
     if section["signed_reservation_count"] <= 0:
         return False
+    if (section["fund1_read_only_shape"] is not True
+            or section["fund1_reservation_count"] != 0
+            or section["fund1_raw_reservation_count"] != 0):
+        return False
     for n in (1, 2, 3, 4):
-        if (section[f"fund{n}_after_atoms"] <= section[f"fund{n}_before_atoms"]
-                or section[f"fund{n}_reservation_count"] != 0):
+        if section[f"fund{n}_after_atoms"] <= section[f"fund{n}_before_atoms"]:
+            return False
+        if n > 1 and section[f"fund{n}_reservation_count"] != 0:
             return False
         if n in (2, 3) and section[f"fund{n}_before_atoms"] != section[f"fund{n-1}_after_atoms"]:
             return False
@@ -993,13 +999,27 @@ def scenario_repeat_funding(app, adapter, core, source, report):
             approve(window.fund, "Approve", lambda: True, f"S4_FUND{n}")
             settle()
             after = executor.request("snapshot", timeout=240)
+            displayed_reservations = displayed_reserved_inputs(after)
+            raw_reservations = after["reservation_count"]
+            lock_summary = after.get("reservation_lock_summary")
+            fund1_read_only_shape = (
+                n == 1
+                and displayed_reservations is None
+                and isinstance(lock_summary, dict)
+                and lock_summary.get("read_only") is True
+                and (raw_reservations is None
+                     or (type(raw_reservations) is int and raw_reservations == 0)))
             fields = {f"fund{n}_before_atoms": before["confirmed_atoms"],
                       f"fund{n}_after_atoms": after["confirmed_atoms"],
-                      # Confirmed broadcast rows are retained custody evidence.
-                      # Require zero verified active locks without deleting rows.
-                      f"fund{n}_reservation_count": displayed_reserved_inputs(after),
-                      f"fund{n}_raw_reservation_count": after["reservation_count"],
+                      # Record a pre-activation read-only view separately from active locks.
+                      f"fund{n}_reservation_count": (
+                          0 if fund1_read_only_shape else displayed_reservations),
+                      f"fund{n}_raw_reservation_count": (
+                          0 if fund1_read_only_shape and raw_reservations is None
+                          else raw_reservations),
                       f"fund{n}_mainnet_allowed": after["mainnet_allowed"]}
+            if n == 1:
+                fields["fund1_read_only_shape"] = bool(fund1_read_only_shape)
             if n > 1:
                 fields.update({f"fund{n}_signer_allowed": after["signer_allowed"],
                                f"fund{n}_broadcast_allowed": after["broadcast_allowed"],
@@ -1009,7 +1029,9 @@ def scenario_repeat_funding(app, adapter, core, source, report):
                 raise ValueError("Q06_FIX_S4_BALANCE_NOT_INCREASED")
             if after["mainnet_allowed"] is not False:
                 raise ValueError("Q06_FIX_S4_MAINNET_DENIED")
-            if displayed_reserved_inputs(after) != 0:
+            reservation_ok = (fund1_read_only_shape if n == 1
+                              else displayed_reservations == 0)
+            if not reservation_ok:
                 raise ValueError("Q06_FIX_S4_UNEXPECTED_RESERVATION")
             if n > 1 and not (after["signer_allowed"] is True
                                and after["broadcast_allowed"] is True
