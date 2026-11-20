@@ -26,7 +26,7 @@ from .gui_errors import error_text, operation_error, public_code
 from .fusion_ui import (
     FusionOverview, fusion_stylesheet, fusion_palette, page, panel,
     label, WrappedLabel, ResponsiveRow, vector_icon, nav_icon_for, FUSION_NAV_PAGES, fusion_nav_pages,
-    StateSwitch, action, ThemeSlider, grow_with_wrapped_text,
+    StateSwitch, action, ThemeSlider, grow_with_wrapped_text, ReadableText,
     SHELL, present_brand_title, install_keyboard_focus_mark,
 )
 from .fusion_motion import fade_widget, PressFeedback, TransitionHost, STAGGER_MS, STANDARD_MS, motion_reduced
@@ -82,10 +82,14 @@ class _WrappingStatusLabel(WrappedLabel):
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
     def setText(self, text):
-        capture(self, 'text', text)
         self.setToolTip(text if isinstance(text, str) else '')
         super().setText(re.sub(r"\S{33,}", lambda match: "\u200b".join(
             match[0][i:i + 24] for i in range(0, len(match[0]), 24)), text))
+        # super().setText re-captures the re.sub'd plain string through
+        # WrappedLabel -> I18nLabel, which would drop the remembered catalog
+        # key. Re-capture with the original phrase last so a live language
+        # change still retranslates this surface (PM-101).
+        capture(self, 'text', text)
 
     def _copy_selection(self, *_args):
         if not self.hasSelectedText():
@@ -247,7 +251,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
             item.setData(Qt.ItemDataRole.UserRole, page_id)
             self.navigation.addItem(item)
         side.addWidget(self.navigation, 1)
-        side.addWidget(grow_with_wrapped_text(label(t('wallet.sidebar_notice'))))
+        bind(self.navigation, accessible_description=t('wallet.sidebar_notice'))
         shell.addWidget(sidebar)
 
         main = QWidget()
@@ -365,10 +369,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
                               (self.confirm, 'confirm'), (self.intents, 'signed'),
                               (self.recovery, 'backup'), (self.quit, 'quit')):
             control.setProperty('fusion_icon', icon)
-        self.send_result = grow_with_wrapped_text(_WrappingStatusLabel(t('wallet.no_broadcast_result')))
-        self.send_result.setObjectName('FusionMuted')
-        self.send_result.setWordWrap(True)
-        self.send_result.setMinimumWidth(0)
+        self.send_result = ReadableText(t('wallet.no_broadcast_result'))
         rl.addWidget(self.send_result)
         rl.addWidget(grow_with_wrapped_text(label(t('wallet.no_automatic_retry'), 'FusionGold')))
         send_layout.addWidget(ResponsiveRow(form, review, weights=[3, 2]))
@@ -420,11 +421,9 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.reservation_notice.hide()
         rl.addWidget(self.reservation_notice)
         backup_card, bl = panel(t('wallet.backup_status'), t('wallet.backup_requirement'))
+        bind(backup_card, accessible_description=t('wallet.review_backup'))
         bl.addWidget(grow_with_wrapped_text(label(t('wallet.recovery_support_warning'))))
-        self.backup_review = action(t('wallet.review_backup'), 'backup')
-        self.backup_review.setAccessibleName(t('wallet.review_backup'))
-        self.backup_review.clicked.connect(self._quick_backup)
-        bl.addWidget(self.backup_review)
+        self.backup_review = self.recovery  # PM-103 canonical recovery action (pm063 identity)
         # Propagate height-for-width past the panels and the row: without
         # this the page layout sizes the row from a wider-width sizeHint
         # and squeezes the wrapped notice below its applied-width height.

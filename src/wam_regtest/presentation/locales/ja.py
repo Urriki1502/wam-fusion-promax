@@ -410,7 +410,7 @@ JA = {
     "owner.restore_title": "12語を新しい REGTEST ウォレットに復元",
     "owner.restore_prompt": "正確に12語の使い捨て REGTEST リカバリー単語を入力してください。メインネットの単語は絶対に入力しないでください。復元すると、このウォレットの鍵と、このチェーン上の確認済み履歴が回復します。元のプロファイルで署名済み、保留中、または不確定だった支払いはコピーされません。元のプロファイルを残し、そちらで確認してください。",
     "wallet.window_title": "WAM Fusion ウォレット — REGTEST",
-    "wallet.brand": "WAM Fusion Pro Max ウォレット",
+    "wallet.brand": "WAM Fusion ウォレット",
     "wallet.shared_badge": "共有 REGTEST",
     "wallet.navigation_accessible": "WAM Fusion ウォレットのナビゲーション",
     "wallet.sidebar_notice": "WAM Fusion  ·  Qt  ·  WAM Core (REGTEST)\n実資金や mainnet の鍵は使用しないでください。",

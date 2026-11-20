@@ -50,10 +50,9 @@ class FusionDesignContracts(unittest.TestCase):
             self.assertIn("FusionActivityTable", fusion_stylesheet(mode))
             self.assertIn("FusionSegmented", fusion_stylesheet(mode))
             self.assertIn("FusionThemeThumb", fusion_stylesheet(mode))
-        # One consistent action color family; WAM brand gold is not reused as
-        # a focus/button tint. No dependence on deprecated 2026 Q05 hex values.
-        self.assertEqual(dark["accent"], "#E9C56B")
-        self.assertEqual(light["accent"], "#76520C")
+        # One consistent action colour family, matching the PM-029 token table.
+        self.assertEqual(dark["accent"], "#E0C36A")
+        self.assertEqual(light["accent"], "#7A5A12")
         self.assertNotEqual(dark["bg"], light["bg"])
 
     def test_invalid_theme_fails_closed(self):
