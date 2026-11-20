@@ -309,7 +309,7 @@ JA = {
     "fusion.faulted": "障害",
     "settings.language": "言語",
     "settings.language_system": "システムのデフォルト",
-    "settings.language_next_window": "この変更は、このあと開くウィンドウに適用されます。",
+    "settings.language_next_window": "すぐに適用されます。",
 
     # PM-017: main wallet path, resolved when widgets build or update.
     "owner.word_position": "単語 {position:02d}",

@@ -7,8 +7,12 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt,QTimer,QEvent,Signal
 from PySide6.QtWidgets import (
-    QCheckBox,QDialog,QDialogButtonBox,QHBoxLayout,QGridLayout,QInputDialog,QLabel,
-    QLineEdit,QMessageBox,QPushButton,QTextEdit,QVBoxLayout,QWidget,QApplication,
+    QCheckBox,QDialog,QDialogButtonBox,QHBoxLayout,QGridLayout,QInputDialog,
+    QMessageBox,QVBoxLayout,QWidget,QApplication,
+)
+from .fusion_i18n import (
+    I18nButton as QPushButton, I18nLabel as QLabel, I18nLineEdit as QLineEdit,
+    I18nTextEdit as QTextEdit,
 )
 
 from .desktop import qt_application

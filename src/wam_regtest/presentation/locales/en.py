@@ -307,7 +307,7 @@ EN = {
     "fusion.faulted": "Faulted",
     "settings.language": "Language",
     "settings.language_system": "System default",
-    "settings.language_next_window": "Applies to windows opened after this change.",
+    "settings.language_next_window": "Applies immediately.",
 
     # PM-017: main wallet path, resolved when widgets build or update.
     "owner.word_position": "WORD {position:02d}",

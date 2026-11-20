@@ -19,7 +19,7 @@ bip39_recovery_proof bip39_scanner_checkpoint bip39_seed_vault bip39_spend_sessi
 branding build_provenance cli_rpc core core_process core_supervisor custody desktop
 disclosure domain domain.backup_ack domain.errors domain.payment_evidence domain.payment_state encrypted_storage external_core
 external_core_gui external_recovery fullflush
-fusion_motion fusion_pages fusion_status fusion_ui gui_errors history_pages json_rpc
+fusion_i18n fusion_motion fusion_pages fusion_status fusion_ui gui_errors history_pages json_rpc
 linux_anchor_witness linux_developer_core linux_official_core linux_private_storage
 linux_runtime managed_gui managed_onboarding managed_wallet_checkpoint managed_wallet_session
 network_policy official_core_v013 operational_gui payjoin_safety private_directory
@@ -48,7 +48,7 @@ WINDOWS_EXTRA = frozenset(('windows_core_regtest_smoke', 'windows_core_stage',
 LINUX_EXTRA = frozenset(('linux_production_entry',))
 # Modules importing PySide6 at module level: never in the no-Qt headless build.
 QT_MODULES = frozenset(('bip39_backup_page bip39_fusion_gui bip39_locale bip39_owner_gui '
-                        'desktop external_core_gui fusion_motion fusion_pages fusion_ui '
+                        'desktop external_core_gui fusion_i18n fusion_motion fusion_pages fusion_ui '
                         'managed_gui operational_gui quit_lifecycle_gui').split())
 ENTRY = {'macos': 'production_entry', 'windows': 'windows_production_entry',
          'linux-desktop': 'linux_production_entry'}

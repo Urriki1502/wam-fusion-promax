@@ -1,10 +1,11 @@
 """Fusion 2.0 reusable screen components; no RPC, keys or signing authority."""
 from __future__ import annotations
 from .bip39_locale import t as ui_text
-from PySide6.QtCore import Qt, Signal, QRectF, QTimer
+from PySide6.QtCore import Qt, Signal, QRectF, QTimer, QEvent
 from PySide6.QtGui import QColor,QPainter,QFont,QFontDatabase
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QLineEdit,QComboBox,QCheckBox,QTableWidget,QTableWidgetItem,QHeaderView,QApplication,QDialog,QDialogButtonBox,QFrame
 from .fusion_ui import SHELL,label,panel,page,action,ResponsiveRow,AdaptiveButtonRow,keyboard_table,vector_icon,fusion_palette,activity_by_block,grow_with_wrapped_text,direction_tone,QR,pending_amount_text
+from .fusion_i18n import bind, bind_headers, bind_items, retranslate_tree
 from .presentation.strings import text as catalog_text
 from .wallet_read import format_wam
 
@@ -63,9 +64,17 @@ def sole_signed_never_submitted(intents):
 
 def _name_line_clear(edit, name):
     from PySide6.QtWidgets import QToolButton
+    from .fusion_i18n import phrase_key
+    key = phrase_key(name)
+    if key:
+        edit._line_clear_key = key
+        from .bip39_locale import t as catalog
+        shown = str(catalog(key))
+    else:
+        shown = name if isinstance(name, str) else ''
     for button in edit.findChildren(QToolButton):
-        if not button.accessibleName():
-            button.setAccessibleName(name)
+        if key or not button.accessibleName():
+            button.setAccessibleName(shown)
 
 
 def rec1_states_by_txid(intents):
@@ -122,7 +131,17 @@ class ReceivePage(QWidget):
         self._copy_timer.timeout.connect(lambda:self.copy_status.setText(ui_text('pages.copy_complete') if self.code else ui_text('pages.address_locked')))
         cl.addWidget(ResponsiveRow(qrbox,address,weights=[2,3],breakpoint=610));layout.addWidget(card)
         self.received=label(ui_text('pages.no_verified_receiving_activity'));layout.addWidget(self.received);layout.addStretch()
+    def retranslate(self):
+        retranslate_tree(self)
+        self.qr.update()
+        if hasattr(self, '_rendered_snap'):
+            self.render_snapshot(self._rendered_snap)
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.LanguageChange:
+            self.retranslate()
     def render_snapshot(self,snap):
+        self._rendered_snap = snap
         self.code=None;self.copy_button.setEnabled(False);self.receive_code.setText('—');self.qr.set_code(None)
         candidate=snap.receive_code if snap else None;self.qr.set_code(candidate);self.code=candidate;self.receive_code.setText(self.code or '—');self.copy_button.setEnabled(bool(self.code));self.copy_status.setText(ui_text('pages.copy_complete') if self.code else ui_text('pages.address_locked'))
         if snap is None:
@@ -140,7 +159,7 @@ class HistoryPage(QWidget):
     page_requested=Signal(int)
     def __init__(self):
         super().__init__();self.setObjectName('FusionInner');self.rows=();self.mode='dark';self._offset=0;self._total=0;self._has_snapshot=False;root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
-        scroll,layout=page(ui_text('pages.history'),ui_text('pages.history_subtitle') + ' ' + ui_text('pending.history_subtitle'),ui_text('pages.on_chain_history'));root.addWidget(scroll)
+        self.scroll,layout=page(ui_text('pages.history'),ui_text('pages.history_subtitle') + ' ' + ui_text('pending.history_subtitle'),ui_text('pages.on_chain_history'));root.addWidget(self.scroll)
         card,cl=panel();toolbar=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText(ui_text('pages.search_placeholder'));self.search.setClearButtonEnabled(True);self.search.setAccessibleName(ui_text('pages.search_confirmed_transactions'));self.filter=QComboBox();self.filter.setAccessibleName(ui_text('pages.history_type_filter'));self.filter.view().setAccessibleName(ui_text('pages.history_type_filter'));self.filter.addItems((ui_text('pages.all_activity'),ui_text('pages.credits'),ui_text('pages.debits')));toolbar.addWidget(self.search,1);toolbar.addWidget(self.filter);_name_line_clear(self.search,ui_text('pages.search_confirmed_transactions'));cl.addLayout(toolbar)
         self.table=QTableWidget(0,6);self.table.setObjectName('FusionActivityTable');self.table.setHorizontalHeaderLabels((ui_text('pages.direction'),ui_text('pages.transaction'),ui_text('pages.block'),ui_text('pages.confirmed'),ui_text('pages.credit_wam'),ui_text('pages.debit_wam')));self.table.verticalHeader().hide();self.table.setShowGrid(False);self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows);keyboard_table(self.table,ui_text('pages.history'));self.table.setMinimumHeight(220);self._size_columns();cl.addWidget(self.table);self.table.viewport().installEventFilter(self)
         self.newer=action(ui_text('pages.newer_confirmed_history'),'history');self.older=action(ui_text('pages.older_confirmed_history'),'history');self.newer.setAccessibleName(ui_text('pages.newer_confirmed_history'));self.older.setAccessibleName(ui_text('pages.older_confirmed_history'));self.newer.setEnabled(False);self.older.setEnabled(False);self.newer.clicked.connect(self._newer);self.older.clicked.connect(self._older);cl.addWidget(AdaptiveButtonRow(self.newer,self.older))
@@ -148,6 +167,28 @@ class HistoryPage(QWidget):
         self.empty=label(ui_text('history.unavailable'));cl.addWidget(self.empty);layout.addWidget(card)
         detail,dl=panel(ui_text('pages.transaction_details'),ui_text('pages.select_row'));self.detail_id=label(ui_text('pages.no_transaction_selected'),'ReceiveCode',True);dl.addWidget(self.detail_id);self.detail_values=grow_with_wrapped_text(label(''));dl.addWidget(self.detail_values);self.copy_button=action(ui_text('pages.copy_full_transaction_id'),'copy');self.copy_button.setAccessibleName(ui_text('pages.copy_full_transaction_id'));self.copy_button.setEnabled(False);self.copy_button.clicked.connect(self.copy_txid);dl.addWidget(self.copy_button);layout.addWidget(detail);layout.addStretch()
         self.table.itemSelectionChanged.connect(self.show_details);self.search.textChanged.connect(self.apply_filter);self.filter.currentIndexChanged.connect(self.apply_filter)
+        bind(self.search, placeholder='pages.search_placeholder', accessible_name='pages.search_confirmed_transactions')
+        bind(self.filter, accessible_name='pages.history_type_filter')
+        bind(self.filter.view(), accessible_name='pages.history_type_filter')
+        bind_items(self.filter, ('pages.all_activity', 'pages.credits', 'pages.debits'))
+        bind_headers(self.table, ('pages.direction', 'pages.transaction', 'pages.block', 'pages.confirmed', 'pages.credit_wam', 'pages.debit_wam'))
+    def retranslate(self):
+        query = self.search.text()
+        choice = self.filter.currentIndex()
+        retranslate_tree(self)
+        subtitle = getattr(self.scroll, '_fusion_subtitle', None)
+        if subtitle is not None:
+            subtitle.setText(str(ui_text('pages.history_subtitle')) + ' ' + str(ui_text('pending.history_subtitle')))
+        if hasattr(self, '_rendered_snap'):
+            self.render_snapshot(self._rendered_snap)
+            self.search.setText(query)
+            if self._rendered_snap is not None:
+                self.filter.setCurrentIndex(choice)
+        _name_line_clear(self.search, ui_text('pages.search_confirmed_transactions'))
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.LanguageChange:
+            self.retranslate()
     # Narrow windows (R-5): columns size to their content, the transaction
     # column stretches, and when everything cannot fit, Block and Confirmed
     # are hidden first (the detail panel always shows both). Amounts and the
@@ -184,6 +225,7 @@ class HistoryPage(QWidget):
         self.table.clearSelection()
         self.table.setCurrentCell(-1, -1)
     def render_snapshot(self,snap):
+        self._rendered_snap = snap
         # A fresh chain snapshot drops a previous REC-1 annotation so a
         # later confirmation is not still described by an older state.
         self._rec1_by_txid = {}
@@ -333,8 +375,21 @@ class HistoryPage(QWidget):
 class PaymentSteps(QFrame):
     def __init__(self):
         super().__init__();self.setObjectName('FusionInset');layout=QHBoxLayout(self);layout.setContentsMargins(16,13,16,13);self.labels=[]
-        for i,name in enumerate((ui_text('pages.prepare'),ui_text('pages.review'),ui_text('pages.approve_signature'),ui_text('pages.broadcast'),ui_text('pages.result'))):
+        self._step_keys = ('pages.prepare','pages.review','pages.approve_signature','pages.broadcast','pages.result')
+        for i, name in enumerate(self._step_titles()):
             item=grow_with_wrapped_text(label(f'{i+1}  {name}','FusionMuted'));item.setAlignment(Qt.AlignmentFlag.AlignCenter);layout.addWidget(item,1);self.labels.append(item)
+    def _step_titles(self):
+        return (
+            ui_text('pages.prepare'), ui_text('pages.review'),
+            ui_text('pages.approve_signature'), ui_text('pages.broadcast'),
+            ui_text('pages.result'))
+    def retranslate(self):
+        for index, (item, name) in enumerate(zip(self.labels, self._step_titles())):
+            item.setText(f'{index + 1}  {name}')
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.LanguageChange:
+            self.retranslate()
     def set_stage(self,stage):
         for i,item in enumerate(self.labels):
             if i<stage:item.setObjectName('FusionVerified')
@@ -581,8 +636,22 @@ class NetworkPage(QWidget):
         layout.addWidget(controls)
         layout.addStretch()
 
+    def retranslate(self):
+        retranslate_tree(self)
+        saved = getattr(self, '_last_render', None)
+        if saved is not None:
+            self.render(**saved)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.LanguageChange:
+            self.retranslate()
+
     def render(self, *, shared=False, connected=None, peer_count=None, height=None,
                tip=None, coordinator=None, core_alive=None, identity=None):
+        self._last_render = dict(
+            shared=shared, connected=connected, peer_count=peer_count, height=height,
+            tip=tip, coordinator=coordinator, core_alive=core_alive, identity=identity)
         self.mode_value.setText(ui_text('pages.shared_regtest') if shared else ui_text('pages.isolated_regtest'))
         if core_alive is True:
             self.connection_value.setText(ui_text('pages.owned_core_is_alive'))

@@ -309,7 +309,7 @@ VI = {
     "fusion.faulted": "Lỗi",
     "settings.language": "Ngôn ngữ",
     "settings.language_system": "Theo hệ thống",
-    "settings.language_next_window": "Áp dụng cho các cửa sổ được mở sau thay đổi này.",
+    "settings.language_next_window": "Áp dụng ngay lập tức.",
 
     # PM-017: main wallet path, resolved when widgets build or update.
     "owner.word_position": "TỪ {position:02d}",

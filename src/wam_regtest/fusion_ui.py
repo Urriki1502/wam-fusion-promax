@@ -1,6 +1,10 @@
 """Fusion Black & Gold Qt presentation: verified snapshots, never wallet authority."""
 from __future__ import annotations
 from .bip39_locale import t as ui_text
+from .fusion_i18n import (
+    I18nButton, I18nCheckBox, I18nLabel, I18nToolButton, bind, bind_headers, capture,
+    phrase_key, retranslate_tree,
+)
 from .presentation.strings import CATALOG
 
 from PySide6.QtCore import QEvent, QObject, Qt, QRect, QRectF, QPointF, QSize, Signal, Property, QPropertyAnimation, QEasingCurve
@@ -336,7 +340,7 @@ def fusion_stylesheet(mode):
     """
 
 
-class StateSwitch(QCheckBox):
+class StateSwitch(I18nCheckBox):
     """Two-position visual switch retaining Qt checkbox focus/key semantics."""
     def sizeHint(self):
         return QSize(self.fontMetrics().horizontalAdvance(self.text()) + 68, 34)
@@ -383,20 +387,28 @@ class ThemeSlider(QFrame):
         self.group = QButtonGroup(self)
         self.group.setExclusive(True)
         self.buttons = []
+        self._segment_keys = ('fusion.automatic', 'fusion.light', 'fusion.dark')
         layout = QHBoxLayout(self)
         layout.setContentsMargins(3, 3, 3, 3)
         layout.setSpacing(0)
         self._indicator = QFrame(self)
         self._indicator.setObjectName('FusionThemeThumb')
         self._indicator.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        for index, (icon, title) in enumerate((('auto', ui_text('fusion.automatic')), ('sun', ui_text('fusion.light')), ('moon', ui_text('fusion.dark')))):
+        for index, (icon, key, title) in enumerate((
+                ('auto', 'fusion.automatic', ui_text('fusion.automatic')),
+                ('sun', 'fusion.light', ui_text('fusion.light')),
+                ('moon', 'fusion.dark', ui_text('fusion.dark')))):
             button = QToolButton()
             button.setObjectName('FusionSegment')
             button.setCheckable(True)
             button.setAutoRaise(True)
-            button.setText('' if compact else title)
-            button.setToolTip(title)
-            button.setAccessibleName(title + ui_text('fusion.appearance'))
+            button.setText('' if compact else str(title))
+            button.setToolTip(str(title))
+            button.setAccessibleName(str(title) + str(ui_text('fusion.appearance')))
+            slots = {'tooltip': key}
+            if not compact:
+                slots['text'] = key
+            bind(button, **slots)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
             button.setProperty('fusion_icon', icon)
@@ -415,6 +427,23 @@ class ThemeSlider(QFrame):
             self.setFixedWidth(138)
         else:
             self.setMaximumWidth(420)
+
+    def retranslate(self):
+        retranslate_tree(self)
+        self.setAccessibleName(str(ui_text('fusion.appearance_choices')))
+        titles = {
+            'fusion.automatic': ui_text('fusion.automatic'),
+            'fusion.light': ui_text('fusion.light'),
+            'fusion.dark': ui_text('fusion.dark'),
+        }
+        for button, key in zip(self.buttons, self._segment_keys):
+            name = str(titles[key])
+            button.setAccessibleName(name + str(ui_text('fusion.appearance')))
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.LanguageChange:
+            self.retranslate()
 
     def currentIndex(self):
         return self._index
@@ -485,15 +514,17 @@ class ReadableText(QPlainTextEdit):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setMinimumWidth(0)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setPlainText(text)
+        self.setText(text)
         self._fit()
 
     def text(self):
         return self.toPlainText()
 
     def setText(self, text):
-        if text != self.toPlainText():
-            self.setPlainText(text)
+        capture(self, 'text', text)
+        plain = text if isinstance(text, str) else ''
+        if plain != self.toPlainText():
+            self.setPlainText(plain)
         self._fit()
 
     def _fit(self):
@@ -529,7 +560,7 @@ def label(text='', role='FusionMuted', selectable=False):
         obj = ReadableText(text)
         obj.setObjectName(role)
         return obj
-    obj = QLabel(text)
+    obj = I18nLabel(text)
     obj.setObjectName(role)
     obj.setWordWrap(role not in ('FusionKicker', 'FusionBadge'))
     obj.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
@@ -586,7 +617,14 @@ def present_brand_title(widget, text, width, color):
         font.setPixelSize(size)
         font.setWeight(QFont.Weight.Bold)
         metrics = QFontMetrics(font)
-    widget.setText(display)
+    remember = getattr(widget, '_fusion_i18n', None) is not None
+    if remember:
+        widget._i18n_applying = True
+    try:
+        widget.setText(display)
+    finally:
+        if remember:
+            widget._i18n_applying = False
     if size != TYPE['brand']:
         widget.setStyleSheet(
             'font-size:%dpx;font-weight:%d;letter-spacing:%spx;color:%s;'
@@ -665,7 +703,11 @@ def keep_focus_visible(scroll, accessible_name=None):
     """Name a page scroll area for assistive tech (R-11) and keep the focused
     control inside its visible area (R-12)."""
     if accessible_name:
-        scroll.setAccessibleName(accessible_name)
+        key = phrase_key(accessible_name)
+        if key:
+            bind(scroll, accessible_name=key)
+        else:
+            scroll.setAccessibleName(str(accessible_name))
     _FocusFollower(scroll)
     return scroll
 
@@ -693,8 +735,15 @@ class _CornerName(QObject):
 def keyboard_table(table, accessible_name):
     """Tables: Tab leaves the table (R-10 keyboard trap); arrows move cells."""
     table.setTabKeyNavigation(False)
-    table.setAccessibleName(accessible_name)
-    _CornerName(table, accessible_name)
+    key = phrase_key(accessible_name)
+    if key:
+        bind(table, accessible_name=key)
+        from .bip39_locale import t as catalog
+        shown = str(catalog(key))
+    else:
+        shown = str(accessible_name)
+        table.setAccessibleName(shown)
+    _CornerName(table, shown)
     return table
 
 
@@ -713,14 +762,18 @@ def page(title, subtitle, kicker=None, header=True):
     layout.setContentsMargins(SHELL['page_side'], SHELL['page_top'], SHELL['page_right'], SHELL['page_bottom'])
     layout.setSpacing(SHELL['page_gap'])
     if header:
-        layout.addWidget(label(kicker, 'FusionKicker'))
-        layout.addWidget(label(title, 'PageTitle'))
-        layout.addWidget(label(subtitle))
+        kicker_label = label(kicker, 'FusionKicker')
+        title_label = label(title, 'PageTitle')
+        subtitle_label = label(subtitle)
+        layout.addWidget(kicker_label)
+        layout.addWidget(title_label)
+        layout.addWidget(subtitle_label)
+        scroll._fusion_subtitle = subtitle_label
     return scroll, layout
 
 
 def action(text, icon, primary=False):
-    button = QPushButton(text)
+    button = I18nButton(text)
     button.setProperty('fusion_icon', icon)
     button.setObjectName('FusionPrimary' if primary else 'FusionSecondary')
     button.setIconSize(QSize(18, 18))
@@ -729,7 +782,7 @@ def action(text, icon, primary=False):
 
 
 def quick_action(text, icon):
-    button = QToolButton()
+    button = I18nToolButton()
     button.setObjectName('FusionQuick')
     button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
     button.setProperty('fusion_icon', icon)
@@ -742,6 +795,7 @@ def quick_action(text, icon):
 
 
 _NAMES = tuple(name for _, name in FUSION_NAV_PAGES)
+_NAV_IDS = frozenset(_NAMES)
 
 
 def vector_icon(name, tone, dpr=2):
@@ -830,9 +884,11 @@ def fusion_nav_icons(tone):
     return tuple(vector_icon(name, tone) for name in _NAMES)
 
 
-def nav_icon_for(title, tone, dpr=2):
-    lookup = dict(fusion_nav_pages())
-    return vector_icon(lookup.get(title, 'overview'), tone, dpr)
+def nav_icon_for(page_id, tone, dpr=2):
+    """Sidebar icon for a stable page id, never for the translated title."""
+    if page_id not in _NAV_IDS:
+        page_id = 'overview'
+    return vector_icon(page_id, tone, dpr)
 
 
 def activity_by_block(snapshot):
@@ -1214,6 +1270,7 @@ class BalanceHistoryChart(QWidget):
         self.setMinimumWidth(132)
         self.setMouseTracking(True)
         self.setAccessibleName(ui_text('fusion.confirmed_wallet_balance_history'))
+        bind(self, accessible_name='fusion.confirmed_wallet_balance_history')
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def get_reveal(self):
@@ -1488,6 +1545,7 @@ class FusionOverview(QScrollArea):
         pixmap = self.hero.logo.scaled(44, 44, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         coin.setPixmap(pixmap)
         coin.setAccessibleName(ui_text('fusion.wam_coin'))
+        bind(coin, accessible_name='fusion.wam_coin')
         kicker_row.addWidget(coin, 0, Qt.AlignmentFlag.AlignVCenter)
         kicker_row.addWidget(label(ui_text('fusion.confirmed_balance'), 'FusionKicker'))
         kicker_row.addStretch()
@@ -1550,7 +1608,9 @@ class FusionOverview(QScrollArea):
         self.activity_table = QTableWidget(0, 3)
         self.activity_table.setObjectName('FusionActivityTable')
         self.activity_table.setItemDelegate(WrappedActivityDelegate(self.activity_table))
-        self.activity_table.setHorizontalHeaderLabels((ui_text('fusion.activity'), ui_text('fusion.amount'), ui_text('fusion.status')))
+        self.activity_table.setHorizontalHeaderLabels((
+            ui_text('fusion.activity'), ui_text('fusion.amount'), ui_text('fusion.status')))
+        bind_headers(self.activity_table, ('fusion.activity', 'fusion.amount', 'fusion.status'))
         self.activity_table.verticalHeader().hide()
         self.activity_table.verticalHeader().setMinimumSectionSize(58)
         self.activity_table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
@@ -1655,9 +1715,26 @@ class FusionOverview(QScrollArea):
             self.currentness.clear()
             self.currentness.hide()
 
+    def retranslate(self):
+        retranslate_tree(self)
+        saved = getattr(self, '_last_render', None)
+        if saved is not None:
+            self.render_snapshot(**saved)
+        self.balance_chart.update()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.LanguageChange:
+            self.retranslate()
+
     def render_snapshot(self, snap, *, locked=False, operational=False, network=None,
                         faulted=False, available_atoms=None, reservation_count=None,
                         core_alive=None, busy=False, reservation_lock_summary=None):
+        self._last_render = dict(
+            snap=snap, locked=locked, operational=operational, network=network,
+            faulted=faulted, available_atoms=available_atoms,
+            reservation_count=reservation_count, core_alive=core_alive, busy=busy,
+            reservation_lock_summary=reservation_lock_summary)
         network = network or {}
         facts = dict(snap=None if (snap is None or locked) else snap, locked=locked,
                      operational=operational, faulted=faulted, core_alive=core_alive,

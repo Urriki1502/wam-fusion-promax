@@ -309,7 +309,7 @@ ID = {
     "fusion.faulted": "Terganggu",
     "settings.language": "Bahasa",
     "settings.language_system": "Bawaan sistem",
-    "settings.language_next_window": "Berlaku untuk jendela yang dibuka setelah perubahan ini.",
+    "settings.language_next_window": "Berlaku segera.",
 
     # PM-017: main wallet path, resolved when widgets build or update.
     "owner.word_position": "KATA {position:02d}",

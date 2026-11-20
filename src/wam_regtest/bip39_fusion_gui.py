@@ -7,11 +7,11 @@ not a painted mockup or a separate demo account.
 """
 import os
 import re
-from PySide6.QtCore import Qt, QSize, QTimer, QEvent
+from PySide6.QtCore import Qt, QSize, QTimer, QEvent, Signal
 from PySide6.QtGui import QFontDatabase, QIcon, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QFrame, QLabel, QLineEdit,
-    QListWidget, QMenu, QMessageBox, QDialog, QToolButton,
+    QListWidget, QListWidgetItem, QMenu, QMessageBox, QDialog, QToolButton,
     QCheckBox, QComboBox, QApplication, QSizePolicy,
 )
 
@@ -19,7 +19,8 @@ from .bip39_owner_gui import Bip39TrialWindow
 from .presentation.action_state import SharedInputs, apply_shared_profile, available_actions, fusion_actions
 from .domain.payment_state import BROADCAST, reserved_rows_needing_attention
 
-from .bip39_locale import effective_choice, t
+from .bip39_locale import effective_choice, t, _lang
+from .fusion_i18n import I18nCheckBox, I18nLineEdit, bind, capture, retranslate_tree
 from .desktop import resolve_theme
 from .gui_errors import error_text, operation_error, public_code
 from .fusion_ui import (
@@ -81,7 +82,8 @@ class _WrappingStatusLabel(QLabel):
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
     def setText(self, text):
-        self.setToolTip(text)
+        capture(self, 'text', text)
+        self.setToolTip(text if isinstance(text, str) else '')
         super().setText(re.sub(r"\S{33,}", lambda match: "\u200b".join(
             match[0][i:i + 24] for i in range(0, len(match[0]), 24)), text))
 
@@ -139,7 +141,8 @@ class _HeightForWidthLabel(QLabel):
             self.setMinimumHeight(needed)
 
     def setText(self, text):
-        super().setText(text)
+        capture(self, 'text', text)
+        super().setText(text if isinstance(text, str) else '')
         self._sync_minimum_height()
 
     def resizeEvent(self, event):
@@ -162,8 +165,13 @@ class _AdvancedControlsToggle(QToolButton):
         self.updateGeometry()
 
     def setText(self, text):
-        super().setText(text)
+        capture(self, 'text', text)
+        super().setText(text if isinstance(text, str) else '')
         self._sync_minimum()
+
+    def setAccessibleName(self, text):
+        capture(self, 'accessible_name', text)
+        super().setAccessibleName(text if isinstance(text, str) else '')
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -183,6 +191,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
     into the correct Fusion pages. No second Qt worker or owner is started.
     """
 
+    languageChanged = Signal(str)
+
     def __init__(self, executor, *, shared_profile=None):
         self.shared_profile = shared_profile
         self._shared_connected = False
@@ -192,7 +202,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self._legacy_layout_holder = legacy
         legacy.hide()
         self.setObjectName("WalletRoot")
-        self.setWindowTitle(t('wallet.window_title') + (" (V1-NET)" if shared_profile else ""))
+        self._title_suffix = " (V1-NET)" if shared_profile else ""
+        self.setWindowTitle(str(t('wallet.window_title')) + self._title_suffix)
         self.setWindowIcon(QIcon(str(brand_image())))
         self.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont))
         self.resize(1260, 810)
@@ -223,14 +234,18 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self._brand_title = label(t('wallet.brand'), "BrandTitle")
         brand.addWidget(self._brand_title)
         side.addLayout(brand)
-        side.addWidget(label(t('wallet.shared_badge') if shared_profile else "REGTEST", "FusionBadge"),
-                       0, Qt.AlignmentFlag.AlignHCenter)
+        side.addWidget(label(
+            t('wallet.shared_badge') if shared_profile else t('desktop.regtest_badge'),
+            "FusionBadge"), 0, Qt.AlignmentFlag.AlignHCenter)
         self.navigation = QListWidget()
         self.navigation.setIconSize(QSize(SHELL['nav_icon'], SHELL['nav_icon']))
         self.navigation.setSpacing(SHELL['nav_gap'])
         self.navigation.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.navigation.setAccessibleName(t('wallet.navigation_accessible'))
-        self.navigation.addItems(tuple(title for title, _icon in fusion_nav_pages()))
+        bind(self.navigation, accessible_name=t('wallet.navigation_accessible'))
+        for title, page_id in fusion_nav_pages():
+            item = QListWidgetItem(str(title))
+            item.setData(Qt.ItemDataRole.UserRole, page_id)
+            self.navigation.addItem(item)
         side.addWidget(self.navigation, 1)
         notice = grow_with_wrapped_text(label(t('wallet.sidebar_notice'), 'FusionMuted'))
         notice.setMinimumWidth(0)
@@ -268,7 +283,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         original_status = self.status
         self.status = _WrappingStatusLabel()
         self.status.setTextFormat(Qt.TextFormat.PlainText)
-        self.status.setText(original_status.text())
+        self.status.setText(t('owner.core_not_opened'))
         original_status.deleteLater()
         self.status.setObjectName("FusionMuted")
         self.status.setWordWrap(True)
@@ -295,12 +310,12 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.payment_steps = PaymentSteps()
         send_layout.addWidget(self.payment_steps)
         form, fl = panel(t('wallet.prepare_title'), t('wallet.prepare_subtitle'))
-        self.recipient_input = QLineEdit()
+        self.recipient_input = I18nLineEdit()
         self.recipient_input.setMaxLength(256)
         self.recipient_input.setPlaceholderText(t('wallet.recipient_hint'))
         self.recipient_input.setAccessibleName(t('wallet.recipient_accessible'))
         self.recipient_input.setAccessibleDescription(t('wallet.recipient_accessible_description'))
-        self.amount_input = QLineEdit()
+        self.amount_input = I18nLineEdit()
         self.amount_input.setMaxLength(32)
         self.amount_input.setPlaceholderText("0.00000000")
         self.amount_input.setAccessibleName(t('wallet.amount_accessible'))
@@ -444,7 +459,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         appearance_layout.addWidget(self.settings_theme, 0, Qt.AlignmentFlag.AlignLeft)
         self.appearance_group = self.settings_theme.group
         self.appearance_buttons = self.settings_theme.buttons
-        self.reduce_motion = QCheckBox(t('wallet.reduce_motion'))
+        self.reduce_motion = I18nCheckBox(t('wallet.reduce_motion'))
         self.reduce_motion.setAccessibleName(t('wallet.reduce_motion'))
         self.reduce_motion.setAccessibleDescription(t('wallet.reduce_motion_description'))
         stored = ui_settings()
@@ -460,8 +475,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
             t("settings.language_next_window"))
         self.language = QComboBox()
         self.language.setObjectName("FusionLanguage")
-        self.language.setAccessibleName(t("settings.language"))
-        self.language.view().setAccessibleName(t("settings.language"))
+        bind(self.language, accessible_name='settings.language')
+        bind(self.language.view(), accessible_name='settings.language')
         for caption, code in (
                 (t("settings.language_system"), "system"),
                 ("English", "en"),
@@ -483,7 +498,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
         about, about_layout = panel(
             t('wallet.about_title'),
             t('wallet.about_body'))
-        about_layout.addWidget(label(core_compat.DISPLAY_NAME + t('wallet.protocol_summary')))
+        self._protocol_line = label(core_compat.DISPLAY_NAME + str(t('wallet.protocol_summary')))
+        about_layout.addWidget(self._protocol_line)
         about_layout.addWidget(label(
             t('wallet.preview_notice')))
         settings_layout.addWidget(about)
@@ -616,11 +632,53 @@ class Bip39FusionWindow(Bip39TrialWindow):
 
     def _language_chosen(self, index):
         value = self.language.itemData(index)
-        if type(value) is not str:
+        if type(value) is not str or getattr(self, '_retranslating', False):
             return
         settings = ui_settings()
         settings.setValue("ui_language", value)
         settings.sync()
+        self.retranslate()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.LanguageChange and not getattr(self, '_retranslating', False):
+            self.retranslate()
+
+    def retranslate(self):
+        """One path: every page refreshes its visible strings in place."""
+        if getattr(self, '_retranslating', False):
+            return
+        self._retranslating = True
+        try:
+            pages = fusion_nav_pages()
+            for index, (title, page_id) in enumerate(pages):
+                item = self.navigation.item(index)
+                if item is None:
+                    continue
+                item.setText(str(title))
+                item.setData(Qt.ItemDataRole.UserRole, page_id)
+            row = self.navigation.currentRow()
+            if 0 <= row < self.navigation.count():
+                self.page_title.setText(self.navigation.item(row).text())
+            self.setWindowTitle(str(t('wallet.window_title')) + self._title_suffix)
+            retranslate_tree(self)
+            self._protocol_line.setText(
+                core_compat.DISPLAY_NAME + str(t('wallet.protocol_summary')))
+            overview_saved = getattr(self.overview, '_last_render', None)
+            if isinstance(overview_saved, dict):
+                overview_saved['network'] = self._network_view(overview_saved.get('snap'))
+            self.language.blockSignals(True)
+            self.language.setItemText(0, str(t('settings.language_system')))
+            self.language.blockSignals(False)
+            for page in (
+                    self.overview, self.receive_page, self.history_page,
+                    self.network_page, self.payment_steps, self.settings_theme,
+                    self.backup_page):
+                page.retranslate()
+            self._apply_fusion_theme()
+            self.languageChanged.emit(_lang())
+        finally:
+            self._retranslating = False
 
     def _apply_reduce_motion(self, checked):
         self.setProperty("fusion_reduce_motion", bool(checked))
@@ -673,7 +731,8 @@ class Bip39FusionWindow(Bip39TrialWindow):
         for index in range(self.navigation.count()):
             item = self.navigation.item(index)
             tone = colors["onaccent"] if index == selected else colors["muted"]
-            item.setIcon(nav_icon_for(item.text(), tone, max(1, self.devicePixelRatioF())))
+            page_id = item.data(Qt.ItemDataRole.UserRole)
+            item.setIcon(nav_icon_for(page_id, tone, max(1, self.devicePixelRatioF())))
         for button in self.findChildren(__import__(
                 "PySide6.QtWidgets", fromlist=["QPushButton"]).QPushButton):
             icon = button.property("fusion_icon")

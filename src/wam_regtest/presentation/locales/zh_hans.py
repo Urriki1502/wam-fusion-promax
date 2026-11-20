@@ -309,7 +309,7 @@ ZH_HANS = {
     "fusion.faulted": "故障",
     "settings.language": "语言",
     "settings.language_system": "跟随系统",
-    "settings.language_next_window": "此更改应用于之后打开的窗口。",
+    "settings.language_next_window": "立即生效。",
 
     # PM-017: main wallet path, resolved when widgets build or update.
     "owner.word_position": "单词 {position:02d}",

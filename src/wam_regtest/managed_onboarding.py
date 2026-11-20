@@ -154,14 +154,16 @@ def welcome_dialog():
     """One native Qt welcome screen; no Core, seed or credential is opened."""
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import (
-        QApplication, QDialog, QFrame, QVBoxLayout, QCheckBox,
+        QApplication, QDialog, QFrame, QVBoxLayout,
         QScrollArea, QWidget,
     )
+    from .fusion_i18n import I18nCheckBox, bind, retranslate_tree
     from .fusion_ui import action, label, panel, fusion_palette, fusion_stylesheet, vector_icon
 
     dialog = QDialog()
     dialog.setObjectName("WAMFusionWelcome")
     dialog.setWindowTitle(ui_text('welcome.wam_fusion_privacy_wallet'))
+    bind(dialog, window_title='welcome.wam_fusion_privacy_wallet')
     dialog.setMinimumSize(540, 550)
     # Not modal: see run_welcome(). It is the only window while it is shown.
     dialog.setWindowModality(Qt.WindowModality.NonModal)
@@ -190,7 +192,7 @@ def welcome_dialog():
         ui_text('welcome.begin')
     ))
     root.addWidget(label(ui_text('welcome.regtest_preview_no_real_funds'), "FusionBadge"))
-    dialog.shared_mode = QCheckBox(ui_text('welcome.shared_regtest_manual_core_p2p'))
+    dialog.shared_mode = I18nCheckBox(ui_text('welcome.shared_regtest_manual_core_p2p'))
     dialog.shared_mode.setAccessibleName(ui_text('welcome.shared_regtest_manual_core_p2p'))
     dialog.shared_mode.setToolTip(ui_text('welcome.shared_tooltip'))
     root.addWidget(dialog.shared_mode)
@@ -227,6 +229,11 @@ def welcome_dialog():
     for key, button in dialog.buttons.items():
         button.clicked.connect(
             lambda _checked=False, selected=key: select(selected))
+
+    def retranslate():
+        retranslate_tree(dialog)
+
+    dialog.retranslate = retranslate
     return dialog
 
 

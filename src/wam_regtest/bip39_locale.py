@@ -105,6 +105,15 @@ def _lang():
     return resolve_language(effective_choice(), QLocale.system().name())
 
 
+class Phrase(str):
+    """Catalog string that still knows its key. Equality matches a plain str."""
+
+    def __new__(cls, value, key):
+        obj = str.__new__(cls, value)
+        obj.key = key
+        return obj
+
+
 def t(key):
     """Return the localized string for `key`, falling back to English."""
-    return text(key, _lang())
+    return Phrase(text(key, _lang()), key)

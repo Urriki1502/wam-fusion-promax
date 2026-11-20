@@ -309,7 +309,7 @@ KO = {
     "fusion.faulted": "장애",
     "settings.language": "언어",
     "settings.language_system": "시스템 기본값",
-    "settings.language_next_window": "이 변경은 이후에 열리는 창에 적용됩니다.",
+    "settings.language_next_window": "즉시 적용됩니다.",
 
     # PM-017: main wallet path, resolved when widgets build or update.
     "owner.word_position": "단어 {position:02d}",

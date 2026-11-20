@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from .bip39_locale import t
+from .fusion_i18n import bind, phrase_key, retranslate_tree
 from .fusion_ui import (
     label, panel, action, fusion_palette, ResponsiveRow, TYPE, WEIGHT,
     grow_with_wrapped_text, SPACING, keep_focus_visible,
@@ -487,7 +488,7 @@ class Bip39BackupPage(QWidget):
         footer.addWidget(grow_with_wrapped_text(label(t('backup_warning'), 'Warning')))
         written_row = QHBoxLayout()
         self._written_check = QCheckBox()
-        self._written_check.setAccessibleName(t('written_checkbox'))
+        bind(self._written_check, accessible_name='written_checkbox')
         written_text = grow_with_wrapped_text(label(t('written_checkbox')))
         written_text.setBuddy(self._written_check)
         written_row.addWidget(self._written_check)
@@ -518,6 +519,7 @@ class Bip39BackupPage(QWidget):
             edit.setMinimumHeight(36)
             edit.setMaxLength(16)
             edit.setPlaceholderText(t('word_label'))
+            bind(edit, placeholder='word_label')
             edit.returnPressed.connect(self._on_verify)
             title.setBuddy(edit)
             card_layout.addWidget(title)
@@ -584,11 +586,34 @@ class Bip39BackupPage(QWidget):
         self._written_check.toggled.connect(
             lambda checked: self._back_up_now.setEnabled(checked and bool(self._phrase_words) and not self._busy))
 
+    def retranslate(self):
+        retranslate_tree(self)
+        for page, step in ((self._phrase_page, 1), (self._verify_page, 2)):
+            description = str(t('backup_step_progress').format(step=step, total=2))
+            if step == 2:
+                description += '. ' + str(t('backup.verify_step_tooltip'))
+            page.setAccessibleDescription(description)
+        for button in (
+                self._back_up_now, self._back_up_later, self._verify_back,
+                self._verify_button, self._continue_button):
+            key = (getattr(button, '_fusion_i18n', None) or {}).get('text')
+            if key:
+                button.setAccessibleName(t(key))
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.LanguageChange:
+            self.retranslate()
+
     def _task_page(self, title, subtitle, step):
         page = QWidget()
         page.setObjectName('FusionInner')
         page.installEventFilter(self)
-        page.setAccessibleName(title)
+        key = phrase_key(title)
+        if key:
+            bind(page, accessible_name=key)
+        else:
+            page.setAccessibleName(str(title))
         page.setAccessibleDescription(t('backup_step_progress').format(step=step, total=2)
                                       + ('. ' + t('backup.verify_step_tooltip') if step == 2 else ''))
         outer = QVBoxLayout(page)

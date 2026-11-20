@@ -235,9 +235,12 @@ class SettingsIsolationAndKeysTests(unittest.TestCase):
                 }
                 self.assertEqual(changed, {"ui_language"})
 
-                # Next-window semantics: open window keeps launch-time strings.
-                self.assertEqual(window.advanced_toggle.text(), initial_toggle_text)
-                self.assertEqual(window.language.accessibleName(), initial_lang_label)
+                # The same window re-renders immediately. Persistence stays ui_language only.
+                from wam_regtest.presentation.strings import text
+                self.assertEqual(window.advanced_toggle.text(), text('wallet.show_developer', 'vi'))
+                self.assertEqual(window.language.accessibleName(), text('settings.language', 'vi'))
+                self.assertNotEqual(window.advanced_toggle.text(), initial_toggle_text)
+                self.assertNotEqual(window.language.accessibleName(), initial_lang_label)
                 self.assertEqual(bip39_locale.effective_choice(), "vi")
             finally:
                 _close_window(window, executor)

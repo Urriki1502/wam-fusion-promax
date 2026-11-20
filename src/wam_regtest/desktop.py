@@ -232,7 +232,14 @@ class RegtestWalletWindow(QMainWindow):
         title=QVBoxLayout();        title.addWidget(label(t('desktop.brand_wam'),'BrandTitle'));title.addWidget(label(t('desktop.brand_version'),'FusionKicker'));brand.addLayout(title);brand.addStretch();side.addLayout(brand)
         side.addWidget(label(t('desktop.workspace_kicker'),'FusionKicker'))
         self.navigation=QListWidget();self.navigation.setIconSize(__import__('PySide6.QtCore',fromlist=['QSize']).QSize(22,22))
-        self.navigation.addItems((t('fusion.overview'),t('fusion.receive'),t('fusion.history')));side.addWidget(self.navigation,1)
+        for title, page_id in (
+                (t('fusion.overview'), 'overview'),
+                (t('fusion.receive'), 'receive'),
+                (t('fusion.history'), 'history')):
+            item = QListWidgetItem(str(title))
+            item.setData(Qt.ItemDataRole.UserRole, page_id)
+            self.navigation.addItem(item)
+        side.addWidget(self.navigation,1)
         side.addWidget(label(t('desktop.regtest_badge'),'FusionBadge'))
         self.warning=label(t('desktop.demo_warning'),'Warning');side.addWidget(self.warning)
         side.addWidget(label(t('desktop.core_standards').format(display_name=core_compat.DISPLAY_NAME),'FusionMuted'));shell.addWidget(sidebar)
@@ -288,7 +295,8 @@ class RegtestWalletWindow(QMainWindow):
             if name:icon_label.setPixmap(vector_icon(name,c["accent"],self.devicePixelRatioF()).pixmap(24,24))
         for index in range(self.navigation.count()):
             item = self.navigation.item(index)
-            item.setIcon(nav_icon_for(item.text(), c["accent"], self.devicePixelRatioF()))
+            item.setIcon(nav_icon_for(
+                item.data(Qt.ItemDataRole.UserRole), c["accent"], self.devicePixelRatioF()))
 
     def request_sync(self):
         if self._worker is not None:
