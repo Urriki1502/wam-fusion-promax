@@ -1,9 +1,10 @@
 """Public real-Core startup denial, plus the internal F-06 category.
 
-No real Core. A startup that never returns a dict and a dict whose chain is
-not regtest both raise CORE_WRONG_CHAIN_DENIED. The startup deadline parameter
-stays 120 seconds. The foundation diagnostic records which of the two happened.
-Fakes advance the clock, so the test does not wait.
+No real Core. A startup that never returns a dict raises
+CORE_STARTUP_NO_ANSWER_DENIED. A dict whose chain is not regtest raises
+CORE_WRONG_CHAIN_DENIED. The startup deadline parameter stays 120 seconds.
+The foundation diagnostic records which of the two happened. Fakes advance
+the clock, so the test does not wait.
 """
 import inspect
 import tempfile
@@ -41,8 +42,8 @@ class WrongChainDenial(unittest.TestCase):
     def test_startup_timeout_parameter_stays_120_seconds(self):
         self.assertEqual(inspect.signature(smoke_real_core).parameters['timeout'].default, 120)
 
-    def test_no_dict_answer_before_timeout_raises_wrong_chain_denied(self):
-        seen, clock = self._deny(None, 'CORE_RPC_NO_ANSWER')
+    def test_no_dict_answer_before_timeout_raises_no_answer_denied(self):
+        seen, clock = self._deny(None, 'CORE_RPC_NO_ANSWER', 'CORE_STARTUP_NO_ANSWER_DENIED')
         probes = [(cmd[-1], timeout) for cmd, timeout in seen if cmd[-1] == 'getblockchaininfo']
         self.assertTrue(probes)
         self.assertTrue(all(timeout == 5 for _, timeout in probes))
@@ -51,7 +52,8 @@ class WrongChainDenial(unittest.TestCase):
         self.assertEqual(seen[-1][1], 8)
 
     def test_non_regtest_chain_answer_raises_wrong_chain_denied(self):
-        seen, clock = self._deny({'chain': 'main', 'blocks': 0}, 'CORE_WRONG_CHAIN')
+        seen, clock = self._deny(
+            {'chain': 'main', 'blocks': 0}, 'CORE_WRONG_CHAIN', 'CORE_WRONG_CHAIN_DENIED')
         self.assertEqual(
             [(cmd[-1], timeout) for cmd, timeout in seen if cmd[-1] == 'getblockchaininfo'],
             [('getblockchaininfo', 5)])
@@ -59,7 +61,7 @@ class WrongChainDenial(unittest.TestCase):
         self.assertEqual(seen[-1][0][-1], 'stop')
         self.assertEqual(seen[-1][1], 8)
 
-    def _deny(self, answer, category):
+    def _deny(self, answer, category, code):
         diagnostics.clear()
         seen = []
         clock = {'now': 0.0}
@@ -92,9 +94,9 @@ class WrongChainDenial(unittest.TestCase):
                 patch('wam_regtest.rpc_scope.unregister'):
             with self.assertRaises(CoreSmokeError) as caught:
                 smoke_real_core(Path('/unused-core'), explicit_consent=True)
-        self.assertEqual(caught.exception.args, ('CORE_WRONG_CHAIN_DENIED',))
+        self.assertEqual(caught.exception.args, (code,))
         self.assertIsNone(caught.exception.__cause__)
-        self.assertEqual(str(caught.exception), 'CORE_WRONG_CHAIN_DENIED')
+        self.assertEqual(str(caught.exception), code)
         self.assertEqual(
             [(item.stage, item.category, item.open_stage) for item in diagnostics.records()],
             [('CORE_SMOKE_STARTUP', category, None)])

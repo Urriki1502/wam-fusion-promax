@@ -19,6 +19,23 @@ from ..custody import private_temporary_directory
 from ..infrastructure import core_compat
 from ..public_token import public_token
 
+# Classification only. These are the tokens rpc_scope.route already leaves
+# unfaulted during warm-up. Recording them does not add them to that allowlist,
+# clear faulted, or retry a refused call.
+# CORE_RPC_CREDENTIAL_CHANGED_OR_UNSAFE is also non-latching by itself:
+# route rewrites the bootstrap CredentialError RPC_CREDENTIAL_MISSING_OR_UNSAFE
+# into that public token while leaving faulted false. A later
+# CORE_RPC_SCOPE_FAULTED row is what shows the scope actually latched.
+_STARTUP_BOOTSTRAP = frozenset((
+    'CORE_RPC_UNAVAILABLE',
+    'CORE_RPC_WARMUP',
+    'RPC_CREDENTIAL_MISSING_OR_UNSAFE',
+))
+_NONLATCHING_PUBLIC = _STARTUP_BOOTSTRAP | frozenset((
+    'CORE_RPC_CREDENTIAL_CHANGED_OR_UNSAFE',
+))
+_ATTEMPT_FALLBACK = 'CORE_SMOKE_ATTEMPT_UNPRINTABLE'
+
 
 def _early_exit_category(datadir: Path) -> str:
     """Classify actual wamd stderr WITHOUT emitting log lines or credentials.
@@ -142,9 +159,12 @@ def smoke_real_core(core_dir: Path, *, explicit_consent: bool, timeout: int = 12
                     creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0) if sys.platform=="win32" else 0,
                 )
             from ..rpc_scope import register
+            from ..foundation import diagnostics
             register(proc,core_dir,datadir,authorized_disposable_mutation=True)
             end = time.monotonic() + timeout
             info = None
+            first_fault = None
+            saw_scope_fault = False
             while time.monotonic() < end:
                 if proc.poll() is not None:
                     code = proc.returncode
@@ -159,15 +179,27 @@ def smoke_real_core(core_dir: Path, *, explicit_consent: bool, timeout: int = 12
                     if isinstance(candidate, dict):
                         info = candidate
                         break
-                except CoreSmokeError:
-                    pass
+                except CoreSmokeError as error:
+                    token = public_token(error, _ATTEMPT_FALLBACK)
+                    diagnostics.record('CORE_SMOKE_STARTUP_ATTEMPT', CoreSmokeError(token))
+                    if token == 'CORE_RPC_SCOPE_FAULTED':
+                        saw_scope_fault = True
+                    if first_fault is None and token not in _STARTUP_BOOTSTRAP:
+                        first_fault = token
                 time.sleep(0.5)
             if info is None or info.get("chain") != "regtest":
-                from ..foundation import diagnostics
+                latched = (first_fault is not None and (
+                    first_fault not in _NONLATCHING_PUBLIC or saw_scope_fault))
+                if info is None and latched:
+                    # The ring is bounded. Restate the first faulting token
+                    # after the attempts so it survives even when later
+                    # CORE_RPC_SCOPE_FAULTED rows evict it.
+                    diagnostics.record('CORE_SMOKE_STARTUP', CoreSmokeError(first_fault))
+                    raise CoreSmokeError('CORE_STARTUP_SCOPE_FAULTED_DENIED')
                 if info is None:
                     diagnostics.record('CORE_SMOKE_STARTUP', CoreSmokeError('CORE_RPC_NO_ANSWER'))
-                else:
-                    diagnostics.record('CORE_SMOKE_STARTUP', CoreSmokeError('CORE_WRONG_CHAIN'))
+                    raise CoreSmokeError('CORE_STARTUP_NO_ANSWER_DENIED')
+                diagnostics.record('CORE_SMOKE_STARTUP', CoreSmokeError('CORE_WRONG_CHAIN'))
                 raise CoreSmokeError("CORE_WRONG_CHAIN_DENIED")
             from ..wsp_live import REGTEST_GENESIS
             genesis=_read_cli(prefix + ['getblockhash','0'])
