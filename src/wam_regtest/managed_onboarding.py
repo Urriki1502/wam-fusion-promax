@@ -196,6 +196,7 @@ def welcome_dialog():
     root.addWidget(logo, alignment=Qt.AlignmentFlag.AlignHCenter)
     root.addWidget(label(ui_text('wallet.brand'), 'BrandTitle'))
     root.addWidget(label(ui_text('welcome.welcome_to_your_wallet'), "PageTitle"))
+    root.addWidget(label(ui_text('welcome.begin')))
     root.addWidget(label(ui_text('welcome.regtest_preview_no_real_funds'), "FusionBadge"))
     dialog.shared_mode = I18nCheckBox(ui_text('welcome.shared_regtest_manual_core_p2p'))
     dialog.shared_mode.setAccessibleName(ui_text('welcome.shared_regtest_manual_core_p2p'))
@@ -214,11 +215,11 @@ def welcome_dialog():
     )
     for key, title, detail, icon_name, primary in (
         ("create", ui_text('welcome.create_a_new_wallet'),
-         '', "overview", True),
+         ui_text('welcome.create_detail'), "overview", True),
         ("open", ui_text('welcome.open_existing_wallet'),
-         '', "unlock", False),
+         ui_text('welcome.open_detail'), "unlock", False),
         ("restore", ui_text('welcome.restore_from_12_words'),
-         '', "backup", False),
+         ui_text('welcome.restore_detail'), "backup", False),
     ):
         button = action(title, icon_name, primary)
         button.setAccessibleName(title)
@@ -227,6 +228,7 @@ def welcome_dialog():
             icon_name, palette["onaccent"] if primary else palette["accent"]))
         dialog.buttons[key] = button
         layout.addWidget(button)
+        layout.addWidget(label(detail, "FusionMuted"))
     root.addWidget(choices)
     QWidget.setTabOrder(dialog.buttons["create"], dialog.buttons["open"])
     QWidget.setTabOrder(dialog.buttons["open"], dialog.buttons["restore"])

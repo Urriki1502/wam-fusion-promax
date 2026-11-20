@@ -536,6 +536,7 @@ class Bip39BackupPage(QWidget):
         self._verify_error = grow_with_wrapped_text(label('', 'FusionGold'))
         self._verify_error.hide()
         vcl.addWidget(self._verify_error)
+        vfooter.addWidget(grow_with_wrapped_text(label(t('backup_privacy_note'))))
         self._verify_back = action(t('backup_back'), 'backup')
         self._verify_back.clicked.connect(self._on_verify_back)
         self._verify_button = action(t('verify_backup'), 'check', primary=True)

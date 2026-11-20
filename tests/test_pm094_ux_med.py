@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = json.loads((ROOT / 'tests/pm094_english_literals.json').read_text())
 ENGLISH = FIXTURE['english']
 REUSED = FIXTURE['reused_from']
-PRIOR_CATALOG_KEYS = 822
+PRIOR_CATALOG_KEYS = 808  # PM-103: 15 decorative keys retired; General added.
 RAW_CODE = re.compile(
     r'\b(?:Q06_[A-Z0-9_]+|OPERATOR_REVIEW_[A-Z0-9_]+|REC2_[A-Z0-9_]+|'
     r'SIGNED_NOT_SUBMITTED_RESUMABLE|UNCERTAIN_NOT_OBSERVED_RESUMABLE|'

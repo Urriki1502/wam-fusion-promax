@@ -33,7 +33,7 @@ NEW_KEYS = (
 # 802 catalog keys on 5e4e15b (after PM-077 and PM-075) plus these 15,
 # minus the five welcome.legacy_* keys retired by PM-086, plus the D4' refusal,
 # plus the nine PM-090 REC-1 / deferred re-submission lines.
-CATALOG_KEYS = 844
+CATALOG_KEYS = 830  # PM-103: 15 decorative keys retired; General added.
 TXID = TX(0x3000)
 TXID_B = TX(0x3001)
 TXID_C = TX(0x3002)

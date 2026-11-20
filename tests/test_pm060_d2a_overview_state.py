@@ -94,6 +94,9 @@ class OverviewState(unittest.TestCase):
                     page.render_snapshot(**dict({'snap': None}, **facts))
                     self.assertEqual(card.value.text(), expected[1])
                     self.assertEqual(card.detail.text(), expected[2])
+                    self.assertTrue(card.detail.isHidden())
+                    self.assertIn(expected[2], card.toolTip())
+                    self.assertIn(expected[2], card.accessibleDescription())
         with self.assertRaisesRegex(ValueError, 'FUSION_STATUS_KIND_DENIED'):
             classify('connected')
 

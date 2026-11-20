@@ -84,6 +84,8 @@ def check_layouts(output=None):
                 window.stack.setCurrentIndex(6)
                 window.page_title.setText('Settings')
                 settle()
+                window.settings_categories[4].click()
+                settle()
                 for expanded in (False, True, False):
                     window.advanced_toggle.setChecked(expanded)
                     settle()

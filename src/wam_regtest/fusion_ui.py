@@ -84,10 +84,10 @@ _THEME_COLORS = {
     'dark': dict(
         bg='#0B0B0D', surface='#141416', panel='#1C1C20', text='#F7F4EC',
         text_secondary='#B7B1A4', muted='#9B9385', border='#34302A',
-        control='#A89878', tint='#1F1C16', accent='#E9C56B', focus='#E9C56B',
-        onaccent='#1A1406', onhero='#1A1406', cta_start='#F2D36F', cta_end='#C9922E',
+        control='#A89878', tint='#1F1C16', accent='#E0C36A',
+        onaccent='#080600', onhero='#080600', cta_start='#F2D36F', cta_end='#C9922E',
         warning='#3A3018', warning_text='#F1C77D',
-        green='#46C78B', blue='#7EB6FF', red='#FF8B8F', hero_bottom='#8A6420',
+        green='#3DDC97', blue='#7EB6FF', red='#FF8B8F', hero_bottom='#8A6420',
         selection='#3A3018', grid='#3A342C', chart_empty='#8E8A80',
         hover='#24221C', sidebar='#09090B', pending='#E5BE79',
         brand='#F2D36F', segment='#1A1814',
@@ -95,8 +95,8 @@ _THEME_COLORS = {
     'light': dict(
         bg='#F6F3EC', surface='#FFFFFF', panel='#F3EEE3', text='#1C1914',
         text_secondary='#514A3F', muted='#675F53', border='#E4DCC8',
-        control='#6E6250', tint='#EFE6D4', accent='#76520C', focus='#76520C',
-        onaccent='#1A1406', onhero='#1A1406', cta_start='#F2D36F', cta_end='#C9922E',
+        control='#6E6250', tint='#EFE6D4', accent='#7A5A12',
+        onaccent='#080600', onhero='#080600', cta_start='#F2D36F', cta_end='#C9922E',
         warning='#FFF4D8', warning_text='#80561A',
         green='#0F7A52', blue='#1666CC', red='#B8424C', hero_bottom='#C9922E',
         selection='#F0E2BE', grid='#E4DCC8', chart_empty='#8E8A80',
@@ -138,6 +138,7 @@ def fusion_palette(mode):
         raise ValueError('FUSION_THEME_DENIED')
     colors = dict(base)
     # One stored colour per meaning. These names are aliases, not a second hex.
+    colors['focus'] = colors['accent']
     colors['success'] = colors['green']
     colors['error'] = colors['red']
     colors['received'] = colors['green']
@@ -568,12 +569,41 @@ class ReadableText(QPlainTextEdit):
         return QSize(0, 68)
 
 
+class WrappedLabel(I18nLabel):
+    """Propagate the applied width's polished text height to parent layouts."""
+    def _fit_wrapped(self):
+        if not getattr(self, '_grow_wrapped', False) or self.width() <= 0:
+            return
+        from PySide6.QtCore import QRect
+        self.setMinimumHeight(0)
+        rect = self.contentsRect()
+        needed = self.fontMetrics().boundingRect(
+            QRect(0, 0, max(1, rect.width()), 10000),
+            int(Qt.TextFlag.TextWordWrap), self.text()).height()
+        needed += self.height() - rect.height()
+        self.setMinimumHeight(max(needed, self.heightForWidth(self.width())))
+
+    def setText(self, text):
+        super().setText(text)
+        self._fit_wrapped()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit_wrapped()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            self._fit_wrapped()
+
+
 def grow_with_wrapped_text(widget):
     """Let a word-wrapped label take the height its wrapped text needs.
 
     label() gives wrapped labels a vertical Maximum policy, which keeps them
     at their unwrapped height. Text that wraps to more lines (for example CJK
     at the narrow sidebar width) was then clipped (V0-A1, V0-A4)."""
+    widget._grow_wrapped = True
     policy = widget.sizePolicy()
     policy.setVerticalPolicy(QSizePolicy.Policy.Minimum)
     policy.setHeightForWidth(True)
@@ -586,7 +616,7 @@ def label(text='', role='FusionMuted', selectable=False):
         obj = ReadableText(text)
         obj.setObjectName(role)
         return obj
-    obj = I18nLabel(text)
+    obj = WrappedLabel(text)
     obj.setObjectName(role)
     obj.setWordWrap(role not in ('FusionKicker', 'FusionBadge'))
     obj.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
@@ -1658,10 +1688,10 @@ class FusionOverview(QScrollArea):
         hero_grid.setColumnStretch(0, 5)
         hero_grid.setColumnStretch(1, 4)
 
-        self.core_card = StatusCard(ui_text('fusion.wam_core'), '')
-        self.chain_card = StatusCard(ui_text('fusion.chain'), '')
-        self.security_card = StatusCard(ui_text('fusion.security'), '')
-        self.network_card = StatusCard(ui_text('fusion.network'), '')
+        self.core_card = StatusCard(ui_text('fusion.wam_core'), ui_text('fusion.pinned_binary_identity'))
+        self.chain_card = StatusCard(ui_text('fusion.chain'), ui_text('fusion.verified_tip_height'))
+        self.security_card = StatusCard(ui_text('fusion.security'), ui_text('fusion.native_custody_state'))
+        self.network_card = StatusCard(ui_text('fusion.network'), ui_text('fusion.regtest_connectivity'))
         self.core_status = self.core_card.value
         self.chain_status = self.chain_card.value
         self.vault_status = self.security_card.value
@@ -1766,7 +1796,7 @@ class FusionOverview(QScrollArea):
         self.balance_unit.setVisible(compact)
         self.balance_value.setText(amount if compact else amount + ' WAM')
         size = TYPE['display_compact'] if compact else TYPE['display']
-        tone = fusion_palette(self.hero.mode).get('onhero', '#1A1406')
+        tone = fusion_palette(self.hero.mode)['onhero']
         self.balance_value.setStyleSheet(
             'font-size:%dpx;font-weight:%d;letter-spacing:%spx;color:%s;'
             % (size, WEIGHT['bold'], TRACKING['balance'], tone))
@@ -1828,8 +1858,6 @@ class FusionOverview(QScrollArea):
         self.chain_card.apply(*classify('chain', **facts), animate=not locked)
         self.security_card.apply(*classify('security', **facts), animate=False)
         network_state, network_title, network_detail = classify('network', **facts)
-        if type(network.get('peer_count')) is not int:
-            network_detail = ui_text('pages.peers_after_check')
         self.network_card.apply(network_state, network_title, network_detail, animate=not locked)
         unlocked = not locked and operational and snap is not None
         self.custody_switch.blockSignals(True)

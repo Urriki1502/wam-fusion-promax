@@ -245,7 +245,9 @@ class TargetDesign(unittest.TestCase):
 
     def test_unknown_peer_count_is_not_rendered_as_zero(self):
         from wam_regtest.bip39_locale import t
-        self.assertEqual(self.w.overview.network_card.detail.text(), t('pages.peers_after_check'))
+        self.assertEqual(self.w.overview.network_card.detail.text(), t('status.zero_peer'))
+        self.w.overview.render_snapshot(None, network={'shared': True})
+        self.assertEqual(self.w.overview.network_card.detail.text(), t('status.peer_state_after_check'))
         self.w.network_page.render(shared=False)
         self.assertEqual(self.w.network_page.peer_value.text(), t('pages.peers_after_check'))
 

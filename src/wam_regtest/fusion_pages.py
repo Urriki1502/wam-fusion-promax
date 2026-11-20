@@ -130,15 +130,15 @@ class PaymentQR(QWidget):
 class ReceivePage(QWidget):
     def __init__(self):
         super().__init__();self.code=None;self.setObjectName('FusionInner');root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
-        header=QWidget();header_layout=QVBoxLayout(header);header_layout.setContentsMargins(SHELL['page_side'],SHELL['page_top'],SHELL['page_right'],0);header_layout.setSpacing(SHELL['page_gap']);header_layout.addWidget(label(ui_text('pages.receive'),'PageTitle'));root.addWidget(header)
-        self.scroll,layout=page(ui_text('pages.receive'),'', '',header=False)
+        header=QWidget();header_layout=QVBoxLayout(header);header_layout.setContentsMargins(SHELL['page_side'],SHELL['page_top'],SHELL['page_right'],0);header_layout.setSpacing(SHELL['page_gap']);header_layout.addWidget(label(ui_text('pages.receive'),'PageTitle'));header_layout.addWidget(grow_with_wrapped_text(label(ui_text('pages.silent_payments_note'))));header_layout.addWidget(grow_with_wrapped_text(label(ui_text('pages.disposable_funds'),'FusionGold')));root.addWidget(header)
+        self.scroll,layout=page(ui_text('pages.receive'),ui_text('pages.receive_subtitle'), '',header=False)
         root.addWidget(self.scroll)
         card,cl=panel(ui_text('pages.your_silent_payment_address'),ui_text('pages.receive_scope'))
         self.qr=PaymentQR();qrbox=QWidget();ql=QVBoxLayout(qrbox);ql.setContentsMargins(0,0,0,0);ql.addWidget(self.qr,alignment=Qt.AlignmentFlag.AlignCenter);ql.addWidget(label(ui_text('pages.exact_address_qr'),'FusionKicker'),alignment=Qt.AlignmentFlag.AlignCenter)
         address=QWidget();al=QVBoxLayout(address);al.setContentsMargins(0,0,0,0);al.addWidget(label(ui_text('pages.bip352_regtest'),'FusionBadge'));self.receive_code=label('—','ReceiveCode',True);self.receive_code.setMinimumWidth(0);al.addWidget(self.receive_code)
-        self.copy_button=action(ui_text('pages.copy_full_address'),'copy',True);self.copy_button.setEnabled(False);self.copy_button.setAccessibleName(ui_text('pages.copy_full_address'));self.copy_button.setAccessibleDescription(ui_text('pages.copy_full_address_description'));self.copy_button.clicked.connect(self.copy_address);al.addWidget(self.copy_button);self.copy_status=label('');self.copy_status.hide();al.addWidget(self.copy_status);al.addStretch()
+        self.copy_button=action(ui_text('pages.copy_full_address'),'copy',True);self.copy_button.setEnabled(False);self.copy_button.setAccessibleName(ui_text('pages.copy_full_address'));self.copy_button.setAccessibleDescription(ui_text('pages.copy_full_address_description'));self.copy_button.clicked.connect(self.copy_address);al.addWidget(self.copy_button);self.copy_status=label(ui_text('pages.copy_full_value'));al.addWidget(self.copy_status);al.addStretch()
         self._copy_timer=QTimer(self);self._copy_timer.setSingleShot(True)
-        self._copy_timer.timeout.connect(self._show_copy_state)
+        self._copy_timer.timeout.connect(lambda: self.copy_status.setText(ui_text('pages.copy_complete') if self.code else ui_text('pages.address_locked')))
         cl.addWidget(ResponsiveRow(qrbox,address,weights=[2,3],breakpoint=610));layout.addWidget(card)
         self.received=label(ui_text('pages.no_verified_receiving_activity'));layout.addWidget(self.received);layout.addStretch()
     def retranslate(self):
@@ -162,8 +162,8 @@ class ReceivePage(QWidget):
             self.received.setText(ui_text('pages.receive_stats_unavailable'))
     def _show_copy_state(self):
         if self.code:
-            self.copy_status.setText('')
-            self.copy_status.hide()
+            self.copy_status.setText(ui_text('pages.copy_full_value'))
+            self.copy_status.show()
         else:
             self.copy_status.setText(ui_text('pages.address_locked'))
             self.copy_status.show()
@@ -179,7 +179,7 @@ class HistoryPage(QWidget):
     page_requested=Signal(int)
     def __init__(self):
         super().__init__();self.setObjectName('FusionInner');self.rows=();self.mode='dark';self._offset=0;self._total=0;self._has_snapshot=False;root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
-        self.scroll,layout=page(ui_text('pages.history'),'','');root.addWidget(self.scroll)
+        self.scroll,layout=page(ui_text('pages.history'),ui_text('pages.history_subtitle') + ' ' + ui_text('pending.history_subtitle'),'');root.addWidget(self.scroll)
         card,cl=panel();toolbar=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText(ui_text('pages.search_placeholder'));self.search.setClearButtonEnabled(True);self.search.setAccessibleName(ui_text('pages.search_confirmed_transactions'));self.filter=QComboBox();self.filter.setAccessibleName(ui_text('pages.history_type_filter'));self.filter.view().setAccessibleName(ui_text('pages.history_type_filter'));self.filter.addItems((ui_text('pages.all_activity'),ui_text('pages.credits'),ui_text('pages.debits')));toolbar.addWidget(self.search,1);self.filter.setParent(card);self.filter.hide();_name_line_clear(self.search,ui_text('pages.search_confirmed_transactions'));cl.addLayout(toolbar)
         self._filter_chips = []
         self._filter_group = QButtonGroup(self)
@@ -452,7 +452,7 @@ class WalletConsent(QDialog):
         for text, role in ((title, 'PageTitle'), (message, 'FusionMuted')):
             # Wrapped consent text must grow with its wrapped height; the shared
             # Maximum policy clipped long titles/explanations (V19 Reconcile).
-            wrapped = label(text, role)
+            wrapped = grow_with_wrapped_text(label(text, role))
             policy = wrapped.sizePolicy()
             policy.setVerticalPolicy(policy.Policy.Minimum)
             policy.setHeightForWidth(True)
@@ -472,6 +472,13 @@ class WalletConsent(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.layout().activate()
+        needed = self.layout().totalHeightForWidth(self.width())
+        self.resize(self.width(), max(self.height(), needed, self.sizeHint().height()))
+        self.layout().activate()
 
 
 def _quoted(review):
@@ -645,15 +652,15 @@ class NetworkPage(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         self.scroll, layout = page(
             ui_text('pages.network'),
-            '', '')
+            ui_text('pages.network_subtitle'), '')
         root.addWidget(self.scroll)
-        status, sl = panel(ui_text('pages.network_status'))
+        status, sl = panel(ui_text('pages.network_status'), ui_text('pages.unknown_until_verified'))
         self.mode_value = label(ui_text('pages.not_verified'), 'FusionCardValue')
         self.connection_value = label(ui_text('pages.core_connectivity_is_not_verified'))
         self.peer_value = label(ui_text('pages.peers_after_check'))
         self.height_value = label(ui_text('pages.height_after_snapshot'))
         self.sync_value = label(ui_text('pages.sync_unknown'))
-        self.identity_value = label('')
+        self.identity_value = label(ui_text('pages.shared_identity_scope'))
         self.identity_value.hide()
         for widget in (self.mode_value, self.connection_value, self.peer_value,
                        self.height_value, self.sync_value, self.identity_value):
@@ -662,7 +669,7 @@ class NetworkPage(QWidget):
         self.attention_host = QVBoxLayout()
         sl.addLayout(self.attention_host)
         layout.addWidget(status)
-        controls, cl = panel(ui_text('wallet.advanced_title'))
+        controls, cl = panel(ui_text('wallet.advanced_title'), ui_text('pages.v1_net_commands'))
         self.controls_card = controls
         self.controls_toggle = QToolButton()
         self.controls_toggle.setObjectName('FusionAdvanced')

@@ -25,7 +25,7 @@ from .desktop import resolve_theme
 from .gui_errors import error_text, operation_error, public_code
 from .fusion_ui import (
     FusionOverview, fusion_stylesheet, fusion_palette, page, panel,
-    label, ResponsiveRow, vector_icon, nav_icon_for, FUSION_NAV_PAGES, fusion_nav_pages,
+    label, WrappedLabel, ResponsiveRow, vector_icon, nav_icon_for, FUSION_NAV_PAGES, fusion_nav_pages,
     StateSwitch, action, ThemeSlider, grow_with_wrapped_text,
     SHELL, present_brand_title, install_keyboard_focus_mark,
 )
@@ -66,7 +66,7 @@ def displayed_reserved_inputs(result):
 
 
 
-class _WrappingStatusLabel(QLabel):
+class _WrappingStatusLabel(WrappedLabel):
     """Status text that wraps long tokens and copies the exact characters.
 
     QLabel word wrap does not break an unbroken identifier, and QLabel has no
@@ -247,6 +247,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
             item.setData(Qt.ItemDataRole.UserRole, page_id)
             self.navigation.addItem(item)
         side.addWidget(self.navigation, 1)
+        side.addWidget(grow_with_wrapped_text(label(t('wallet.sidebar_notice'))))
         shell.addWidget(sidebar)
 
         main = QWidget()
@@ -300,11 +301,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.stack.addWidget(self.history_page)
 
         send_page, send_layout = page(
-            t('fusion.send'), '', '',
+            t('fusion.send'), t('wallet.send_subtitle'), '',
         )
         self.payment_steps = PaymentSteps()
         send_layout.addWidget(self.payment_steps)
-        form, fl = panel(t('wallet.prepare_title'), '')
+        form, fl = panel(t('wallet.prepare_title'), t('wallet.prepare_subtitle'))
         self.recipient_input = I18nLineEdit()
         self.recipient_input.setMaxLength(256)
         self.recipient_input.setPlaceholderText(t('wallet.recipient_hint'))
@@ -333,7 +334,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         fl.addWidget(self.send)
         review, rl = panel(
             t('wallet.review_title'),
-            '',
+            t('wallet.review_subtitle'),
         )
         self.review_summary = _WrappingStatusLabel()
         self.review_summary.setWordWrap(True)
@@ -364,17 +365,20 @@ class Bip39FusionWindow(Bip39TrialWindow):
                               (self.confirm, 'confirm'), (self.intents, 'signed'),
                               (self.recovery, 'backup'), (self.quit, 'quit')):
             control.setProperty('fusion_icon', icon)
-        self.send_result = grow_with_wrapped_text(label(t('wallet.no_broadcast_result')))
+        self.send_result = grow_with_wrapped_text(_WrappingStatusLabel(t('wallet.no_broadcast_result')))
+        self.send_result.setObjectName('FusionMuted')
+        self.send_result.setWordWrap(True)
         self.send_result.setMinimumWidth(0)
         rl.addWidget(self.send_result)
+        rl.addWidget(grow_with_wrapped_text(label(t('wallet.no_automatic_retry'), 'FusionGold')))
         send_layout.addWidget(ResponsiveRow(form, review, weights=[3, 2]))
         send_layout.addStretch()
         self.stack.addWidget(send_page)
 
         security_page, security_layout = page(
-            t('fusion.security'), '', '',
+            t('fusion.security'), t('wallet.security_subtitle'), '',
         )
-        wallet_card, wl = panel(t('wallet.protection_title'), '')
+        wallet_card, wl = panel(t('wallet.protection_title'), t('wallet.protection_subtitle'))
         self.security_state = label(t('wallet.awaiting_wallet'), "FusionCardValue")
         wl.addWidget(self.security_state)
         self.lock.setText(t('wallet.lock'))
@@ -415,7 +419,12 @@ class Bip39FusionWindow(Bip39TrialWindow):
         self.reservation_notice = label(t('wallet.reservations_retained'), 'FusionGold')
         self.reservation_notice.hide()
         rl.addWidget(self.reservation_notice)
-        self.backup_review = self.recovery
+        backup_card, bl = panel(t('wallet.backup_status'), t('wallet.backup_requirement'))
+        bl.addWidget(grow_with_wrapped_text(label(t('wallet.recovery_support_warning'))))
+        self.backup_review = action(t('wallet.review_backup'), 'backup')
+        self.backup_review.setAccessibleName(t('wallet.review_backup'))
+        self.backup_review.clicked.connect(self._quick_backup)
+        bl.addWidget(self.backup_review)
         # Propagate height-for-width past the panels and the row: without
         # this the page layout sizes the row from a wider-width sizeHint
         # and squeezes the wrapped notice below its applied-width height.
@@ -435,6 +444,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
             root_policy.setHeightForWidth(True)
             security_root.setSizePolicy(root_policy)
         security_layout.addWidget(security_row)
+        security_layout.addWidget(backup_card)
         security_layout.addStretch()
         self.stack.addWidget(security_page)
 
@@ -519,9 +529,10 @@ class Bip39FusionWindow(Bip39TrialWindow):
 
         about, about_layout = panel(
             t('wallet.about_title'),
-            '')
+            t('wallet.about_body'))
         self._protocol_line = label(core_compat.DISPLAY_NAME + str(t('wallet.protocol_summary')))
         about_layout.addWidget(self._protocol_line)
+        about_layout.addWidget(grow_with_wrapped_text(label(t('wallet.preview_notice'))))
         self.network_state = self.network_page.connection_value
         if shared_profile is not None:
             self.reconcile_button = action(t('wallet.reconcile_retained'), 'security')
@@ -537,7 +548,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
 
         advanced_card, advanced_layout = panel(
             t('wallet.advanced_title'),
-            '')
+            t('wallet.advanced_body'))
         self.advanced_toggle = _AdvancedControlsToggle()
         self.advanced_toggle.setObjectName("FusionAdvanced")
         self.advanced_toggle.setCheckable(True)
@@ -624,7 +635,7 @@ class Bip39FusionWindow(Bip39TrialWindow):
         settings_rail.setParent(settings_row)
         self.settings_sections.setParent(settings_row)
         settings_layout.addWidget(settings_row)
-        self._translatable_panels = (form, review, wallet_card, recovery_card, appearance, language_card, advanced_card)
+        self._translatable_panels = (form, review, wallet_card, recovery_card, backup_card, appearance, language_card, advanced_card)
         settings_layout.addStretch()
         self.stack.addWidget(settings_page)
 
