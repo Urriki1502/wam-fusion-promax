@@ -249,6 +249,12 @@ class Q06OwnerBackendContracts(unittest.TestCase):
         self.assertTrue(self.backend._anchor_ready)
         self.backend.execute("lock",(),{})
 
+    @staticmethod
+    def _funded_snapshot(txid, atoms, height):
+        from wam_regtest.wallet_read import HistoryRow
+        return SimpleNamespace(height=height, confirmed_atoms=atoms,
+            history=(HistoryRow(txid, height, 1, atoms, 0),))
+
     def test_funding_postcheck_uses_owned_read_after_fixture_closes_cli(self):
         from unittest.mock import Mock, call
         self.backend._secret=bytearray(PASSWORD)
@@ -269,7 +275,9 @@ class Q06OwnerBackendContracts(unittest.TestCase):
               patch("wam_regtest.wallet_session.WalletCoreCli",return_value=cli),
               patch("wam_regtest.wsp_live.public_regtest_mining_address",return_value="wamrt1public"),
               patch("wam_regtest.regtest_funding.fund_checkpoint_fixture",
-                    side_effect=funding)):
+                    side_effect=funding),
+              patch.object(self.backend, "_scan_q06", return_value={"fusion_snapshot":
+                  self._funded_snapshot("a"*64, 150000, 102)})):
             receipt=self.backend.execute("mine",(),{})
         self.assertEqual(receipt["status"],"Q06_REGTEST_PUBLIC_BIP39_RECEIVE_FUNDED")
         self.assertEqual(receipt["height"],102)
@@ -301,7 +309,9 @@ class Q06OwnerBackendContracts(unittest.TestCase):
               patch("wam_regtest.wallet_session.WalletCoreCli",return_value=cli),
               patch("wam_regtest.wsp_live.public_regtest_mining_address",return_value="wamrt1public"),
               patch("wam_regtest.regtest_funding.fund_checkpoint_fixture",
-                    side_effect=funding)):
+                    side_effect=funding),
+              patch.object(self.backend, "_scan_q06", return_value={"fusion_snapshot":
+                  self._funded_snapshot("b"*64, 250000, start+102)})):
             receipt=self.backend.execute("mine",(),{})
         self.assertEqual(receipt["height"],start+102)
         self.assertEqual(call_seq,["getblockcount"])
@@ -378,13 +388,26 @@ class Q06OwnerBackendContracts(unittest.TestCase):
         self.backend._seed_folder=self.root/("bip39-12-"+"a"*32)
         session=Mock(faulted=False,locked=False,_q06_uncertain=False,
                      _core_reauthentication_required=False)
-        session._review=None;session._signed=None;session._q06_pending_confirm=None
+        session._prepared=None;session._review=None;session._signed=None;session._q06_pending_confirm=None
+        session._q06_rec1_quarantine={}
+        session.vault._expected=(1,"a"*64)
+        session.vault.anchor.read.side_effect=lambda: session.vault._expected
+        (self.root/("bip39-12-scan-"+"a"*32)).mkdir(mode=0o700)
+        before=SimpleNamespace(height=0,confirmed_atoms=0)
+        def snapshot():
+            if session.vault._expected[0]==1 and not getattr(snapshot,"called",False):
+                snapshot.called=True
+                return before
+            session.vault._expected=(2,"b"*64)
+            return self._funded_snapshot("c"*64,150000,102)
+        session.snapshot.side_effect=snapshot
         from unittest.mock import MagicMock
         store=MagicMock()
         store.transaction.return_value.__enter__=store
         store.transaction.return_value.__exit__=lambda *a: None
         store.db.execute.return_value.fetchall.return_value=[]  # no reservations
-        session.scanner=SimpleNamespace(store=store)
+        session.scanner=MagicMock(store=store, assert_current=Mock())
+        session.scanner.store.tip.return_value=(0,"0"*64)
         self.backend._spend_session=session
         self.owner.cli=self.root/"wam-cli"
         self.owner.read=Mock();self.owner.read.call.return_value=102

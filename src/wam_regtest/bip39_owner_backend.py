@@ -284,24 +284,42 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                 or getattr(s, "_core_reauthentication_required", False)):
             return True
         if (getattr(s, "_review", None) is not None
+                or getattr(s, "_prepared", None) is not None
                 or getattr(s, "_signed", None) is not None
-                or getattr(s, "_q06_pending_confirm", None) is not None):
+                or getattr(s, "_q06_pending_confirm", None) is not None
+                or getattr(s, "_q06_rec1_quarantine", None)):
             return True
-        # Anchored signed/uncertain reservations prove an intent was signed
-        # but has not reached a cleared state; a draft-only hold is a
-        # recovered-unsigned cancel. Confirmed 'broadcast' leftover rows are
-        # NOT in flight (they are the audit trail of a confirmed send);
-        # an unconfirmed broadcast is already caught by _q06_pending_confirm.
+        # REC can leave the pending pointer empty for quarantine, several
+        # candidates or NOT_OBSERVED. Only authentic exact-input broadcast
+        # evidence AND this session's verified confirmed history resolve a row.
         sc = getattr(s, "scanner", None)
         if sc is None:
             return True  # cannot confirm idle -> fail closed
         try:
+            s._q06_guard.check()
+            if s.vault.anchor.read() != s.vault._expected:
+                return True
+            sc.assert_current()
             with sc.store.transaction():
-                states = {row[0] for row in sc.store.db.execute(
-                    "SELECT DISTINCT state FROM reservations").fetchall()}
+                rows = sc.store.db.execute(
+                    "SELECT txid,vout,token,state FROM reservations").fetchall()
+                confirmed = {row[0] for row in sc.store.db.execute(
+                    "SELECT txid FROM history WHERE height>0 AND height<=?",
+                    (sc.store.tip()[0],)).fetchall()}
+            groups = {}
+            for txid, vout, token, state in rows:
+                if state != "broadcast":
+                    return True
+                groups.setdefault(token, set()).add((txid, vout))
+            from wam_sp.psbt import PSBT
+            for token, outpoints in groups.items():
+                txid = s._broadcast_evidence_txid(
+                    token, outpoints, PSBT, re.compile(r"[0-9a-f]{64}"))
+                if txid is None or txid not in confirmed:
+                    return True
         except Exception:
             return True  # cannot confirm idle -> fail closed
-        return bool(states & {"draft", "signed", "uncertain"})
+        return False
 
     def _fund_q06(self):
         """Repeatable signed-Core REGTEST faucet, only when no payment is in flight.
@@ -324,13 +342,20 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
         from .regtest_funding import fund_checkpoint_fixture
         owner=self._core()
         _owned(owner)
+        session = self._spend_session
         seed_id=self._seed_folder.name.removeprefix("bip39-12-")
-        if (owner.directory / ("bip39-12-scan-" + seed_id)).exists():
+        if session is None and (owner.directory / ("bip39-12-scan-" + seed_id)).exists():
             raise Q06ReadOnlyError("Q06_GUI_ANCHORED_SCANNER_REQUIRES_RECONCILIATION")
         rpc=WalletCoreCli(owner.cli,owner.directory)
         fixture_record={}
         funding_phase="PREFLIGHT"
         try:
+            if session is not None:
+                # Reuse the active authenticated scanner, including every
+                # irreversible reservation. snapshot uses the existing N+1
+                # save path; never create an unanchored parallel scanner.
+                before = session.snapshot()
+                generation = session.vault._expected[0]
             rpc.attest()  # exact signed Core v0.1.13, chain and zero peers
             start = rpc.call("getblockcount")
             if type(start) is not int or not 0 <= start < 1_000_000:
@@ -355,13 +380,28 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
             # The original CoreSupervisor read transport was just re-attested by _owned.
             if owner.read.call("getblockcount")!=height:
                 raise Q06ReadOnlyError("Q06_GUI_TEST_FUNDING_UNVERIFIED")
+            funding_phase="POSTCHECK_RECEIVE"
+            snapshot = (session.snapshot() if session is not None
+                        else self._scan_q06()["fusion_snapshot"])
+            if (snapshot.height != height or snapshot.confirmed_atoms < atoms
+                    or not any(row.txid == txid and row.credit_atoms == atoms
+                               and row.debit_atoms == 0 and row.confirmations > 0
+                               and row.block_height == height for row in snapshot.history)
+                    or session is not None and (
+                        snapshot.confirmed_atoms < before.confirmed_atoms + atoms
+                        or session.vault._expected[0] != generation + 1)):
+                raise Q06ReadOnlyError("Q06_GUI_TEST_FUNDING_UNVERIFIED")
             return {"status":"Q06_REGTEST_PUBLIC_BIP39_RECEIVE_FUNDED",
                     "txid":txid,"atoms":atoms,"height":height,
                     "signer_allowed":False,"broadcast_allowed":False,
                     "mainnet_allowed":False}
         except Q06ReadOnlyError:
+            if session is not None and funding_phase != "PREFLIGHT":
+                session.faulted = session._q06_uncertain = True
             raise
         except Exception:
+            if session is not None:
+                session.faulted = session._q06_uncertain = True
             # Only fixed, non-secret stage categories are emitted. A Core write
             # may have completed: preserve the original fail-closed no-retry rule.
             if funding_phase=="FIXTURE":
@@ -372,7 +412,8 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                                "payment":"PAYMENT"}.get(observed,"FIXTURE_UNCLASSIFIED")
             else:
                 failure_stage=funding_phase if funding_phase in (
-                    "PREFLIGHT","POSTCHECK_OWNER","POSTCHECK_RESULT","POSTCHECK_HEIGHT") else "UNCLASSIFIED"
+                    "PREFLIGHT","POSTCHECK_OWNER","POSTCHECK_RESULT","POSTCHECK_HEIGHT",
+                    "POSTCHECK_RECEIVE") else "UNCLASSIFIED"
             if sys.platform=="darwin":
                 print("MACOS_Q06_FUNDING_FAILURE_STAGE="+failure_stage,flush=True)
             raise Q06ReadOnlyError("Q06_GUI_TEST_FUNDING_UNCERTAIN") from None
@@ -672,6 +713,8 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                       'acknowledge_quit_notices', 'quit_ack_unrecorded',
                       'retry_quit_notice', 'quit_notices'):
             return super().execute(action, args, kwargs)
+        if action == 'mine' and self._fund_in_flight():
+            raise Q06ReadOnlyError("Q06_GUI_TEST_FUNDING_IN_FLIGHT")
         if self.shared_profile is not None and action in ('prepare','prepare_auto','sign','broadcast','mine','confirm','ci_confirm'):
             from .shared_regtest import peer_status
             if action in ('mine','confirm','ci_confirm') and not self.shared_profile.coordinator:
