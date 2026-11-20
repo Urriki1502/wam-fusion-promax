@@ -258,7 +258,7 @@ class Q06OwnerBackendContracts(unittest.TestCase):
         self.owner.read=Mock()
         self.owner.read.call.return_value=102
         cli=Mock()
-        cli.call.return_value=0  # fresh-chain precondition, BEFORE mining
+        cli.call.return_value=0  # current height, BEFORE mining
         cli._transport=Mock()
         def funding(rpc, payment_code, address, record):
             self.assertIs(rpc,cli)
@@ -276,6 +276,129 @@ class Q06OwnerBackendContracts(unittest.TestCase):
         self.assertEqual(cli.call.call_args_list,[call("getblockcount")])
         self.owner.read.call.assert_called_once_with("getblockcount")
         self.assertEqual(ownership.call_count,2)
+
+    def test_funding_is_repeatable_at_heights_above_zero(self):
+        # A second "mine" at height>0 must NOT be refused as fresh-chain-only:
+        # the POSTCHECK accepts height == start + 102 (each call mines its own
+        # 101-block coinbase batch + 1 confirm). Same txid/atoms/_owned checks.
+        from unittest.mock import Mock, call
+        self.backend._secret=bytearray(PASSWORD)
+        self.backend._public={"receive_code":"wamrtsp1public"}
+        self.backend._seed_folder=self.root/("bip39-12-"+"a"*32)
+        start=250  # already funded/spent: chain is far above a fresh height
+        self.owner.cli=self.root/"wam-cli"
+        self.owner.read=Mock()
+        self.owner.read.call.return_value=start+102
+        cli=Mock()
+        call_seq=[]
+        cli.call.side_effect=lambda method: call_seq.append(method) or (
+            {"getblockcount":start}.get(method,0))
+        cli._transport=Mock()
+        def funding(rpc, payment_code, address, record):
+            rpc._transport.close()
+            return "b"*64, 250000, start+102
+        with (patch("wam_regtest.managed_wallet_checkpoint._owned") as ownership,
+              patch("wam_regtest.wallet_session.WalletCoreCli",return_value=cli),
+              patch("wam_regtest.wsp_live.public_regtest_mining_address",return_value="wamrt1public"),
+              patch("wam_regtest.regtest_funding.fund_checkpoint_fixture",
+                    side_effect=funding)):
+            receipt=self.backend.execute("mine",(),{})
+        self.assertEqual(receipt["height"],start+102)
+        self.assertEqual(call_seq,["getblockcount"])
+        self.owner.read.call.assert_called_once_with("getblockcount")
+        self.assertEqual(ownership.call_count,2)
+
+    def test_funding_postcheck_refuses_height_not_increased_by_expected_amount(self):
+        # The POSTCHECK keeps its exact-height assertion for repeatability:
+        # a fixture result that does not advance by exactly 102 is unverified.
+        from unittest.mock import Mock
+        self.backend._secret=bytearray(PASSWORD)
+        self.backend._public={"receive_code":"wamrtsp1public"}
+        self.backend._seed_folder=self.root/("bip39-12-"+"a"*32)
+        self.owner.cli=self.root/"wam-cli"
+        self.owner.read=Mock()
+        cli=Mock()
+        cli.call.return_value=0
+        cli._transport=Mock()
+        def wrong_height(rpc, payment_code, address, record):
+            rpc._transport.close()
+            return "a"*64, 150000, 150  # does not equal start+102
+        with (patch("wam_regtest.managed_wallet_checkpoint._owned"),
+              patch("wam_regtest.wallet_session.WalletCoreCli",return_value=cli),
+              patch("wam_regtest.wsp_live.public_regtest_mining_address",return_value="wamrt1public"),
+              patch("wam_regtest.regtest_funding.fund_checkpoint_fixture",
+                    side_effect=wrong_height)):
+            with self.assertRaises(Q06ReadOnlyError) as caught:
+                self.backend.execute("mine",(),{})
+        self.assertEqual(caught.exception.args,("Q06_GUI_TEST_FUNDING_UNVERIFIED",))
+
+    def test_funding_refused_when_a_payment_is_in_flight_in_the_spend_session(self):
+        from unittest.mock import Mock
+        # approved commitment held by the owned spend session must refuse the
+        # backend before any RPC even if the GUI enablement were stale.
+        self.backend._secret=bytearray(PASSWORD)
+        self.backend._public={"receive_code":"wamrtsp1public"}
+        self.backend._seed_folder=self.root/("bip39-12-"+"a"*32)
+        session=Mock(faulted=False,locked=False,_q06_uncertain=False,
+                     _core_reauthentication_required=False)
+        session._review=object();session._signed=None;session._q06_pending_confirm=None
+        self.backend._spend_session=session
+        with patch("wam_regtest.wallet_session.WalletCoreCli") as rpc:
+            with self.assertRaises(Q06ReadOnlyError) as caught:
+                self.backend.execute("mine",(),{})
+        self.assertEqual(caught.exception.args,("Q06_GUI_TEST_FUNDING_IN_FLIGHT",))
+        rpc.assert_not_called()
+
+    def test_funding_refused_when_session_is_faulted_locked_or_uncertain(self):
+        from unittest.mock import Mock
+        for attr,value in (("faulted",True),("locked",True),("_q06_uncertain",True),
+                           ("_core_reauthentication_required",True)):
+            with self.subTest(flag=attr):
+                self.backend._secret=bytearray(PASSWORD)
+                self.backend._public={"receive_code":"wamrtsp1public"}
+                self.backend._seed_folder=self.root/("bip39-12-"+"a"*32)
+                session=Mock(faulted=False,locked=False,_q06_uncertain=False,
+                             _core_reauthentication_required=False)
+                setattr(session,attr,value)
+                session._review=None;session._signed=None;session._q06_pending_confirm=None
+                self.backend._spend_session=session
+                with patch("wam_regtest.wallet_session.WalletCoreCli") as rpc:
+                    with self.assertRaises(Q06ReadOnlyError) as caught:
+                        self.backend.execute("mine",(),{})
+                self.assertEqual(caught.exception.args,("Q06_GUI_TEST_FUNDING_IN_FLIGHT",))
+                rpc.assert_not_called()
+        self.backend._spend_session=None
+
+    def test_funding_allowed_when_idle_spend_session_has_no_in_flight_payment(self):
+        # PM-102: fund stays usable after Send is activated as long as no signed
+        # or broadcast payload is pending; a healthy idle session is not blocked.
+        from unittest.mock import Mock
+        self.backend._secret=bytearray(PASSWORD)
+        self.backend._public={"receive_code":"wamrtsp1public"}
+        self.backend._seed_folder=self.root/("bip39-12-"+"a"*32)
+        session=Mock(faulted=False,locked=False,_q06_uncertain=False,
+                     _core_reauthentication_required=False)
+        session._review=None;session._signed=None;session._q06_pending_confirm=None
+        from unittest.mock import MagicMock
+        store=MagicMock()
+        store.transaction.return_value.__enter__=store
+        store.transaction.return_value.__exit__=lambda *a: None
+        store.db.execute.return_value.fetchall.return_value=[]  # no reservations
+        session.scanner=SimpleNamespace(store=store)
+        self.backend._spend_session=session
+        self.owner.cli=self.root/"wam-cli"
+        self.owner.read=Mock();self.owner.read.call.return_value=102
+        cli=Mock();cli.call.return_value=0;cli._transport=Mock()
+        def funding(rpc, payment_code, address, record):
+            rpc._transport.close();return "c"*64, 150000, 102
+        with (patch("wam_regtest.managed_wallet_checkpoint._owned"),
+              patch("wam_regtest.wallet_session.WalletCoreCli",return_value=cli),
+              patch("wam_regtest.wsp_live.public_regtest_mining_address",return_value="wamrt1public"),
+              patch("wam_regtest.regtest_funding.fund_checkpoint_fixture",
+                    side_effect=funding)):
+            receipt=self.backend.execute("mine",(),{})
+        self.assertEqual(receipt["status"],"Q06_REGTEST_PUBLIC_BIP39_RECEIVE_FUNDED")
+        self.backend._spend_session=None
 
     def test_gui_create_receipt_shows_exact_twelve_words_only_once(self):
         with (patch("wam_regtest.bip39_12.generate_phrase",return_value=PHRASE),

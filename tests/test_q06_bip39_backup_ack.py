@@ -361,8 +361,11 @@ class BackupPageContract(unittest.TestCase):
         # ControlWorker; model its worker-finished completion and refresh.
         self._finish_snapshot_worker()
         self.assertTrue(self.window._ready)
-        # Fund enabled on a fresh unfunded REGTEST chain; Lock enabled; Send
-        # stays disabled until native checkpoint + explicit signer activation.
+        # The live owned wallet after a verified backup is an unlocked wallet
+        # on an alive Core; model that and then begin the fresh-CHAIN faucet,
+        # Send/... stay disabled until native checkpoint + signer activation.
+        self.window.executor.state = ExecutorState(locked=False, core_alive=True)
+        self.window._set_actions()
         self.assertTrue(self.window.fund.isEnabled())
         self.assertTrue(self.window.lock.isEnabled())
         self.assertFalse(self.window.send.isEnabled())
@@ -403,6 +406,8 @@ class BackupPageContract(unittest.TestCase):
         # Continue dispatched the pending verified snapshot through the real
         # ControlWorker; model its worker-finished completion and refresh.
         self._finish_snapshot_worker()
+        self.window.executor.state = ExecutorState(locked=False, core_alive=True)
+        self.window._set_actions()
         self.assertTrue(self.window.fund.isEnabled())
         self.assertTrue(self.window.lock.isEnabled())
         self.assertFalse(self.window.send.isEnabled())

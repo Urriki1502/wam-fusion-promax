@@ -28,9 +28,13 @@ def _oracle(i):
                   and i.core_alive is True)
     q = i.quit_requested
     idle_payment = (not i.approved_commitment and not i.signed_ready and not i.pending_confirm)
+    no_payment_in_flight = (idle_payment and not i.resumable_intent
+                            and not i.recovered_unsigned_cancel)
+    fund = (i.ready and safe and not i.locked and not i.reauthentication_required
+            and i.core_alive is True and not busy and not q and no_payment_in_flight)
     return {
         'sync': i.ready and safe and not busy and not q,
-        'fund': i.ready and safe and not i.test_funded and not i.spend_enabled and not busy and not q,
+        'fund': fund,
         'activate': i.ready and safe and not i.spend_enabled and not busy and not q,
         'send': (spend_safe and i.spend_enabled and not i.approved_commitment
                  and not i.recovered_unsigned_cancel and not busy and not q),

@@ -1019,7 +1019,11 @@ class Bip39FusionWindow(Bip39TrialWindow):
             dialog.deleteLater()
 
     def _confirm_funding(self):
-        if not self._ready or self._spend_enabled or self._test_funded:
+        # The enablement gate lives in action_state (idle, not faulted/locked,
+        # no payment in flight). The click handler only blocks on a busy
+        # executor or missing readiness; it no longer re-imposes the removed
+        # one-shot 'not spend_enabled' / 'not test_funded' latches.
+        if not self._ready or self.executor.busy or self._worker is not None:
             return
         dialog = WalletConsent(t('wallet.fund_title'),
             t('wallet.fund_consent'), self)

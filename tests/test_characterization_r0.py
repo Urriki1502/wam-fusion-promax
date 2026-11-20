@@ -726,6 +726,63 @@ class ActionAvailability(unittest.TestCase):
                         self.fail('%s %s\n got %s\nwant %s' % (
                             type(window).__name__, flags, got, want))
 
+    def test_fund_repeatable_faucet_idle_rule_enables_after_spending(self):
+        # PM-102: fund is a repeatable faucet. It stays enabled when spending is
+        # enabled (no one-shot 'not spend_enabled'/'not test_funded' latch) and
+        # is refused only while a payment is in flight or the session is not a
+        # live unlocked healthy one. Both owner and fusion windows agree.
+        from dataclasses import replace
+        from wam_regtest.presentation.action_state import ActionInputs, available_actions
+        ready = ActionInputs(ready=True, spend_enabled=True, signed_ready=False,
+                             pending_confirm=False, approved_commitment=False,
+                             recovered_unsigned_cancel=False, resumable_intent=False,
+                             unlock_allowed=False, test_funded=True,
+                             quit_requested=False, busy=False, executor_closed=False,
+                             faulted=False, locked=False, reauthentication_required=False,
+                             core_alive=True)
+        def _variant(**changes):
+            return replace(ready, **changes)
+        self.assertTrue(available_actions(ready)['fund'])
+        # A confirmed spend's broadcast-rows are not in flight at the GUI layer:
+        # only approved/signed/pending/resumable/recovered block the faucet.
+        for label, changes in (
+                ('approved_commitment', dict(approved_commitment=True)),
+                ('signed_ready', dict(signed_ready=True)),
+                ('pending_confirm', dict(pending_confirm=True)),
+                ('resumable_intent', dict(resumable_intent=True)),
+                ('recovered_unsigned_cancel', dict(recovered_unsigned_cancel=True))):
+            self.assertFalse(available_actions(_variant(**changes))['fund'], label)
+        for label, changes in (
+                ('locked', dict(locked=True)),
+                ('faulted', dict(faulted=True)),
+                ('reauth', dict(reauthentication_required=True)),
+                ('core_dead', dict(core_alive=False)),
+                ('busy', dict(busy=True)),
+                ('quit', dict(quit_requested=True))):
+            self.assertFalse(available_actions(_variant(**changes))['fund'], label)
+        self.assertTrue(available_actions(ready)['fund'])
+
+    def test_fund_shared_non_coordinator_or_disconnected_still_refused(self):
+        # PM-102 keeps the unchanged shared rule: only the connected single
+        # coordinator may fund; a follower or an offline coordinator stays False
+        # even though the base predicate is otherwise idle.
+        from wam_regtest.presentation.action_state import ActionInputs, SharedInputs, apply_shared_profile, available_actions
+        idle = ActionInputs(ready=True, spend_enabled=False, signed_ready=False,
+                            pending_confirm=False, approved_commitment=False,
+                            recovered_unsigned_cancel=False, resumable_intent=False,
+                            unlock_allowed=False, test_funded=False,
+                            quit_requested=False, busy=False, executor_closed=False,
+                            faulted=False, locked=False, reauthentication_required=False,
+                            core_alive=True)
+        base = available_actions(idle)
+        self.assertTrue(base['fund'])
+        follower = apply_shared_profile(base, SharedInputs(coordinator=False, connected=True))
+        self.assertFalse(follower['fund'])
+        offline_coord = apply_shared_profile(base, SharedInputs(coordinator=True, connected=False))
+        self.assertFalse(offline_coord['fund'])
+        online_coord = apply_shared_profile(base, SharedInputs(coordinator=True, connected=True))
+        self.assertTrue(online_coord['fund'])
+
     def test_worker_delivery_and_quit_disable_enabled_controls(self):
         """F-08. busy is also _worker, _delivering_result, or _quit_requested."""
         self._assert_fusion_form_gate()

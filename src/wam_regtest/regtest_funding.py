@@ -7,14 +7,25 @@ from types import SimpleNamespace
 
 
 def fund_checkpoint_fixture(rpc,payment_code,address,record):
-    """Retain finite funding diagnostics without credentials or error text."""
+    """Height-agnostic repeatable public REGTEST receive helper.
+
+    Each call carries the caller's owned-Core/new-profile guards. The fixture
+    mines ITS OWN fresh coinbase to the public mining address at whatever the
+    current height then is, advances it to maturity, and pays it into the
+    wallet's BIP352 receive via _public_fixture_payment, then 1 confirm block.
+    """
     from .core import CoreSmokeError
-    from .wsp_live import _public_fixture_payment
+    from .wsp_live import RealWspScanError, _public_fixture_payment
     stage='attestation'
     try:
-        rpc.attest();stage='generation'
+        rpc.attest();stage='height'
+        start=rpc.call('getblockcount')
+        if type(start) is not int or start<0:
+            raise RealWspScanError('WSP_PUBLIC_FIXTURE_HEIGHT_DENIED')
+        stage='generation'
         rpc._call('generatetoaddress',['101',address]);stage='payment'
-        return _public_fixture_payment(rpc,SimpleNamespace(payment_code=lambda:payment_code),address)
+        return _public_fixture_payment(rpc,SimpleNamespace(payment_code=lambda:payment_code),address,
+                                       funding_height=start+1,expected_before_height=start+101)
     except Exception as error:
         detail={'stage':stage}
         cause=error.__context__

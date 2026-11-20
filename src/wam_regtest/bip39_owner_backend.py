@@ -267,15 +267,57 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
             "signer_allowed": False, "broadcast_allowed": False, "mainnet_allowed": False,
         }
 
-    def _fund_q06(self):
-        """Explicit once-only signed-Core REGTEST receive fixture.
+    def _fund_in_flight(self):
+        """True when funding would run under an opened spend session state.
 
-        Reuse Q05's *existing* public-transaction fixture to pay THIS
-        BIP39-derived silent receive code; NEVER use Q05 Keyring or signer.
-        This is not a generic mining RPC command or a product Send feature.
+        Never trust the GUI's enablement alone. Refuse before any RPC when the
+        spend session is faulted/locked/unauthorised OR carries an in-flight
+        payment: approved commitment, signed payload, pending broadcast, a
+        resumable signed intent, or a recovered-unsigned draft. These mirrors
+        the action_state idle gate but are read from the owned session itself.
+        """
+        s = getattr(self, "_spend_session", None)
+        if s is None:
+            return False
+        if (getattr(s, "faulted", False) or getattr(s, "locked", False)
+                or getattr(s, "_q06_uncertain", False)
+                or getattr(s, "_core_reauthentication_required", False)):
+            return True
+        if (getattr(s, "_review", None) is not None
+                or getattr(s, "_signed", None) is not None
+                or getattr(s, "_q06_pending_confirm", None) is not None):
+            return True
+        # Anchored signed/uncertain reservations prove an intent was signed
+        # but has not reached a cleared state; a draft-only hold is a
+        # recovered-unsigned cancel. Confirmed 'broadcast' leftover rows are
+        # NOT in flight (they are the audit trail of a confirmed send);
+        # an unconfirmed broadcast is already caught by _q06_pending_confirm.
+        sc = getattr(s, "scanner", None)
+        if sc is None:
+            return True  # cannot confirm idle -> fail closed
+        try:
+            with sc.store.transaction():
+                states = {row[0] for row in sc.store.db.execute(
+                    "SELECT DISTINCT state FROM reservations").fetchall()}
+        except Exception:
+            return True  # cannot confirm idle -> fail closed
+        return bool(states & {"draft", "signed", "uncertain"})
+
+    def _fund_q06(self):
+        """Repeatable signed-Core REGTEST faucet, only when no payment is in flight.
+
+        Each call mines ITS OWN fresh coinbase to the public mining address at the
+        current height, advances to maturity, pays it into THIS BIP39-derived
+        silent receive code via Q05's public fixture, then 1 confirm block. Mainnet
+        and double-mining under an in-flight payment stay impossible by construction.
         """
         if self._secret is None or self._public is None or self._seed_folder is None:
             raise Q06ReadOnlyError("Q06_GUI_LOCKED")
+        # Backend authority, BEFORE any RPC: never fund under an opened spend
+        # session with a payment in flight, or a faulted/locked/reauth session.
+        # GUI enablement is never the only gate.
+        if self._fund_in_flight():
+            raise Q06ReadOnlyError("Q06_GUI_TEST_FUNDING_IN_FLIGHT")
         from .managed_wallet_checkpoint import _owned
         from .wallet_session import WalletCoreCli
         from .wsp_live import public_regtest_mining_address
@@ -290,8 +332,9 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
         funding_phase="PREFLIGHT"
         try:
             rpc.attest()  # exact signed Core v0.1.13, chain and zero peers
-            if rpc.call("getblockcount") != 0:
-                raise Q06ReadOnlyError("Q06_GUI_TEST_FUNDING_FRESH_CHAIN_ONLY")
+            start = rpc.call("getblockcount")
+            if type(start) is not int or not 0 <= start < 1_000_000:
+                raise Q06ReadOnlyError("Q06_GUI_TEST_FUNDING_UNVERIFIED")
             address=public_regtest_mining_address(self.source)
             funding_phase="FIXTURE"
             txid, atoms, height = fund_checkpoint_fixture(
@@ -299,9 +342,12 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
             funding_phase="POSTCHECK_OWNER"
             _owned(owner)
             funding_phase="POSTCHECK_RESULT"
+            # Height increased by the fixture's expected amount (101 maturity
+            # blocks + 1 confirmation), with the exact txid/atoms and an owned
+            # read. Txid/atoms ownership checks are NOT weakened.
             if (type(txid) is not str or not re.fullmatch("[0-9a-f]{64}",txid)
                     or type(atoms) is not int or atoms<=0
-                    or type(height) is not int or height<102):
+                    or type(height) is not int or height != start + 102):
                 raise Q06ReadOnlyError("Q06_GUI_TEST_FUNDING_UNVERIFIED")
             funding_phase="POSTCHECK_HEIGHT"
             # The fixture closes its WalletCoreCli HTTP transport after funding.

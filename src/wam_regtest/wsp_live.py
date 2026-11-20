@@ -211,8 +211,14 @@ def _public_fixture_payment(rpc, account, mining_address: str, *,
     """
     from wam_sp.core import Input, pub, send
     from wam_sp.transaction import p2wpkh, signed_single_input
-    if (type(funding_height) is not int or funding_height not in (1, 2, 3)
-            or type(expected_before_height) is not int or expected_before_height not in (101, 102, 103)
+    # Funding spends the FIRST freshly-mined coinbase of a 101-block batch:
+    # that coinbase reaches 100 confirmations (mature) exactly when the batch
+    # tip is its own height + 100. Any height is valid; only exact maturity and
+    # the exact current height are accepted. Never a generic miner.
+    if (type(funding_height) is not int or funding_height < 1
+            or type(expected_before_height) is not int
+            or expected_before_height != funding_height + 100
+            or expected_before_height < 101
             or rpc.call("getblockcount") != expected_before_height):
         raise RealWspScanError("WSP_PUBLIC_FIXTURE_HEIGHT_DENIED")
     expected_after = expected_before_height + 1

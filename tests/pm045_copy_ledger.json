@@ -3,7 +3,12 @@
     "wallet.backup_verify_unavailable": "Backup could not be checked. Your words were not judged.",
     "wallet.backup_defer_unavailable": "Backup deferral could not be confirmed. Reopen the wallet to check its backup status.",
     "backup.reopen": "Reopen wallet",
-    "backup.done": "Continue"
+    "backup.done": "Continue",
+    "owner.fund_receive": "Add test funds",
+    "owner.fund_title": "Add test funds",
+    "owner.fund_consent": "Mines fresh blocks to your REGTEST receive and confirms them. Run only when the wallet is idle; never retry an uncertain result.",
+    "wallet.fund_title": "Add test funds",
+    "wallet.fund_consent": "Mines fresh blocks to your REGTEST receive and confirms them. Run only when the wallet is idle; never retry an uncertain result."
   },
   "review": {
     "wallet.backup_verify_unavailable": "S",
@@ -22,7 +27,12 @@
   "previous": {
     "en": {
       "wallet.backup_verify_unavailable": "Backup verification unavailable: ",
-      "wallet.backup_defer_unavailable": "Backup deferral unavailable: "
+      "wallet.backup_defer_unavailable": "Backup deferral unavailable: ",
+      "owner.fund_receive": "Fund 1 test receive on fresh REGTEST",
+      "owner.fund_title": "One-time disposable WAM REGTEST receive",
+      "owner.fund_consent": "This runs the existing Q05 PUBLIC fixture on your NEW isolated WAM REGTEST Core: generate 101 local blocks, send a public test BIP352 payment to YOUR Q06 12-word address, then confirm it.\\nThis is irreversible on the test chain. Never use mainnet or personal keys. Run only once on a fresh height-0 Core?",
+      "wallet.fund_title": "Fund disposable REGTEST wallet",
+      "wallet.fund_consent": "On a fresh isolated test chain only: mine mature public fixture funds, receive one BIP352 payment and confirm it. This changes the test chain. Never retry an uncertain result."
     }
   }
 }

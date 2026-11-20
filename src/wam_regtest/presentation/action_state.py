@@ -54,9 +54,12 @@ def available_actions(i):
     spend = spend_safe and i.spend_enabled and free
     idle_payment = (not i.approved_commitment and not i.signed_ready
                     and not i.pending_confirm)
+    no_payment_in_flight = (idle_payment and not i.resumable_intent
+                            and not i.recovered_unsigned_cancel)
     return {
         'sync': i.ready and safe and free,
-        'fund': i.ready and safe and not i.test_funded and not i.spend_enabled and free,
+        'fund': (i.ready and safe and not i.locked and not i.reauthentication_required
+                 and i.core_alive is True and free and no_payment_in_flight),
         'activate': i.ready and safe and not i.spend_enabled and free,
         'send': spend and not i.approved_commitment and not i.recovered_unsigned_cancel,
         'broadcast': spend and i.signed_ready,

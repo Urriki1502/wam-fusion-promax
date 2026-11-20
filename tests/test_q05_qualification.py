@@ -219,6 +219,7 @@ class QualificationContracts(unittest.TestCase):
                 (CoreSmokeError('rpcpassword=private-canary'),None),
                 (ValueError('CORE_RPC_TIMEOUT_UNCERTAIN'),None)):
             rpc=Mock();record={}
+            rpc.call.return_value=0  # a real Core reports its current height
             def fail(*args):
                 try:raise cause
                 except Exception as inner:raise RealWspScanError('RPC_DENIED') from inner
