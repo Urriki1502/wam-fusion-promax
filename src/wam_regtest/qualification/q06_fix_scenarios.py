@@ -53,13 +53,14 @@ _S3_BOOL = (
 _S4_BOOL = (
     "activation_preserved", "payment_signed", "fund_button_disabled",
     "backend_refused_exact", "owner_retained_after_shutdown",
-) + tuple(f"fund{n}_{key}" for n in (1, 2, 3)
+    "payment_broadcast", "payment_confirmed", "nothing_pending",
+) + tuple(f"fund{n}_{key}" for n in (1, 2, 3, 4)
           for key in ("button_enabled", "mainnet_allowed")) + tuple(
-    f"fund{n}_{key}" for n in (2, 3)
+    f"fund{n}_{key}" for n in (2, 3, 4)
     for key in ("signer_allowed", "broadcast_allowed", "spend_enabled"))
-_S4_INT = ("signed_reservation_count",) + tuple(
-    f"fund{n}_{key}" for n in (1, 2, 3)
-    for key in ("before_atoms", "after_atoms", "reservation_count"))
+_S4_INT = ("signed_reservation_count", "payment_confirmed_atoms") + tuple(
+    f"fund{n}_{key}" for n in (1, 2, 3, 4)
+    for key in ("before_atoms", "after_atoms", "reservation_count", "raw_reservation_count"))
 
 
 def s4_passed(section):
@@ -72,17 +73,19 @@ def s4_passed(section):
            for key in _S4_INT):
         return False
     false_fields = {"owner_retained_after_shutdown"} | {
-        f"fund{n}_mainnet_allowed" for n in (1, 2, 3)}
+        f"fund{n}_mainnet_allowed" for n in (1, 2, 3, 4)}
     if any(section[key] is not (key not in false_fields) for key in _S4_BOOL):
         return False
     if section["signed_reservation_count"] <= 0:
         return False
-    for n in (1, 2, 3):
+    for n in (1, 2, 3, 4):
         if (section[f"fund{n}_after_atoms"] <= section[f"fund{n}_before_atoms"]
                 or section[f"fund{n}_reservation_count"] != 0):
             return False
-        if n > 1 and section[f"fund{n}_before_atoms"] != section[f"fund{n-1}_after_atoms"]:
+        if n in (2, 3) and section[f"fund{n}_before_atoms"] != section[f"fund{n-1}_after_atoms"]:
             return False
+    if section["fund4_before_atoms"] != section["payment_confirmed_atoms"]:
+        return False
     return True
 
 
@@ -963,7 +966,7 @@ def scenario_welcome_quit(app, core, source, report):
 
 
 def scenario_repeat_funding(app, adapter, core, source, report):
-    """S4. GUI funding before activation, twice after, refused after signing."""
+    """S4. Repeat GUI funding, refuse in-flight, then fund a confirmed payment."""
     from mnemonic import Mnemonic
     from ..bip39_12 import Bip39Regtest12Keys
     state = {"app": app, "window": None, "executor": None}
@@ -980,7 +983,8 @@ def scenario_repeat_funding(app, adapter, core, source, report):
                 wait_for(lambda: idle() and window._pending_action is None, "S4_SETTLE")
                 app.processEvents()
 
-        for n in (1, 2, 3):
+        def fund_once(n):
+            from ..bip39_fusion_gui import displayed_reserved_inputs
             before = executor.request("snapshot", timeout=240)
             enabled = window.fund.isEnabled()
             _note(report, "s4", **{f"fund{n}_button_enabled": enabled})
@@ -991,7 +995,10 @@ def scenario_repeat_funding(app, adapter, core, source, report):
             after = executor.request("snapshot", timeout=240)
             fields = {f"fund{n}_before_atoms": before["confirmed_atoms"],
                       f"fund{n}_after_atoms": after["confirmed_atoms"],
-                      f"fund{n}_reservation_count": after["reservation_count"],
+                      # Confirmed broadcast rows are retained custody evidence.
+                      # Require zero verified active locks without deleting rows.
+                      f"fund{n}_reservation_count": displayed_reserved_inputs(after),
+                      f"fund{n}_raw_reservation_count": after["reservation_count"],
                       f"fund{n}_mainnet_allowed": after["mainnet_allowed"]}
             if n > 1:
                 fields.update({f"fund{n}_signer_allowed": after["signer_allowed"],
@@ -1002,13 +1009,16 @@ def scenario_repeat_funding(app, adapter, core, source, report):
                 raise ValueError("Q06_FIX_S4_BALANCE_NOT_INCREASED")
             if after["mainnet_allowed"] is not False:
                 raise ValueError("Q06_FIX_S4_MAINNET_DENIED")
-            if after["reservation_count"] != 0:
+            if displayed_reserved_inputs(after) != 0:
                 raise ValueError("Q06_FIX_S4_UNEXPECTED_RESERVATION")
             if n > 1 and not (after["signer_allowed"] is True
                                and after["broadcast_allowed"] is True
                                and window._spend_enabled):
                 raise ValueError("Q06_FIX_S4_SPEND_STATE_CHANGED")
             _stage(f"S4_FUND{n}_PASS")
+
+        for n in (1, 2, 3):
+            fund_once(n)
             if n == 1:
                 approve(window.activate, "Approve", lambda: window._spend_enabled, "S4_ENABLE")
                 settle()
@@ -1042,6 +1052,36 @@ def scenario_repeat_funding(app, adapter, core, source, report):
         if signed["payment_signed"] is not True or signed["reservation_count"] <= 0:
             raise ValueError("Q06_FIX_S4_SIGNED_PAYMENT_MISSING")
         _stage("S4_IN_FLIGHT_REFUSAL_PASS")
+        approve(window.broadcast, "Approve Broadcast",
+                lambda: window._pending_confirm_txid is not None, "S4_BROADCAST")
+        txid = window._pending_confirm_txid
+        broadcast = type(txid) is str and _HEX64.match(txid) is not None
+        _note(report, "s4", payment_broadcast=bool(broadcast))
+        if not broadcast:
+            raise ValueError("Q06_FIX_S4_BROADCAST_DENIED")
+        wait_for(lambda: idle() and window.confirm.isEnabled(), "S4_CONFIRM_READY")
+        approve(window.confirm, "Approve",
+                lambda: window._pending_confirm_txid is None, "S4_CONFIRM")
+        settle()
+        after_payment = executor.request("snapshot", timeout=240)
+        confirmed = (any(row["txid"] == txid and row["confirmations"] > 0
+                         for row in after_payment["history"])
+                     and txid in _history_txids(window)
+                     and window.send_result.text().startswith("Confirmed")
+                     and txid in window.send_result.text())
+        nothing_pending = (window._pending_confirm_txid is None
+                           and not window.confirm.isEnabled()
+                           and after_payment["pending_confirm_txid"] is None
+                           and after_payment["payment_signed"] is False
+                           and after_payment["payment_review"] is None
+                           and after_payment["recovered_unsigned_cancel_available"] is False)
+        _note(report, "s4", payment_confirmed=bool(confirmed),
+              nothing_pending=bool(nothing_pending),
+              payment_confirmed_atoms=after_payment["confirmed_atoms"])
+        if not confirmed or not nothing_pending:
+            raise ValueError("Q06_FIX_S4_CONFIRMATION_DENIED")
+        _stage("S4_CONFIRM_PASS")
+        fund_once(4)
         failed = False
     except Exception as error:
         # Shared helpers can report GUI/wait/backup failures; keep S4's public

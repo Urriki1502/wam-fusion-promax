@@ -136,6 +136,22 @@ class ActiveFundingContracts(unittest.TestCase):
         self.assertEqual(self.scan.store.db.execute('SELECT count(*) FROM reservations').fetchone()[0], 0)
         self._assert_no_rpc()
 
+    def test_confirmed_input_with_stale_mempool_row_allows_funding_but_rollback_refuses(self):
+        self.chain.fund(None, self.backend._public['receive_code'], None, {})
+        self.scan.sync(self.chain)
+        txid, vout = self.scan.store.db.execute('SELECT txid,vout FROM coins').fetchone()
+        self.scan.store.db.execute('INSERT INTO mempool_spends VALUES(?,?,?)',
+                                   (txid, vout, 'e' * 64))
+        self.assertTrue(self.backend._fund_in_flight())
+        # WSP _block marks the owned input spent; sync does not clear mempool rows.
+        self.scan.store.db.execute('UPDATE coins SET spent=102 WHERE txid=? AND vout=?',
+                                   (txid, vout))
+        self.assertFalse(self.backend._fund_in_flight())
+        self.assertEqual(self.scan.store.db.execute('SELECT count(*) FROM mempool_spends').fetchone()[0], 1)
+        self.scan.store.db.execute('UPDATE coins SET spent=NULL WHERE txid=? AND vout=?',
+                                   (txid, vout))
+        self._assert_no_rpc()
+
     def test_anchored_non_session_funding_still_requires_reconciliation(self):
         self.backend._spend_session = None
         with self.assertRaisesRegex(Q06ReadOnlyError, 'ANCHORED_SCANNER_REQUIRES_RECONCILIATION'):

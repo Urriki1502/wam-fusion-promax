@@ -45,21 +45,26 @@ def _passing(report):
 def _s4_passing():
     result = {
         "activation_preserved": True, "payment_signed": True,
+        "payment_broadcast": True, "payment_confirmed": True, "nothing_pending": True,
+        "payment_confirmed_atoms": 1_399_990_000,
         "fund_button_disabled": True, "backend_refused_exact": True,
         "signed_reservation_count": 1, "owner_retained_after_shutdown": False,
     }
-    for n in (1, 2, 3):
+    for n in (1, 2, 3, 4):
         result.update({
             f"fund{n}_button_enabled": True,
             f"fund{n}_before_atoms": (n - 1) * 500_000_000,
             f"fund{n}_after_atoms": n * 500_000_000,
             f"fund{n}_reservation_count": 0,
+            f"fund{n}_raw_reservation_count": 1 if n == 4 else 0,
             f"fund{n}_mainnet_allowed": False,
         })
         if n > 1:
             result.update({f"fund{n}_signer_allowed": True,
                            f"fund{n}_broadcast_allowed": True,
                            f"fund{n}_spend_enabled": True})
+    result["fund4_before_atoms"] = 1_399_990_000
+    result["fund4_after_atoms"] = 1_899_990_000
     return result
 
 
@@ -74,6 +79,11 @@ class RepeatFundingOracle(unittest.TestCase):
                 self.assertFalse(stage.s4_passed(bad))
         for key, value in (("fund2_after_atoms", 500_000_000),
                            ("fund3_before_atoms", 0),
+                           ("fund4_before_atoms", 1_500_000_000),
+                           ("fund4_after_atoms", 1_399_990_000),
+                           ("fund4_reservation_count", 1),
+                           ("payment_confirmed", False),
+                           ("nothing_pending", False),
                            ("fund3_reservation_count", 1),
                            ("fund2_signer_allowed", False),
                            ("backend_refused_exact", False),
@@ -132,13 +142,16 @@ class RepeatFundingScenario(unittest.TestCase):
     """Exercise S4's real orchestration with fake GUI/RPC, never Core/Cocoa."""
     def run_s4(self, fault=None):
         report, approvals = {}, []
-        status = {"balance": 0, "funds": 0, "signed": False}
+        status = {"balance": 0, "funds": 0, "signed": False, "broadcast": False, "confirmed": False}
         window = SimpleNamespace(
             _backup_flow_active=True, _pending_action=None, _spend_enabled=False,
-            _signed_ready=False, recipient_input=Mock(), amount_input=Mock())
+            _signed_ready=False, _pending_confirm_txid=None,
+            recipient_input=Mock(), amount_input=Mock(),
+            send_result=SimpleNamespace(text=lambda: "Confirmed " + "a" * 64 if status["confirmed"] else ""))
         window.fund = SimpleNamespace(isEnabled=lambda: (
             not status["signed"] and fault != "button"))
-        window.activate, window.send = object(), object()
+        window.activate, window.send, window.broadcast, window.confirm = (object(), object(), object(),
+            SimpleNamespace(isEnabled=lambda: status["broadcast"] and not status["confirmed"]))
 
         def request(action, **kwargs):
             if action == "mine":
@@ -149,11 +162,17 @@ class RepeatFundingScenario(unittest.TestCase):
             self.assertEqual(action, "snapshot")
             active = window._spend_enabled and not (fault == "state" and status["funds"] > 1)
             return {"confirmed_atoms": status["balance"],
-                    "reservation_count": (1 if status["signed"] else
+                    "reservation_count": (1 if status["signed"] or status["confirmed"] else
                                           int(fault == "reservation" and status["funds"] > 0)),
+                    "reservation_lock_summary": {"locked_inputs_total": (1 if status["signed"] else
+                        int(fault == "reservation" and status["funds"] > 0))},
                     "signer_allowed": active, "broadcast_allowed": active,
                     "mainnet_allowed": fault == "mainnet",
-                    "payment_signed": status["signed"] and fault != "signed_snapshot"}
+                    "payment_signed": status["signed"] and fault != "signed_snapshot",
+                    "pending_confirm_txid": window._pending_confirm_txid,
+                    "payment_review": None,
+                    "recovered_unsigned_cancel_available": False,
+                    "history": [{"txid": "a" * 64, "confirmations": 1}] if status["confirmed"] and fault != "history" else []}
 
         executor = SimpleNamespace(request=request)
         def open_owner(state, *_args):
@@ -164,10 +183,21 @@ class RepeatFundingScenario(unittest.TestCase):
             approvals.append((label, caption))
             if button is window.fund:
                 status["funds"] += 1
-                if fault != "balance":
+                if fault != "balance" and not (fault == "post_fund" and status["funds"] == 4):
                     status["balance"] += 500_000_000
             elif button is window.activate:
                 window._spend_enabled = fault != "activation"
+            elif button is window.broadcast:
+                status["broadcast"] = True
+                window._pending_confirm_txid = "a" * 64
+            elif button is window.confirm:
+                status["signed"] = False
+                status["confirmed"] = fault != "confirmed"
+                status["balance"] -= 100_010_000
+                window._signed_ready = False
+                window._pending_confirm_txid = "a" * 64 if fault == "pending" else None
+                if fault == "post_button":
+                    window.fund.isEnabled = lambda: False
             else:
                 window._signed_ready = True
                 status["signed"] = fault != "signed"
@@ -183,6 +213,7 @@ class RepeatFundingScenario(unittest.TestCase):
             stack.enter_context(patch.object(stage, "_bind", return_value=(lambda: True, wait_for, approve)))
             stack.enter_context(patch.object(stage, "_open_owner", side_effect=open_owner))
             stack.enter_context(patch.object(stage, "_finish_backup"))
+            stack.enter_context(patch.object(stage, "_history_txids", return_value=("a" * 64,)))
             stack.enter_context(patch.object(stage, "_profile", return_value=Path("fake-profile")))
             shutdown = stack.enter_context(patch.object(stage, "_shutdown", return_value=fault == "retained"))
             keys = stack.enter_context(patch("wam_regtest.bip39_12.Bip39Regtest12Keys"))
@@ -201,9 +232,14 @@ class RepeatFundingScenario(unittest.TestCase):
         report, approvals, error = self.run_s4()
         self.assertIsNone(error)
         self.assertTrue(stage.s4_passed(report["s4"]))
+        self.assertEqual(report["s4"]["fund4_raw_reservation_count"], 1)
+        self.assertEqual(report["s4"]["fund4_reservation_count"], 0)
+        self.assertGreater(report["s4"]["fund4_after_atoms"], report["s4"]["fund4_before_atoms"])
         self.assertEqual(approvals, [("S4_FUND1", "Approve"), ("S4_ENABLE", "Approve"),
                                     ("S4_FUND2", "Approve"), ("S4_FUND3", "Approve"),
-                                    ("S4_SIGN", "Approve Sign")])
+                                    ("S4_SIGN", "Approve Sign"),
+                                    ("S4_BROADCAST", "Approve Broadcast"),
+                                    ("S4_CONFIRM", "Approve"), ("S4_FUND4", "Approve")])
 
     def test_specific_s4_failures_always_shutdown_and_never_accept_wrong_refusal(self):
         for fault, code in (
@@ -214,6 +250,9 @@ class RepeatFundingScenario(unittest.TestCase):
                 ("backend_allowed", "IN_FLIGHT_NOT_REFUSED"),
                 ("backend_wrong", "IN_FLIGHT_NOT_REFUSED"),
                 ("signed_snapshot", "SIGNED_PAYMENT_MISSING"),
+                ("history", "CONFIRMATION_DENIED"), ("confirmed", "CONFIRMATION_DENIED"),
+                ("pending", "CONFIRMATION_DENIED"), ("post_button", "FUND_BUTTON_DISABLED"),
+                ("post_fund", "BALANCE_NOT_INCREASED"),
                 ("retained", "OWNER_RETAINED"), ("operation", "OPERATION_DENIED")):
             with self.subTest(fault=fault):
                 report, _, error = self.run_s4(fault)

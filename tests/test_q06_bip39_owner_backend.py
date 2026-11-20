@@ -351,7 +351,9 @@ class Q06OwnerBackendContracts(unittest.TestCase):
         self.backend._seed_folder=self.root/("bip39-12-"+"a"*32)
         session=Mock(faulted=False,locked=False,_q06_uncertain=False,
                      _core_reauthentication_required=False)
-        session._review=object();session._signed=None;session._q06_pending_confirm=None
+        session._prepared=None;session._review=object();session._signed=None;session._q06_pending_confirm=None
+        session._q06_rec1_quarantine={}
+        session.scanner.store.db.execute.return_value.fetchone.return_value=None
         self.backend._spend_session=session
         with patch("wam_regtest.wallet_session.WalletCoreCli") as rpc:
             with self.assertRaises(Q06ReadOnlyError) as caught:
@@ -370,13 +372,45 @@ class Q06OwnerBackendContracts(unittest.TestCase):
                 session=Mock(faulted=False,locked=False,_q06_uncertain=False,
                              _core_reauthentication_required=False)
                 setattr(session,attr,value)
-                session._review=None;session._signed=None;session._q06_pending_confirm=None
+                session._prepared=None;session._review=None;session._signed=None;session._q06_pending_confirm=None
+                session._q06_rec1_quarantine={}
+                session.scanner.store.db.execute.return_value.fetchone.return_value=None
                 self.backend._spend_session=session
                 with patch("wam_regtest.wallet_session.WalletCoreCli") as rpc:
                     with self.assertRaises(Q06ReadOnlyError) as caught:
                         self.backend.execute("mine",(),{})
                 self.assertEqual(caught.exception.args,("Q06_GUI_TEST_FUNDING_IN_FLIGHT",))
                 rpc.assert_not_called()
+        self.backend._spend_session=None
+
+    def test_funding_refused_for_owned_mempool_spend_before_any_rpc(self):
+        from unittest.mock import MagicMock, Mock
+        self.backend._secret=bytearray(PASSWORD)
+        self.backend._public={"receive_code":"wamrtsp1public"}
+        self.backend._seed_folder=self.root/("bip39-12-"+"a"*32)
+        session=MagicMock(faulted=False,locked=False,_q06_uncertain=False,
+                     _core_reauthentication_required=False)
+        session._prepared=session._review=session._signed=session._q06_pending_confirm=None
+        session._q06_rec1_quarantine={}
+        session.vault._expected=(1,"a"*64)
+        session.vault.anchor.read.return_value=session.vault._expected
+        session.scanner.assert_current=Mock()
+        self.owner.read=Mock()
+        store=session.scanner.store
+        store.transaction.return_value.__enter__=Mock()
+        store.transaction.return_value.__exit__=Mock(return_value=False)
+        store.db.execute.return_value.fetchone.return_value=(1,)  # owned mempool input
+        store.db.execute.return_value.fetchall.return_value=[]  # no reservations/history
+        self.backend._spend_session=session
+        with (patch("wam_regtest.wallet_session.WalletCoreCli") as rpc,
+              patch("wam_regtest.shared_regtest.peer_status") as peers):
+            with self.assertRaises(Q06ReadOnlyError) as caught:
+                self.backend.execute("mine",(),{})
+        self.assertEqual(caught.exception.args,("Q06_GUI_TEST_FUNDING_IN_FLIGHT",))
+        self.assertIn("mempool_spends",store.db.execute.call_args.args[0])
+        rpc.assert_not_called()
+        peers.assert_not_called()
+        self.owner.read.call.assert_not_called()
         self.backend._spend_session=None
 
     def test_funding_allowed_when_idle_spend_session_has_no_in_flight_payment(self):
@@ -405,7 +439,8 @@ class Q06OwnerBackendContracts(unittest.TestCase):
         store=MagicMock()
         store.transaction.return_value.__enter__=store
         store.transaction.return_value.__exit__=lambda *a: None
-        store.db.execute.return_value.fetchall.return_value=[]  # no reservations
+        store.db.execute.return_value.fetchall.return_value=[]  # no reservations/history
+        store.db.execute.return_value.fetchone.return_value=None  # no owned mempool input
         session.scanner=MagicMock(store=store, assert_current=Mock())
         session.scanner.store.tip.return_value=(0,"0"*64)
         self.backend._spend_session=session

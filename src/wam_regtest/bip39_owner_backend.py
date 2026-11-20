@@ -304,9 +304,13 @@ class Bip39ReadOnlyBackend(ManagedWalletBackend):
                 # WSP records all mempool inputs. Only owned coins can be
                 # reserved by this wallet; their absence must be readable before
                 # allowing fixture mining, even when no reservation survives.
+                # WSP block sync marks coins spent but only sync_mempool clears
+                # mempool_spends. Ignore those retained confirmed inputs, just
+                # as WSP wallet._balance does for pending_spent_atoms.
                 if sc.store.db.execute(
                         "SELECT 1 FROM mempool_spends m JOIN coins c "
-                        "ON c.txid=m.txid AND c.vout=m.vout LIMIT 1").fetchone():
+                        "ON c.txid=m.txid AND c.vout=m.vout "
+                        "WHERE c.spent IS NULL LIMIT 1").fetchone():
                     return True
                 rows = sc.store.db.execute(
                     "SELECT txid,vout,token,state FROM reservations").fetchall()
