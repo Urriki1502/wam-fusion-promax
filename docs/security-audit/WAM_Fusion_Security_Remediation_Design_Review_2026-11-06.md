@@ -1,57 +1,57 @@
 # WAM Fusion — Independent Remediation Design Review (v1.0)
 
-**Ngày:** 06-11-2026 (Asia/Ho_Chi_Minh)  
-**Mục tiêu:** làm rõ phương án kỹ thuật *trước khi* triển khai sửa lỗi; tối thiểu hóa phạm vi thay đổi, số lần chạy CI và rủi ro custody.  
+**Date:** 2026-11-06 (Asia/Ho_Chi_Minh)  
+**Purpose:** clarify engineering options *before* implementing fixes; minimize the scope of changes, CI reruns and custody risks.  
 **Repository:** https://github.com/Urriki1502/wam-privacy-wallet-regtest  
-**Audit baseline bất biến:** PR #141, commit `b187cde17b12ae5f7c11f0611d5f4b1661bfc90b`; base `c61e3c5be4b8519dc6c4d9eb56d124fce84cf02d`; Core v0.1.13; WSP `ac55f13423620252bdbf848c7e8a280c3b84721e`.  
-**Nguồn findings:** `WAM_Fusion_Phase_A_Security_Audit_Report_2026-11-06.md` (2 High, 9 Medium, 1 Low; 6 nhóm NOT VERIFIED).  
-**Mức độ kiểm chứng tài liệu này:** đọc trực tiếp các module/chứng cứ GitHub tại đúng SHA; so sánh tài liệu GitHub, Apple, Qt, Microsoft, SQLite và OWASP. **Chưa chạy payload/fuzz, chưa chứng minh exploit, chưa truy cập máy Mac của chủ sở hữu.** Đây là *security design review*, không phải G7 độc lập hay cấp phép mainnet.
+**Immutable audit baseline:** PR #141, commit `b187cde17b12ae5f7c11f0611d5f4b1661bfc90b`; base `c61e3c5be4b8519dc6c4d9eb56d124fce84cf02d`; Core v0.1.13; WSP `ac55f13423620252bdbf848c7e8a280c3b84721e`.  
+**Findings source:** `WAM_Fusion_Phase_A_Security_Audit_Report_2026-11-06.md` (2 High, 9 Medium, 1 Low; 6 NOT VERIFIED groups).  
+**Evidence level:** source modules and GitHub evidence inspected at the exact SHA; GitHub, Apple, Qt, Microsoft, SQLite and OWASP documentation compared. **No payloads or fuzzing were run, no exploit was demonstrated, and no access to the original Mac took place.** This is a *security design review*, not independent G7 approval or authorization for mainnet.
 
-## Quy tắc ra quyết định
+## Decision rules
 
-- **FACT:** đúng theo source/cấu hình được xem; **DESIGN:** giải pháp chọn để triển khai; **HYPOTHESIS:** cần tái hiện; **OPEN:** cần quyết định thiết kế/chứng cứ trước khi sửa.
-- **READY TO IMPLEMENT:** giải pháp ít ảnh hưởng custody, đã xác định file và test. **DESIGN GATE:** phải chứng minh invariant/race/crash. **RESEARCH GATE:** thiếu dữ liệu hoặc hạ tầng.
-- Nhóm mức độ High/Medium của audit là mức **rủi ro dự kiến khi sử dụng tiền thật**, không đồng nghĩa có khai thác thành công hoặc có CVE.
-- **Không được:** tự bật mainnet, sửa WSP/core consensus, xóa/reset native anchors, xóa signed/uncertain reservations, chỉnh ledger để ép PASS, xóa lỗi lịch sử, chạy trên ví hoặc node mainnet thật, force-push, merge hoặc phát hành.
-- **Local-first:** source + native macOS + frozen app/DMG trên máy local, rồi mới push và kiểm thử Windows/Linux/macOS cùng commit. Không biến 3-OS CI thành G6/G7/V19.
+- **FACT:** confirmed by the inspected source/configuration; **DESIGN:** selected implementation option; **HYPOTHESIS:** requires reproduction; **OPEN:** requires a design decision or evidence before any fix.
+- **READY TO IMPLEMENT:** limited custody impact, known files and tests. **DESIGN GATE:** establish invariants, race and crash behavior. **RESEARCH GATE:** data or infrastructure is missing.
+- High/Medium severity expresses **anticipated risk when real funds are involved**, not an assertion that an exploit succeeded or that a CVE exists.
+- **Prohibited:** enabling mainnet without authorization; modifying WSP or Core consensus; deleting/resetting native anchors, signed/uncertain reservations or historical failures; changing the ledger to force PASS; testing on real mainnet wallets or nodes; force-pushing, merging or releasing.
+- **Local first:** source, macOS native, then frozen app/DMG on local machines before pushing and running same-commit Windows/Linux/macOS CI. Three-platform CI must not be presented as G6/G7/V19 evidence.
 
-## Ma trận thực thi tối ưu
+## Prioritized execution matrix
 
-| ID | Kết luận | Độ sẵn sàng | Action tối ưu ngay | Chấp nhận hoàn thành khi |
+| ID | Finding | Readiness | Recommended next action | Completion criterion |
 |---|---|---|---|---|
-| H-01 | Publisher trust chưa bao trùm Fusion | RESEARCH/OWNER | Đặc tả ký và thử bản lab, **không** tự tạo production trust | Có quy trình verify độc lập & signer/release owner |
-| H-02 | `main` không protected; rulesets=0 | ADMIN READY | Owner bật bảo vệ `main` ở UI GitHub | Chống direct/force push được chứng thực bằng cấu hình |
-| M-01 | Clean-device/disaster recovery thiếu proof | DESIGN GATE | ADR + threat model + test fixtures, không sửa vault | Có proof giữ irreversible state trước khi unlock spend |
-| M-02 | SQLite runtime plaintext khi unlocked | RESEARCH GATE | Inventory dữ liệu, retention, forensic test | Có threat model rò dữ liệu & biện pháp đã test |
-| M-03 | Xóa secret trong RAM best effort | RESEARCH GATE | Lifetime/copies audit; không tuyên bố zeroization | Có mitigation theo giới hạn runtime đã chứng minh |
-| M-04 | KDF cố định & password yếu khả thi | DESIGN GATE | Benchmark + password policy; format upgrade riêng | Versioned migration + fixture cross-platform PASS |
-| M-05 | Generation cap 4096 / Linux 10000 | DESIGN GATE | Stress near-limit chỉ với fixtures | Rotation/compaction crash-safe, reservation preserved |
-| M-06 | Thiếu auto-lock theo idle/OS session | DESIGN GATE | State-machine + race tests trước code | Không approval stale; lock đúng khi worker in-flight |
-| M-07 | Actions tham chiếu tag mutable | READY TO IMPLEMENT | Pin full verified SHAs trong 11 workflow | Diff chỉ uses/permissions; CI unaffected |
-| M-08 | RPC slow-trickle/hang nghi vấn | REPRODUCE FIRST | Bounded lab transport fixture | Trước/sau có evidence; không retry write |
-| M-09 | Manual peer không được crypto-authenticate | RESEARCH/NETWORK | Threat model, V19/partition lab, không giả tăng bảo mật | Có P2P test/định nghĩa trust rõ |
-| L-01 | Backup verifier nhận <3 vị trí từ GUI | READY AFTER MINI DESIGN | Backend-owned one-use challenge | One/two/replay/substitution FAIL; exact 3 PASS |
+| H-01 | Fusion publisher trust not established | RESEARCH / RELEASE ADMIN | Specify signing; test disposable lab copy without production trust keys | Independent verification procedure and responsible signer established |
+| H-02 | `main` unprotected; zero rulesets | ADMIN READY | Configure `main` ruleset through GitHub UI | Direct/force-push prevention confirmed by actual settings |
+| M-01 | Incomplete clean-device/disaster-recovery proof | DESIGN GATE | ADR, threat model, fixtures; do not alter vault | Proof irreversible state is retained before spending is enabled |
+| M-02 | Unencrypted SQLite runtime while unlocked | RESEARCH GATE | Data inventory, retention and forensic tests | Documented exposure threat model and tested mitigations |
+| M-03 | Best-effort RAM secret clearing | RESEARCH GATE | Audit secret lifetime/copies; no zeroization claim | Runtime-specific mitigations and limitations demonstrated |
+| M-04 | Fixed KDF and feasible weak passwords | DESIGN GATE | Benchmark, password policy and separately versioned format upgrade | Authenticated migration and cross-platform fixtures PASS |
+| M-05 | 4096 / Linux 10000 generation limits | DESIGN GATE | Stress fixtures near limits only | Crash-safe rotation/compaction with preserved reservations |
+| M-06 | Missing idle/OS-session auto-lock | DESIGN GATE | State machine and race tests before implementation | No stale approval; correct locking under in-flight work |
+| M-07 | Mutable GitHub Actions tags | READY TO IMPLEMENT | Pin independently verified full SHAs across 11 workflows | Only `uses`/permissions diff; CI remains valid |
+| M-08 | Suspected slow-trickle/hanging RPC | REPRODUCE FIRST | Bounded lab transport fixture | Before/after evidence, no write retries |
+| M-09 | Manual peer lacks cryptographic identity binding | RESEARCH / NETWORK | Threat model, V19/partition lab; do not claim added authentication | Explicit P2P trust model and test results |
+| L-01 | Backup verifier accepts fewer than three GUI-selected positions | READY AFTER MINI DESIGN | Backend-controlled single-use challenge | One/two/replay/substitution FAIL; exactly three correct PASS |
 
-## H-01 — Toàn vẹn **nhà phát hành** gói Fusion
+## H-01 — Fusion package publisher integrity
 
-**FACT:** `scripts/build_macos_bundle.sh` sử dụng `codesign --force --sign - --timestamp=none "$APP"` và ghi app/DMG là ad-hoc, chưa notarized. Core v0.1.13 được pin member hash riêng; điều đó **không** chứng minh Fusion wrapper được nhà phát hành cho phép. `docs/SBOM_PREP_HOST.md` chỉ liệt kê dependency host, không phải frozen SBOM. [Source](https://github.com/Urriki1502/wam-privacy-wallet-regtest/blob/b187cde17b12ae5f7c11f0611d5f4b1661bfc90b/scripts/build_macos_bundle.sh#L90-L104).
+**FACT:** `scripts/build_macos_bundle.sh` executes `codesign --force --sign - --timestamp=none "$APP"`, producing an ad-hoc signed app/DMG without notarization. Core v0.1.13 members have separately pinned hashes; those hashes **do not** authenticate the Fusion wrapper or its publisher. `docs/SBOM_PREP_HOST.md` inventories host dependencies, not the frozen SBOM. [Source](https://github.com/Urriki1502/wam-privacy-wallet-regtest/blob/b187cde17b12ae5f7c11f0611d5f4b1661bfc90b/scripts/build_macos_bundle.sh#L90-L104).
 
-**DESIGN chọn:** chia **build không có release secrets** và **ký/phát hành có kiểm soát bởi release owner**. Tạo manifest nguồn + WSP/Core member pin + hash của *artifact thành phẩm sau ký*; ký metadata bằng khóa do owner quản lý, người tải xác minh bằng public trust root phân phối độc lập. macOS: Developer ID + hardened runtime + notarization/stapling *nếu có chứng thư phù hợp*. Windows: Authenticode + kiểm tra signer chain và timestamp. Linux: detached signature của package/manifest, khóa ký xác minh bên ngoài package. Signature workflow không được sửa byte Core đã được chứng minh từ upstream; đặc biệt thử mâu thuẫn giữa signing outer app và hash nested `wamd`/`wam-cli` trước khi chốt packaging.
+**SELECTED DESIGN:** separate **builds without release secrets** from **controlled signing and distribution**. Produce source/WSP/Core pin manifests and hashes of *final signed artifacts*. Sign metadata with a release-key-management-controlled key; users verify through a public trust root distributed independently. For macOS: Developer ID, hardened runtime and notarization/stapling *when a valid certificate is available*. For Windows: Authenticode, signer chain and timestamp verification. For Linux: detached package/manifest signature, with its verification key distributed separately. Never alter verified upstream Core member bytes while signing. Explicitly test interactions between outer-app signing and nested `wamd`/`wam-cli` hashes.
 
-**Không chọn:** chỉ ghi `SHA256SUMS.txt` cùng ZIP; tự tạo khóa trên CI runner rồi gọi là publisher; tự thay Core gốc bằng build mới để dễ ký; chỉ dựa vào chữ ký Core để suy ra chữ ký Fusion.
+**REJECT:** a standalone `SHA256SUMS.txt` placed alongside a ZIP; a CI-runner-generated signing key falsely presented as a publisher identity; replacing upstream Core merely to simplify signing; or treating the upstream Core signature as a Fusion signature.
 
-**Việc có thể triển khai trước:** viết `docs/security-audit/H01_RELEASE_TRUST_ADR.md`, kiểm tra thao tác ký thử **trên bản copy disposable**, không có khóa sản xuất, đo Core member hashes trước/sau. **Không được tự bật notarization/release**. **DoD:** quy trình phân phối trust key, key custody/rotation/revocation, chứng thực offline, phân tách CI build vs owner release, output SHA256/SBOM/signer report. **Chặn mainnet release** cho đến khi hoàn tất.  
-**Tham khảo:** https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution
+**INITIAL ACTION:** draft `docs/security-audit/H01_RELEASE_TRUST_ADR.md`, test signing on a **disposable copy** without production keys, and compare Core member hashes before/after. **Do not independently enable notarization or release.** **Definition of done:** independent trust-root distribution, key custody/rotation/revocation, offline verification, separation of CI builds from authorized releases, final SHA256/SBOM/signer reports. **Mainnet release remains blocked.**  
+**Reference:** https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution
 
-## H-02 — Ruleset GitHub `main`
+## H-02 — GitHub `main` ruleset
 
-**FACT:** GitHub API trả `main.protected=false`, `/rulesets=[]` ngày 06-11-2026. Đây là **rủi ro quản trị/supply chain**, không phải bug ký ví và không phải điều kiện buộc dừng REGTEST local audit.
+**FACT:** on 2026-11-06, GitHub returned `main.protected=false` and `/rulesets=[]`. This is a **repository governance/supply-chain risk**, not a wallet-signing defect and not a reason to halt local REGTEST auditing.
 
-**DESIGN chọn (quản trị repository thực hiện):** Ruleset chỉ áp dụng `main`; require pull request; block force push; block branch deletion; không cấp bypass cho tài khoản tự động. Thêm required checks sau khi đối chiếu tên check thực sự chạy trên target `main` (CI có workflow manual/PR/path khác nhau); chọn GitHub Actions làm expected app nếu khả thi. Với repo chủ yếu một người, không bật mandatory human approval **cho đến khi có reviewer có thể approve**, để tránh tự khóa merge. Xác minh bằng UI/effective rules, không thử push phá chính sách.
+**SELECTED DESIGN (repository administrator):** apply a ruleset to `main` only; require pull requests; prohibit force pushes and branch deletion; provide no bypass to automated identities. Add required checks only after verifying their actual names and whether they run on `main` (workflows differ by manual/PR/path filters). Prefer GitHub Actions as the expected app where possible. For a mostly single-maintainer repository, do not require mandatory human approval before a qualified reviewer can provide it, or merging may become impossible. Verify effective settings through the UI rather than destructive test pushes.
 
-**Không chọn:** bật 20 required checks ngay; bảo vệ mọi feature branch khiến không thể push; cấp token Full Access tự chỉnh rules rồi tự miễn trừ. **DoD:** ảnh hoặc biên bản cấu hình + mô tả bypass actors + rule enforcement. Không cần sửa source; không làm gián đoạn PR #141.
+**REJECT:** enabling 20 required checks immediately; protecting every feature branch and blocking normal work; granting a Full Access token to modify rules and exempt itself. **Definition of done:** screenshots or configuration records, bypass actors and verified enforcement. No source change required; do not disrupt PR #141.
 
-**Tham khảo:** https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
+**Reference:** https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
 
 ## M-01 — Khôi phục máy sạch, mất anchor, mất journal (độ khó CAO NHẤT)
 
