@@ -1,6 +1,6 @@
 # Developer independent rebuild and test guide
 
-Build and test this candidate without Cursor, Codex, or any other AI agent. Ordinary Git, Python, and the platform toolchain are sufficient.
+Build and test this candidate using standard Git, Python, and the relevant platform toolchain.
 
 This guide is documentation added after the freeze. The qualified packages remain the artifacts of source `56ea36186bf5a3410c75dda63b885f084de83610`. Do not relabel them if you commit this guide or any later edit.
 
