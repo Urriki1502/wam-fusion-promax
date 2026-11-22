@@ -1,15 +1,15 @@
-# Joint Owner / Developer acceptance checklist
+# Joint Operator / Developer acceptance checklist
 
 Pinned source: `17adf5c5cbb1213ea5abd95a2ecdd9464b0874a2`  
 WSP: `ac55f13423620252bdbf848c7e8a280c3b84721e`  
 Q06 `accepted=false`. G6/G7 **unchanged** until named humans complete them.  
-Agents (Cursor/Codex) **must not** fill Owner, Developer, or Independent verdicts.
+Automated checks must not populate Operator, Developer, or Independent sign-off fields.
 
 Status vocabulary: `PASS` (named evidence), `FAIL` (retained), `PENDING`, `BLOCKED`, `NOT EXECUTED`. Skipped ≠ PASS.
 
 Official Core v0.1.11: GPG `VALIDSIG` over `SHA256SUMS` from `https://wamcoin.org` (fingerprint `4BD4A8D3AFD43F5CBCB500E23798462FE00ADBA4`). GitHub Releases 404. Details: `docs/UPSTREAM_CORE_V0.1.11_VERIFICATION.md`.
 
-## OWNER (human only)
+## OPERATOR (human only)
 
 | Platform | Build SHA256 | Physical evidence | PASS/FAIL/BLOCKED | Acceptance | Date |
 | --- | --- | --- | --- | --- | --- |
@@ -41,7 +41,7 @@ Developer review is **not** automatically G7.
 | Artifact SHA256 recorded | zip `47a3489c…e589` dmg `dea3b4be…2a6d` | — | — | — |
 | Core bytes match pin | official Mach-O wamd `7298de70…` wam-cli `81a031eb…` | official PE pin (not executed) | developer ELF pin (not executed) | developer ELF pin (not executed) |
 | Presented as signed official wallet | NO (ad-hoc) | NO (unsigned when built) | NO | NO |
-| Install / first start (disposable profile) | PENDING owner/dev | BLOCKED | BLOCKED | BLOCKED |
+| Install / first start (disposable profile) | PENDING operator/dev | BLOCKED | BLOCKED | BLOCKED |
 | Clean process shutdown | PASS frozen Q06 spend + V1-NET | BLOCKED | BLOCKED | BLOCKED |
 
 ## Functional matrix (each OS that actually runs)
@@ -82,7 +82,7 @@ Node A / Node B: same candidate, new Shared profiles, one miner, genesis `b88f3d
 
 | Role | Name | Date | Verdict (PASS/FAIL/BLOCKED) | Evidence links | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Owner | | | | | |
+| Operator | | | | | |
 | Developer | | | | | |
 | Independent reviewer (G7) | | | | | |
 | Physical observation (G6) | | | | | |
@@ -98,6 +98,6 @@ Final release decision: **NOT AUTHORIZED**. `production_qualified=false`. `offic
 - V19 hardware absent.
 - Official Core ignores `rpcbind`/`port` unless they sit in a `[regtest]` section.
 
-## Agent attestation (not a human verdict)
+## Automated evidence (not a human verdict)
 
-Prepared locally by Cursor as documentation/recipes only. No Owner PASS, Developer PASS, G6, G7, Q06 acceptance, or production release is claimed.
+Documentation and test procedures only. No Operator PASS, Developer PASS, G6, G7, Q06 acceptance, or production release is claimed.
