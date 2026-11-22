@@ -95,56 +95,56 @@
 **TESTS:** old-envelope read; wrong password; modified salt/nonce; downgrade; Unicode; short password; costly input exhaustion; mid-migration crash; checksum/Core independence. **REJECT:** replacing `N` without migration; silently re-encrypting old profiles; permitting arbitrarily weak passwords in a mainnet design. **Definition of done:** measured benchmarks, ADR for versioned envelopes, accepted CPU/memory bounds and safe fallback denial.  
 **Reference:** https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
 
-## M-05 — Checkpoint/journal generation limits
+## M-05 — Checkpoint and journal generation limits
 
-**FACT:** Q06 scanner checkpoint `MAX_CHECKPOINT_GENERATIONS=4096`; Linux root-witness read giới hạn 10.000 `.anchor` và kiểm tra các generations liên tiếp. Đây là giới hạn availability dài hạn có căn cứ; không phải bằng chứng mất khóa trực tiếp.
+**FACT:** the Q06 scanner checkpoint uses `MAX_CHECKPOINT_GENERATIONS=4096`; the Linux root-witness reader limits reads to 10,000 `.anchor` files and requires continuous generations. These are substantiated long-term availability limits, not evidence of immediate key loss.
 
-**DESIGN:** Phase 1: readonly metrics/cảnh báo sớm (ví dụ 80/90% cap) và fixture stress sát ngưỡng; định lượng kích thước, độ trễ, write rate/ngày. Phase 2 ADR cho **epoch/compaction dưới CAS**: có authenticated summary mới chứng minh đầy đủ state, giữ reservation signed/uncertain, transition được journal trước khi xóa bất cứ gì, native witness/chứng thực chủ sở hữu; crash-cut trước/sau mỗi fsync/anchor advance đều trả về trạng thái xác minh được hoặc từ chối. Cần review logic crash trước implementation.
+**DESIGN:** Phase 1: read-only metrics/early warnings (for example at 80/90% of the limit) and fixture-only stress tests near the caps. Quantify file sizes, latency and daily write rates. Phase 2: an ADR for **CAS-controlled epochs/compaction**, with a new authenticated summary proving full state, preservation of signed/uncertain reservations, journaling of the transition *before* any deletion, and attestation by the native witness. Each crash cut before/after fsync or anchor advance must either recover a verifiable state or refuse. Review crash logic before implementation.
 
-**Reject:** tăng số 4096/10000 tùy tiện; reset counter về 1; xóa file `.anchor`/snapshot; bỏ no-gap check. **DoD:** fixture đến/quá cap + steady-state long-run + failure injection cross-platform; no irreversible state loss. Nếu chưa đạt, giữ fail-closed và báo giới hạn.
+**REJECT:** arbitrarily increasing 4096/10000, resetting the counter to one, deleting anchors/snapshots or removing gap checks. **Definition of done:** fixtures at/above capacity, long-running steady-state tests, cross-platform failure injection and proof of no irreversible-state loss. Until then, preserve fail-closed behavior and document the limit.
 
-## M-06 — Auto-lock/OS session lock: chốt kiến trúc trước khi viết GUI
+## M-06 — Auto-lock and OS session lock: establish the architecture before GUI changes
 
-**FACT:** GUI Q06 chỉ có manual Lock; executor một thao tác in-flight; `wallet_executor.request()` timeout **không hủy operation**; `PaymentApproval.open()` async và dialog có thể chờ; không có timeout/OS lock ở đường này. `wallet_session.lock()` và `bip39_spend_session.lock()` có logic bảo toàn uncertain; gọi `lock` từ timer khi worker busy có thể bị từ chối.
+**FACT:** Q06 GUI provides manual Lock only. The executor serializes in-flight operations; a `wallet_executor.request()` timeout **does not cancel** the operation. `PaymentApproval.open()` is asynchronous and can leave a modal awaiting action. There is no idle or OS-session lock path here. The lock methods in `wallet_session` and `bip39_spend_session` preserve uncertain state. A timer-triggered `lock` while the worker is busy may be refused.
 
-**DESIGN đề xuất: máy trạng thái có _authorization epoch_ và hai lớp khóa.**
-- `UNLOCKED(epoch=N)` -> nhận idle/OS lock -> **đồng bộ** `LOCK_REQUESTED(epoch=N+1)` tại GUI/security gate; ngay lập tức vô hiệu các modal approvals, xóa/che dữ liệu UI, không cấp consent mới. Không dùng việc xóa UI như bằng chứng backend đã khóa.
-- Backend sign/broadcast nhận *current epoch + commitment*; validate dưới serialized owner boundary ngay trước **điểm không thể đảo ngược**. Nếu lock request đến trước authorization linearization -> refuse. Nếu user đã approve và native Sign/Broadcast **thật sự bắt đầu** trước đó, không kill/cancel/retry; thao tác hoàn tất hoặc giữ uncertain, rồi khóa session dưới owner executor.
-- Khi idle/OS event xảy ra lúc worker busy, request lock được ghi theo state/flag độc lập được đồng bộ (không chỉ `executor.submit('lock')` có thể bị từ chối); một lệnh close được hàng đợi một cách có kiểm soát sau worker, và UI tiếp tục deny cho đến khi state `LOCKED`/`FAULTED`. **Không cho phép Sign/Broadcast sử dụng một approval còn sống từ epoch trước**.
-- Unlock bắt buộc password + original Core/native anchor attestation; không dùng OS unlock tự unlock ví; không giải phóng signed/uncertain reservation. Khởi động lại app ở trạng thái locked.
-- **Giá trị thiết kế đề xuất, chưa chốt UX:** default idle 5 phút, các lựa chọn 1/5/15 phút; OS session lock/suspend -> lock ngay. Sự kiện hoạt động là thao tác người dùng thực trong app, không phải timer/sync/network activity tự gia hạn. Nếu không nhận được native OS event đáng tin trên một OS, đánh dấu giới hạn thay vì giả PASS.
+**PROPOSED DESIGN:** an **authorization-epoch state machine** with two lock layers.
+- `UNLOCKED(epoch=N)` → idle/OS lock → synchronously set `LOCK_REQUESTED(epoch=N+1)` at the GUI/security gate. Immediately invalidate modal approvals, hide/clear sensitive UI and deny new approvals. Clearing UI is not proof of a backend lock.
+- Backend sign/broadcast receives the *current epoch and commitment*, validated within the serialized execution boundary just before the **irreversible point**. A lock request before authorization linearization must refuse. If an approved native Sign/Broadcast **already began**, do not kill, cancel or retry it; let it finish or retain uncertainty and then lock the session through the executor.
+- When idle/OS events arrive with a busy worker, persist a synchronized lock intent outside the operation queue (do not rely only on `executor.submit('lock')`, which may refuse); queue the final lock operation safely after the worker. Keep denying UI actions until `LOCKED`/`FAULTED`. Never reuse an approval from an earlier epoch for signing or broadcast.
+- Unlock requires a password and attestation of the original Core/native anchor. OS unlock must not automatically unlock the wallet or release signed/uncertain reservations. Application restart begins locked.
+- **Illustrative UX defaults, not approved:** idle timeout of 5 minutes with 1/5/15-minute options; immediate lock on OS session lock/suspend. Only genuine interaction in the app counts as activity—not timer, sync or network background events. If native OS signals are unreliable on a platform, state the limitation instead of claiming PASS.
 
-**Nguồn event:** Qt `QApplication.installEventFilter()` cho keyboard/mouse; macOS `NSWorkspace` active-session/sleep notifications; Windows `WM_WTSSESSION_CHANGE` + đăng ký notification; Linux systemd-logind session `LockedHint`/desktop-specific signal cần xác thực cơ chế trên từng desktop. Qt event filter một mình **không** tương đương OS screen lock.
+**Event sources:** Qt `QApplication.installEventFilter()` for keyboard/mouse; macOS `NSWorkspace` session/sleep notifications; Windows `WM_WTSSESSION_CHANGE` and notification registration; Linux systemd-logind `LockedHint` or a verified desktop-specific signal. A Qt event filter alone is **not** equivalent to observing OS screen lock.
 
-**Tests trước PR:** countdown/idle, keyboard/mouse, modal đang mở, approve-during-show race, timer đúng lúc Prepare complete, sign-in-flight, broadcast-uncertain, worker timeout, OS lock/wake, GUI hidden, lost lock event, GUI unresponsive, Core disconnect, 2 windows, quit/restart, cross-platform native/frozen. **Không chốt CI PASS bằng synthetic OS event nếu chưa có native observation riêng.**
+**PRE-PR TESTS:** idle countdown; keyboard/mouse; open modal; approve/show race; timer at completion of Prepare; sign in flight; uncertain broadcast; worker timeout; OS lock/wake; hidden GUI; lost lock event; unresponsive GUI; disconnected Core; two windows; quit/restart; platform-specific native/frozen checks. Synthetic OS events alone do not qualify native OS-event observation.
 
-**Output B1B bắt buộc:** `M06_AUTOLOCK_ADR.md` + state-transition table + lock event adapters + negative tests skeleton; **review rồi mới triển khai**. **Reject:** timer chỉ gọi `_command('lock')`; kill executor; cancel signed tx; auto-unlock theo OS.  
-**Tham khảo:** https://doc.qt.io/qt-6/eventsandfilters.html ; https://developer.apple.com/documentation/appkit/nsworkspace/sessiondidresignactivenotification ; https://learn.microsoft.com/en-us/windows/win32/termserv/wm-wtssession-change
+**REQUIRED DESIGN OUTPUT:** `M06_AUTOLOCK_ADR.md`, state-transition table, OS event-adapter design and negative-test skeleton. Review them before implementation. **REJECT:** timer-only `_command('lock')`, killing the executor, canceling signed transactions or auto-unlocking with the OS.  
+**References:** https://doc.qt.io/qt-6/eventsandfilters.html ; https://developer.apple.com/documentation/appkit/nsworkspace/sessiondidresignactivenotification ; https://learn.microsoft.com/en-us/windows/win32/termserv/wm-wtssession-change
 
-## M-07 — Pin CI Actions, nhỏ và rõ
+## M-07 — Pin GitHub Actions with minimal changes
 
-**FACT được kiểm tra ở 11 workflow `.github/workflows/`:** các `uses:` bên ngoài được thấy thuộc **4 Actions**: `actions/checkout@v4`, `actions/setup-python@v5`, `actions/upload-artifact@v4`, `actions/download-artifact@v4`. Đa số job đã khai báo `permissions: contents: read`; một số cần `actions: read`.
+**FACT (inspected across 11 workflows under `.github/workflows/`):** external `uses:` references belonged to **four Actions**: `actions/checkout@v4`, `actions/setup-python@v5`, `actions/upload-artifact@v4` and `actions/download-artifact@v4`. Most jobs specified `permissions: contents: read`; some need `actions: read`.
 
-**DESIGN READY:** lấy immutable full commit SHA **từ chính repository phát hành Action**, kiểm tra release/tag tương ứng và hash/owner; thay `uses` tương ứng trong cả 11 YAML, giữ comment phiên bản; kiểm tra toàn bộ `uses:` không sót; quyền token theo job tối thiểu; PR từ fork không được cấp release secrets; validate YAML và chạy workflow hiện hữu. GitHub Actions dependency lockfile hiện là phương án mạnh hơn nếu project hỗ trợ; không cần đưa thêm tooling vào B1 nếu chỉ để nâng security đơn giản.
+**READY DESIGN:** obtain immutable full commit SHAs from the Actions' own publishing repositories, check tags/releases and hashes against maintainers; update corresponding `uses` in all 11 YAML files while retaining version comments. Ensure no external `uses:` is missed; grant minimal per-job token permissions and prevent fork PRs from receiving release secrets. Validate YAML and run existing workflows. A GitHub Actions dependency lockfile may be stronger if supported, but is not necessary for this limited hardening.
 
-**Không chọn:** sao chép SHA từ blog/ngẫu nhiên; chuyển sang latest tag không pin; thay token quyền write rộng để khắc phục workflow failure; viết lại toàn bộ CI làm mất evidence. **DoD:** no mutable `uses:` left, provenance of every selected SHA, workflow parse PASS, tests unaffected, artifact compare.  
-**Tham khảo:** https://docs.github.com/en/actions/reference/security/secure-use
+**REJECT:** pasting SHAs from arbitrary websites; switching back to mutable latest tags; granting broad write tokens to work around failures; rewriting CI and losing evidence. **Definition of done:** no mutable `uses:`, provenance for each selected SHA, valid workflow parsing, unaffected tests and compared artifacts.  
+**Reference:** https://docs.github.com/en/actions/reference/security/secure-use
 
-## M-08 — Transport liveness: chưa được phép sửa khi chưa tái hiện
+## M-08 — Transport liveness: reproduce before implementing a fix
 
-**FACT:** `json_rpc.py` có HTTP response size cap; `response.read(cap+1)` và socket timeout, nhưng không có **wall-clock absolute deadline** cho cả stream; `wallet_executor.py` giữ pending khi caller timeout, đúng chính sách không retry financial writes. **HYPOTHESIS:** peer/Core bị chậm dần từng chunk có thể trì hoãn executor/lock.
+**FACT:** `json_rpc.py` limits HTTP response size and uses `response.read(cap+1)` plus a socket timeout, but has no **absolute wall-clock deadline** across the entire stream. `wallet_executor.py` keeps operations pending after caller timeout in accordance with the financial-write no-retry policy. **HYPOTHESIS:** a peer or Core endpoint sending very slow chunks might indefinitely delay the executor and locking.
 
-**Thiết kế thử:** tạo fixture loopback chỉ trả chunks đều đặn trước mỗi socket timeout nhưng tổng thời gian vượt ngân sách; đo wall-clock, resource, state, GUI refusal và original-core binding. Lab riêng dùng transport giả **chỉ để tái hiện**; nghiệm thu vẫn yêu cầu genuine Core. Nếu tái hiện, đưa absolute monotonic deadline và bounded read worker *chỉ ở transport read*, không ngắt/retry write path; vẫn preserve original operation pending nếu có uncertainty. Phân loại Core thật có thể gây lỗi này không là câu hỏi khác.
+**REPRODUCTION DESIGN:** build a loopback fixture returning chunks just before each socket timeout while total elapsed time exceeds the intended limit. Measure wall-clock duration, resources, state, GUI refusal and binding to the original Core. The fake transport is **for reproduction only**; qualification still requires genuine Core. If confirmed, use an absolute monotonic deadline and bounded read worker *only for response reading*, never to cancel or retry the financial write path. Preserve the pending original operation where its outcome is uncertain. Whether genuine Core can exhibit the behavior is a separate question.
 
-**Reject:** tăng timeout 240/600/900 để che; tự cancel/kill worker khi timeout; tự gửi lại RPC write. **DoD:** deterministic before/after slow-trickle regression; native Core unaffected; UI lock eventually safe and states accurately reported.
+**REJECT:** inflating timeouts to 240/600/900 seconds; automatically canceling/killing the worker; automatically resubmitting write RPCs. **Definition of done:** deterministic before/after slow-trickle regression, unaffected native Core, and eventual safe UI lock with truthful state reporting.
 
-## M-09 — Peer trust/P2P/mainnet
+## M-09 — Peer trust, P2P and mainnet
 
-**FACT:** `shared_regtest.py` chỉ kiểm tra địa chỉ IP/port, handshake version/subversion và giới hạn peers; không có channel binding cryptographic identity cho remote peer. Đây là cơ chế REGTEST manual được xác định trước, **không** phải bằng chứng peer có thể điều khiển Core RPC hoặc ký ví. BIP352 không ẩn danh IP.
+**FACT:** `shared_regtest.py` validates IP address/port, handshake version/subversion and peer limits, but has no cryptographic channel binding for remote peer identity. This is deliberate manual REGTEST behavior, **not** proof a peer can control RPC or sign wallet transactions. BIP352 does not conceal IP addresses.
 
-**DESIGN REGTEST:** giữ manual P2P cho V19; actual two-host setup test: peer sai genesis, peer giả, partition, stale chain, fork/reorg, unexpected peers, self-peer, inbound/outbound, RPC vẫn loopback; kiểm tra bảo toàn signed/uncertain. Peer host trust được người vận hành chọn; chỉ version string không là identity proof.
+**REGTEST DESIGN:** preserve manual P2P for V19; test two real hosts with wrong genesis, fake peer, partition, stale chain, fork/reorg, unexpected peers, self-connection, inbound/outbound peers, and loopback-only RPC. Validate retention of signed/uncertain state. The operator selects which remote peer to trust; version strings do not prove identity.
 
-**DESIGN MAINNET (tương lai, ngoài PR):** dùng Core v0.1.13 native peer discovery/chain validation, nghiên cứu eclipse resistance, peer diversity, transport privacy/Tor nếu hỗ trợ/được review. Không phát minh lớp xác thực peer trong Fusion UI rồi tuyên bố bảo vệ underlying Core TCP nếu chưa có crypto-binding thực sự. **DoD:** V19 actual physical evidence + network threat model và rõ giới hạn privacy; không tự bật auto-discovery trong REGTEST hiện tại.
+**FUTURE MAINNET DESIGN (out of scope):** rely on native Core v0.1.13 peer discovery/chain validation; investigate eclipse resistance, peer diversity, and transport privacy/Tor only if supported and reviewed. Do not invent a Fusion UI peer-authentication layer and claim underlying TCP is protected without real cryptographic binding. **Definition of done:** physical two-host V19 evidence, explicit network threat model and privacy limitations; do not enable automatic peer discovery in current REGTEST.
 
 ## L-01 — Backup 3-word challenge: cụ thể hóa cơ chế đủ để code
 
