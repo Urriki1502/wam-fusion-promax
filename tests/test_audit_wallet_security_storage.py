@@ -821,8 +821,8 @@ def publish():
                 root = self._make_tree(storage_src, VALID_FULLFLUSH)
                 self.assertIs(audit.storage_contract(root), True)
 
-    def test_hermes_rereview_bypasses_fail(self):
-        """Hermes PEER-459 bypasses (a), (b), (c), (e), (f) and all decorators must FAIL."""
+    def test_storage_oracle_bypass_cases_fail(self):
+        """PEER-459 bypass scenarios (a), (b), (c), (e), (f) and all decorators must FAIL."""
         audit = _load_audit()
         source_mutants = [
             (
