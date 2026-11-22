@@ -92,7 +92,7 @@ with s.directory_guard(root),s.security_attributes() as sa:
 
     def test_plain_mkdir_root_is_refused_by_exclusive_lease(self):
         from wam_regtest.supervisor_store import exclusive_lease
-        bare = self.root / 'wam-fusion-core-abcdef0123456789'
+        bare = self.base / 'wam-fusion-core-abcdef0123456789'
         bare.mkdir()
         with self.assertRaises(store.WindowsCustodyError):
             with exclusive_lease(bare):
@@ -107,7 +107,7 @@ with s.directory_guard(root),s.security_attributes() as sa:
             unacknowledged,
         )
         from wam_regtest.supervisor_store import exclusive_lease
-        root = self.root / 'wam-fusion-core-0123456789abcdef'
+        root = self.base / 'wam-fusion-core-0123456789abcdef'
         store.create_private_directory(root)
         profile_id = 'a' * 32
         # Missing lease must refuse publish.
