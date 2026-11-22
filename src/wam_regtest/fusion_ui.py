@@ -781,7 +781,7 @@ class _FocusFollower(QObject):
     margin; later manual scrolling is not fought. Parented to its scroll area,
     so Qt disconnects it when the area is destroyed. focusChanged can still
     fire DURING that teardown, so both objects are checked for validity first
-    (Codex PEER-092)."""
+    (PEER-092)."""
 
     def __init__(self, scroll):
         super().__init__(scroll)
