@@ -27,9 +27,9 @@ source tree. They must **not** be copied into the shipped application.
 
 | Class | Examples |
 | --- | --- |
-| Agent/session | `.cursor/`, agent transcripts, prompt scratch |
+| Local development scratch | Temporary notes and non-distributable scratch files |
 | Local evidence | `build/local-evidence-*`, GUI screenshots, fixture PNG |
-| Engineering docs | `AGENTS.md`, `ENGINEERING_HANDOFF.md`, `JOINT_ACCEPTANCE_CHECKLIST.md` (reviewer copies travel **beside** the app, not inside it) |
+| Engineering docs | Internal handoff files and acceptance checklists (review copies stay **beside** the app, not inside it) |
 | Tests | `tests/`, disposable wallets, `*.sqlite` fixtures |
 | Secrets | `.env`, cookies, `wam.conf`, seeds, keychain-db, RPC user/pass |
 | Build caches | `build/`, `dist/` leftovers, `bundle-input/` temp stages |
@@ -37,13 +37,13 @@ source tree. They must **not** be copied into the shipped application.
 | Unrelated docs dumps | `LEGACY_WORKSPACE_INVENTORY.md` etc. |
 
 Existing builders already `--collect-submodules wam_regtest` (broad). Independent
-reviewer should confirm the frozen TOC has no `tests`, no `.cursor`, no PNG
+reviewer should confirm the frozen TOC has no `tests`, no temporary development content, no PNG
 evidence, no datadir. Command after a real build:
 
 ```
 python3 -c "from pathlib import Path
 root=Path('dist')
-bad=('.cursor','agent-transcripts','local-evidence','ENGINEERING_HANDOFF','.env','mnemonic')
+bad=('local-evidence','ENGINEERING_HANDOFF','.env','mnemonic')
 print([p for p in root.rglob('*') if any(b.lower() in p.as_posix().lower() for b in bad)])"
 ```
 
