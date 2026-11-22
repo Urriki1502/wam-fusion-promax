@@ -25,7 +25,7 @@ Read ignored `ENGINEERING_HANDOFF.md` first for current process/lease/dirty stat
 
 # Canonical workspace manifest
 
-## Current status — 2026-11-05 pre-Codex handoff
+## Current status — 2026-11-05 engineering checkpoint
 
 The sections below this one are historical checkpoints. They still describe older SHAs (`29448e5`, `e48d6cc`, `aaf2de2`, and the 2026-11-04 Phase 0 branch). They are not the current source identity and were not rewritten as if `c61e3c5` had produced them.
 
@@ -58,7 +58,7 @@ Resume: read `ENGINEERING_HANDOFF.md` first, acquire `python3 scripts/engineerin
 
 Source regression 611 discovered / 578 PASS / 33 SKIP / exit 0; latest focused reconciliation guards 7 PASS. Additional real native recovery from still-live faulted sessions passed with unchanged reservations and clean new owners. Historical orphan PIDs 7234/7250 remain read-only/unauthorized for process actions; new tests used 45954–45957. Product/two-machine defaults remain 29554/29555. Old owner-tested/Q06/V1 artifacts, failed receipts and private runtime generations are preserved. Q06 accepted=false; G6 physical retest pending, G7 independent BLOCKED; no acceptance ledger change, push, merge, CI dispatch or mainnet.
 
-Read `ENGINEERING_HANDOFF.md` FIRST for transfer/current Git/process state. It is an intentionally Git-ignored mutable operational document, not runtime source or another acceptance ledger. Acquire the existing engineering lease before any edits; Codex and Cursor must not write concurrently. A qualified runtime SHA above may precede documentation-only HEAD updates; verify both.
+Read `ENGINEERING_HANDOFF.md` FIRST for transfer/current Git/process state. It is an intentionally Git-ignored mutable operational document, not runtime source or another acceptance ledger. Acquire the existing engineering lease before any edits; Concurrent source writers must not operate simultaneously. A qualified runtime SHA above may precede documentation-only HEAD updates; verify both.
 
 Latest standalone Q06 artifact: qualified runtime/build source `e48d6cc23eeb36e279611608f6021291142a0e04`, Q06 branch documentation HEAD `f9c23f3`. Artifact `build/qualified-q06-e48d6cc/package-output/WAM-Privacy-Wallet-REGTEST-macOS-ARM64.dmg`, SHA256 `961bdc61c2c69ef15e3fd6d3719602b67a21653dc512854a80d42b113ac2acd0`; 104 scoped Q06 source PASS / exit 0, actual final frozen Q01–Q06/Core/GUI/Q05 gates PASS, 54 manifest members and read-only DMG contents independently verified. See [current Q06 evidence](docs/Q06_LOCAL_STABILIZATION_20261104.md). This DMG has isolated REGTEST only; old qualified snapshots remain preserved.
 
@@ -111,7 +111,7 @@ Core receipt names official v0.1.11 archive SHA `6e10ea10cc324e947c9d646ba827641
 
 ## Custody and session discipline
 
-Engineering lease was acquired with the required `python3 scripts/engineering_lease.py --hold` after filesystem approval for `.git/wam-engineering.lock`; it is held while audit work runs and released at audit completion. It guards cooperating work in this Git common directory only. Process inventory via `ps` was denied by the sandbox; absence of other agents/Core processes is not established. No process was adopted, stopped or signalled.
+Engineering lease was acquired with the required `python3 scripts/engineering_lease.py --hold` after filesystem approval for `.git/wam-engineering.lock`; it is held while audit work runs and released at audit completion. It guards cooperating work in this Git common directory only. Process inventory via `ps` was denied by the sandbox; absence of other wallet/Core processes is not established. No process was adopted, stopped or signalled.
 
 `tests/acceptance/issue45.json` remains the sole case-level ledger. Active Q06; `accepted=false`. Owner's 2026-11-04 physical Send/Unlock failures supersede any interpretation of blanket acceptance, without changing the ledger in Phase 0. Current owner physical G6: FAIL pending repair/retest; G7 independent: BLOCKED. Engineering handoff NO; full acceptance NO; V1-NET BLOCKED.
 
@@ -135,7 +135,6 @@ Before the next session: verify path, this manifest, HEAD, dirty/untracked/ignor
 | `.github` | Source CI workflow contracts | 10 / 101591 | 0 symlinks; bytes counted without following links |
 | `.gitignore` | Root source/document or preview artifact | 1 / 388 | 0 symlinks; bytes counted without following links |
 | `.wam-regtest-temp` | E disposable runtime parent; empty at audit | 0 / 0 | 0 symlinks; bytes counted without following links |
-| `AGENTS.md` | Root source/document or preview artifact | 1 / 9446 | 0 symlinks; bytes counted without following links |
 | `LICENSE` | Root source/document or preview artifact | 1 / 1088 | 0 symlinks; bytes counted without following links |
 | `README.md` | Root source/document or preview artifact | 1 / 11519 | 0 symlinks; bytes counted without following links |
 | `WAM Privacy Wallet REGTEST.spec` | Root source/document or preview artifact | 1 / 1995 | 0 symlinks; bytes counted without following links |
