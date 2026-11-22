@@ -61,7 +61,7 @@
 
 ### Gate 0 — freeze and inventory (READ ONLY)
 
-- Verify Git status, source SHA, exact PR branch/base, `AGENTS.md`, `ENGINEERING_HANDOFF.md`, and the canonical issue #45.
+- Verify Git status, source SHA, exact PR branch/base, current engineering handoff, and canonical issue #45.
 - Do not modify production or preexisting wallets, keys, seed files, native anchors, external Core processes, immutable evidence or Git history.
 - Audit the full deployment model: macOS ARM64, Windows x64, Linux x86_64; GUI and headless; create/restore, same-chain funded history, local RPC and Shared REGTEST P2P.
 - Record software composition, Python/PySide6/Qt/WSP/Core, toolchain, artifact signatures and dependency hashes. Identify unsupported platforms.
@@ -109,10 +109,6 @@ Each finding: ID, title, severity [Critical/High/Medium/Low/Info], confidence [c
 - End-user app release signature/notarization, reproducibility/provenance, vulnerability response policy and source dependency support are adequately planned/qualified.
 - G6 owner physical acceptance, G7 independent security audit and V19 two-host acceptance separately proved as required.
 - MAINNET chain parameters, peer discovery, P2P, broadcast, fee behavior, privacy assumptions and on-chain funds require an entirely separate authorized qualification. `mainnet_allowed=false` remains until that point.
-
-## Safe autonomous auditor instruction (copy to independent agent)
-
-> Review Draft PR #141 at exact commit b187cde17b12ae5f7c11f0611d5f4b1661bfc90b as an independent security reviewer. Read AGENTS.md, Issue #45, existing security documents and this charter. Start READ-ONLY; identify threats and audit every listed surface, prioritizing custody/keys, signing/broadcast, recovery, Core RPC, P2P and supply chain. Produce an evidence-linked findings register with severity, confidence and concrete negative tests. Treat prior CI PASS only as scoped evidence, not G7 signoff. Use only disposable REGTEST data for test proposals; never access real wallets, mainnet, or kill/adopt an unverified Core. Do not modify code, ledger, PR, Git history or remote issues in the discovery phase. Keep current Draft #141 intact; after the review report is complete, propose separately scoped remediation PRs. No merge or release.
 
 ## Reference links
 
