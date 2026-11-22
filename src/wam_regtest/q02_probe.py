@@ -310,7 +310,7 @@ def _exact_json(value):
     Fee-rate replies (and getnetworkinfo) are decoded with parse_float=Decimal
     since FEE-1, and json.dumps cannot encode Decimal. Fault injection must
     re-emit the genuine reply unchanged apart from the injected field. This is
-    a structural encoder (Codex PEER-107: no textual placeholder replacement,
+    a structural encoder (PEER-107: no textual placeholder replacement,
     which could collide with genuine strings or keys): every finite Decimal is
     written as its exact decimal text, strings and keys through json.dumps
     escaping, and anything else non-JSON is refused.
