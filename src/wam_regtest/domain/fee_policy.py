@@ -63,7 +63,7 @@ ALLOW_USABLE_ESTIMATOR_TO_RAISE_RATE = False
 # USABLE. The maintainer observed about 43.93 medium-horizon samples, largely
 # self-referential pool payouts; this threshold keeps such evidence UNVALIDATED.
 ESTIMATOR_MIN_CONFIRMED_SAMPLES = Decimal(100)
-# Proportional limit (Codex PEER-098 #6): a fee above the amount itself is refused;
+# Proportional limit (PEER-098 #6): a fee above the amount itself is refused;
 # otherwise a fee above max(10% of the amount, the floor fee for this exact size)
 # is refused. The floor fee is the network minimum, so it is never "excess".
 DISPROPORTIONATE_PERCENT = 10
@@ -88,7 +88,7 @@ def coin_rate_to_atoms_per_kvb(value):
 
     Pure integer arithmetic on the Decimal's sign, digits and exponent, so the
     result never depends on the active decimal context (precision, rounding,
-    traps): Codex PEER-099. Special values, negative non-zero values,
+    traps): PEER-099. Special values, negative non-zero values,
     fractional atoms and out-of-range values are typed refusals.
     """
     if type(value) is bool or not isinstance(value, (Decimal, int)):
@@ -166,7 +166,7 @@ class PolicyInputs:
     def digest(self):
         """Stable provenance digest of every value the quote depends on,
         including the raw estimator evidence used by the classification
-        (Codex PEER-099). Sign-time validity is quote_still_valid, not equality
+        (PEER-099). Sign-time validity is quote_still_valid, not equality
         of this digest: an approved fee stays fixed while it covers the floor."""
         payload = json.dumps(dict(
             network=self.network, core_version=self.core_version, relayfee=self.relayfee,
