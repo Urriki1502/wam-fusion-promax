@@ -39,7 +39,6 @@ None identified in this inspection.
 
 ## Informational
 
-- No Cursor, Codex, or LLM client is required at runtime. Those names exist in engineering docs only.
 - `libXcursor` / `libxcb-cursor` are X11 libraries.
 - RPC clients use `127.0.0.1`. V1-NET P2P defaults to localhost and can be bound to another interface only when the operator asks for a shared REGTEST. V19 on two physical computers was not executed.
 - No `shell=True` in `src/`.
