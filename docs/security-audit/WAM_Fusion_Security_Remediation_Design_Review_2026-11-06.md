@@ -1,7 +1,7 @@
 # WAM Fusion — Independent Remediation Design Review (v1.0)
 
 **Ngày:** 06-11-2026 (Asia/Ho_Chi_Minh)  
-**Mục tiêu:** làm rõ phương án kỹ thuật *trước khi* giao Codex sửa lỗi; tối thiểu hóa phạm vi thay đổi, token, CI reruns và rủi ro custody.  
+**Mục tiêu:** làm rõ phương án kỹ thuật *trước khi* triển khai sửa lỗi; tối thiểu hóa phạm vi thay đổi, số lần chạy CI và rủi ro custody.  
 **Repository:** https://github.com/Urriki1502/wam-privacy-wallet-regtest  
 **Audit baseline bất biến:** PR #141, commit `b187cde17b12ae5f7c11f0611d5f4b1661bfc90b`; base `c61e3c5be4b8519dc6c4d9eb56d124fce84cf02d`; Core v0.1.13; WSP `ac55f13423620252bdbf848c7e8a280c3b84721e`.  
 **Nguồn findings:** `WAM_Fusion_Phase_A_Security_Audit_Report_2026-11-06.md` (2 High, 9 Medium, 1 Low; 6 nhóm NOT VERIFIED).  
@@ -40,16 +40,16 @@
 
 **Không chọn:** chỉ ghi `SHA256SUMS.txt` cùng ZIP; tự tạo khóa trên CI runner rồi gọi là publisher; tự thay Core gốc bằng build mới để dễ ký; chỉ dựa vào chữ ký Core để suy ra chữ ký Fusion.
 
-**Việc Codex có thể làm ngay:** viết `docs/security-audit/H01_RELEASE_TRUST_ADR.md`, kiểm tra thao tác ký thử **trên bản copy disposable**, không có khóa sản xuất, đo Core member hashes trước/sau. **Không được tự bật notarization/release**. **DoD:** quy trình phân phối trust key, key custody/rotation/revocation, chứng thực offline, phân tách CI build vs owner release, output SHA256/SBOM/signer report. **Chặn mainnet release** cho đến khi hoàn tất.  
+**Việc có thể triển khai trước:** viết `docs/security-audit/H01_RELEASE_TRUST_ADR.md`, kiểm tra thao tác ký thử **trên bản copy disposable**, không có khóa sản xuất, đo Core member hashes trước/sau. **Không được tự bật notarization/release**. **DoD:** quy trình phân phối trust key, key custody/rotation/revocation, chứng thực offline, phân tách CI build vs owner release, output SHA256/SBOM/signer report. **Chặn mainnet release** cho đến khi hoàn tất.  
 **Tham khảo:** https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution
 
 ## H-02 — Ruleset GitHub `main`
 
 **FACT:** GitHub API trả `main.protected=false`, `/rulesets=[]` ngày 06-11-2026. Đây là **rủi ro quản trị/supply chain**, không phải bug ký ví và không phải điều kiện buộc dừng REGTEST local audit.
 
-**DESIGN chọn (owner thực hiện):** Ruleset chỉ áp dụng `main`; require pull request; block force push; block branch deletion; không cấp bypass cho AI/tool token. Thêm required checks sau khi đối chiếu tên check thực sự chạy trên target `main` (CI có workflow manual/PR/path khác nhau); chọn GitHub Actions làm expected app nếu khả thi. Với repo chủ yếu một người, không bật mandatory human approval **cho đến khi có reviewer có thể approve**, để tránh tự khóa merge. Xác minh bằng UI/effective rules, không thử push phá chính sách.
+**DESIGN chọn (quản trị repository thực hiện):** Ruleset chỉ áp dụng `main`; require pull request; block force push; block branch deletion; không cấp bypass cho tài khoản tự động. Thêm required checks sau khi đối chiếu tên check thực sự chạy trên target `main` (CI có workflow manual/PR/path khác nhau); chọn GitHub Actions làm expected app nếu khả thi. Với repo chủ yếu một người, không bật mandatory human approval **cho đến khi có reviewer có thể approve**, để tránh tự khóa merge. Xác minh bằng UI/effective rules, không thử push phá chính sách.
 
-**Không chọn:** bật 20 required checks ngay; bảo vệ mọi feature branch khiến Codex không thể push; giao Codex token Full Access tự chỉnh rules rồi tự miễn trừ. **DoD:** ảnh hoặc biên bản cấu hình + mô tả bypass actors + rule enforcement. Không cần sửa source; không làm gián đoạn PR #141.
+**Không chọn:** bật 20 required checks ngay; bảo vệ mọi feature branch khiến không thể push; cấp token Full Access tự chỉnh rules rồi tự miễn trừ. **DoD:** ảnh hoặc biên bản cấu hình + mô tả bypass actors + rule enforcement. Không cần sửa source; không làm gián đoạn PR #141.
 
 **Tham khảo:** https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
 
@@ -62,7 +62,7 @@
 **DESIGN nghiên cứu (KHÔNG triển khai signer):**
 1. Chế độ `RECOVERED_READ_ONLY`: tạo **profile mới sạch** từ mnemonic test, attestation genesis/Core, rescan toàn bộ đúng chain; chỉ xem địa chỉ/balance/history; tuyệt đối không ghi lên anchor/profile cũ.
 2. Chế độ `STATE_CONTINUITY_VERIFIED`: yêu cầu backup journal được xác thực, cùng wallet identity, bản ghi signed/uncertain đầy đủ, native-authorized migration proof; create-only checkpoint và CAS vào anchor mới, crash-safe; nếu bất cứ thứ gì không khớp -> READ_ONLY/BLOCKED.
-3. Tình huống mất **toàn bộ** journal nhưng còn keys: chưa có phương án nào đảm bảo tự động khôi phục quyền ký trong mọi tình huống. Cần policy được owner và reviewer phê duyệt về các UTXO rủi ro, thời gian/quy trình reconciliation, cảnh báo về signed tx vô hình. Không cho Codex tự chọn timeout và tự giải phóng.
+3. Tình huống mất **toàn bộ** journal nhưng còn keys: chưa có phương án nào đảm bảo tự động khôi phục quyền ký trong mọi tình huống. Cần policy được quản trị và reviewer phê duyệt về các UTXO rủi ro, thời gian/quy trình reconciliation, cảnh báo về signed tx vô hình. Không tự chọn timeout và tự giải phóng.
 
 **Test vectors bắt buộc:** mất 1 anchor; mất cả anchor+ciphertext; dùng backup cũ; backup mới; signed-before-crash; broadcast-uncertain; chain partition; same-chain restore; wrong genesis; wrong OS; wrong Core hash; concurrent owner; crash tại mỗi bước ghi mới; duplicate tx; reorg. **Không reset native anchors hay data retained owner.**
 
@@ -118,7 +118,7 @@
 
 **Tests trước PR:** countdown/idle, keyboard/mouse, modal đang mở, approve-during-show race, timer đúng lúc Prepare complete, sign-in-flight, broadcast-uncertain, worker timeout, OS lock/wake, GUI hidden, lost lock event, GUI unresponsive, Core disconnect, 2 windows, quit/restart, cross-platform native/frozen. **Không chốt CI PASS bằng synthetic OS event nếu chưa có native observation riêng.**
 
-**Output B1B bắt buộc:** `M06_AUTOLOCK_ADR.md` + state-transition table + lock event adapters + negative tests skeleton; **review rồi mới cho Codex code**. **Reject:** timer chỉ gọi `_command('lock')`; kill executor; cancel signed tx; auto-unlock theo OS.  
+**Output B1B bắt buộc:** `M06_AUTOLOCK_ADR.md` + state-transition table + lock event adapters + negative tests skeleton; **review rồi mới triển khai**. **Reject:** timer chỉ gọi `_command('lock')`; kill executor; cancel signed tx; auto-unlock theo OS.  
 **Tham khảo:** https://doc.qt.io/qt-6/eventsandfilters.html ; https://developer.apple.com/documentation/appkit/nsworkspace/sessiondidresignactivenotification ; https://learn.microsoft.com/en-us/windows/win32/termserv/wm-wtssession-change
 
 ## M-07 — Pin CI Actions, nhỏ và rõ
@@ -176,17 +176,17 @@
 5. Existing historical FAIL receipts and `tests/acceptance/issue45.json` kept as-is pending evidence-specific owner decision; G6/G7/V19 blocked, Q06 `accepted=false`.
 6. Qt dialog `PaymentApproval.open()` liveness fix preserved; no return to blocking `exec()` for this flow.
 
-## Thứ tự triển khai tối ưu token
+## Thứ tự triển khai
 
-**T0 — Owner (không dùng Codex credits):** cấu hình Ruleset `main` cho H-02 nếu muốn bảo vệ sớm; review thay đổi UI, không tự cấp bypass cho agent.
+**T0 — Quản trị repository:** cấu hình Ruleset `main` cho H-02 nếu muốn bảo vệ sớm; review thay đổi UI, không tự cấp bypass.
 
-**T1 — Codex small isolated PR A (L-01):** làm backend challenge contract + tests; chỉ 5–7 file chính; local focused tests ⇒ toàn bộ unit ⇒ macOS native/frozen ⇒ push ⇒ 3-OS CI. **Không đồng thời auto-lock.**
+**T1 — Focused PR A (L-01):** làm backend challenge contract + tests; chỉ 5–7 file chính; local focused tests ⇒ toàn bộ unit ⇒ macOS native/frozen ⇒ push ⇒ 3-OS CI. **Không đồng thời auto-lock.**
 
-**T2 — Codex small isolated PR B (M-07):** sửa 11 workflow / bốn Actions, kiểm chứng SHAs và YAML + 3-OS CI; có thể song song chuẩn bị design M06 bằng reviewer chỉ-đọc, nhưng không concurrent writer cùng worktree.
+**T2 — Focused PR B (M-07):** sửa 11 workflow / bốn Actions, kiểm chứng SHAs và YAML + 3-OS CI; có thể song song chuẩn bị design M06 bằng reviewer chỉ-đọc, nhưng không concurrent writer cùng worktree.
 
 **T3 — DESIGN ONLY M06:** ADR state machine/epoch/OS adapters; security review và test matrix rồi mới implementation PR. T1/T2 không cần chờ M06.
 
-**T4 — RESEARCH ONLY M01/M05:** custodial recovery và snapshot compaction; không cho Codex sửa runtime cho đến khi design gate PASS. M02/M03/M04 thí nghiệm trên disposable lab, sau đó mới roadmap implementation.
+**T4 — RESEARCH ONLY M01/M05:** custodial recovery và snapshot compaction; không sửa runtime cho đến khi design gate PASS. M02/M03/M04 thí nghiệm trên disposable lab, sau đó mới roadmap implementation.
 
 **T5 — Independent audit NV-01/02/03/04/05/06 + M08 reproduction:** phân công người/runner; tách tìm lỗi và sửa lỗi; giữ bằng chứng exact SHA.
 
@@ -194,31 +194,15 @@
 
 **T7 — Full requalification + G6/G7/V19:** native/frozen exact commit, human Mac/Windows/Linux, 2 actual Core hosts, independent security reviewer, Q06 ledger reconcile đúng từng case. Mainnet promotion là một dự án/quyết định khác.
 
-## Quy tắc giảm token cho Codex
+## Quy tắc giới hạn phạm vi thay đổi
 
 - Giao **một finding/một PR** khi ảnh hưởng runtime; chỉ những module được chỉ định, không đọc lại 500 file repo sau khi handoff đã có source + invariant + test targets.
-- Prompt mỗi nhiệm vụ có đủ: `exact SHA`, `finding ID`, `allowed files`, `must-preserve invariants`, `focused tests`, `LOCAL-FIRST`, `stop conditions`, `output report`.
-- Trước khi viết: kiểm tra `git status`, clean worktree, engineering lease, đúng branch, đọc *tối đa* các file trong phạm vi; Codex được mở rộng chỉ khi ghi lý do phụ thuộc cụ thể.
+- Phạm vi mỗi nhiệm vụ có đủ: `exact SHA`, `finding ID`, `allowed files`, `must-preserve invariants`, `focused tests`, `LOCAL-FIRST`, `stop conditions`, `output report`.
+- Trước khi viết: kiểm tra `git status`, clean worktree, engineering lease, đúng branch, đọc *tối đa* các file trong phạm vi; chỉ mở rộng khi ghi lý do phụ thuộc cụ thể.
 - Sửa theo test chứng minh lỗi, không tái cấu trúc vô cớ, không tăng timeout tùy tiện, không dùng CI để debug lỗi có thể tái hiện Mac local.
 - Không push giữa các lỗi local; push sau local gate; CI Windows/Linux không thể được thay bằng macOS unit tests.
 - Mỗi kết quả tạo mapping `finding→code diff→test→source SHA→artifact hash→residual risk` trong `ENGINEERING_HANDOFF.md`, không claim done nếu lacks proof.
-- Không dùng thuật ngữ **independent G7 review** cho Codex tự review code của mình; cần người khác có năng lực và chứng cứ riêng.
-
-## Prompt ngắn mẫu **CHỈ KHI** chốt từng thiết kế
-
-```text
-Continue in ~/Documents/WAM-Q06-Audit-20261102.
-Read AGENTS.md, ENGINEERING_HANDOFF.md, and
- docs/security-audit/WAM_Fusion_Security_Remediation_Design_Review_2026-11-06.md.
-Verify exact source/branch and acquire engineering lease.
-Implement ONLY finding <ID> per its DESIGN/DoD section.
-Do not widen scope or weaken the nonnegotiable invariants.
-Prove failing negative regression before fixing (where applicable).
-Run focused → unit → local native/frozen Mac tests; fix locally.
-Only after local gate PASS may you push scoped branch and run native CI.
-Preserve PR #141 and historical evidence; no merge/mainnet/release.
-Report finding→diff→test→exact commit→remaining risk.
-```
+- Không dùng thuật ngữ **independent G7 review** cho việc tự review code của nhóm thực hiện; cần người khác có năng lực và chứng cứ riêng.
 
 ## Tài liệu tham chiếu đã đối chiếu
 
@@ -234,4 +218,4 @@ Report finding→diff→test→exact commit→remaining risk.
 - OWASP KDF: https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
 - SQLite WAL/consistency context: https://www.sqlite.org/wal.html
 
-**Phạm vi đánh giá:** quyết định thiết kế khả thi, không phải kết quả fix hoặc security certification. Với các mục đánh dấu DESIGN/RESEARCH GATE, nhiệm vụ Codex đầu tiên là tạo bằng chứng/ADR chứ không triển khai writer. Tuyệt đối không hứa 'an toàn tuyệt đối'.
+**Phạm vi đánh giá:** quyết định thiết kế khả thi, không phải kết quả fix hoặc security certification. Với các mục đánh dấu DESIGN/RESEARCH GATE, bước đầu tiên là tạo bằng chứng/ADR chứ không triển khai writer. Tuyệt đối không hứa 'an toàn tuyệt đối'.
