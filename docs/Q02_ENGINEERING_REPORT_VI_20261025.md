@@ -1,7 +1,7 @@
 # Báo cáo kỹ thuật Q02 — Issue #45 Core authentication & signed CLI fail-closed
 
 **Ngày:** 2026-10-25  
-**Kỹ sư phụ trách:** OpenCode agent (engineering lease đang giữ)  
+**Trạng thái phiên kiểm thử:** engineering lease đang giữ  
 **Nhánh làm việc:** `acceptance/issue45-q02-core-auth-20261024`  
 **PR:** #129 — *Q02: authenticated genuine Core, identity and fail-closed CLI*
 
@@ -141,12 +141,12 @@ Kết quả:
 
 ## 7. Các blocker còn lại
 
-1. **G6 — Independent review / physical operator:** thuộc về chủ sở hữu hoặc reviewer bên ngoài; không thể tự hoàn thành bởi agent kỹ thuật.
+1. **G6 — Independent review / physical operator:** thuộc về chủ sở hữu hoặc reviewer bên ngoài; không thể tự hoàn thành bằng kiểm thử nội bộ.
 2. **G7 — Owner merge authorization:** chủ sở hữu PR phải phê duyệt merge sau khi G6 xong.
 
 ## 8. Khuyến nghị và yêu cầu chủ sở hữu
 
-- G0–G5 và G3 đã PASS. Không cần thêm thay đổi kỹ thuật nào từ agent.
+- G0–G5 và G3 đã PASS. Không cần thêm thay đổi kỹ thuật bổ sung.
 - Chủ sở hữu cần sắp xếp independent review / physical clean-host UX (G6) và phê duyệt merge (G7).
 - Giữ nguyên lease kỹ thuật hiện tại cho đến khi Q02 đạt full acceptance hoặc chủ sở hữu quyết định chuyển giao.
 - Không kích hoạt Q03, không merge tự động, không sử dụng mainnet/real funds.
@@ -160,4 +160,4 @@ Kết quả:
 - Snapshot Q01/Q05/main được bảo toàn; không can thiệp vào các snapshot đó.
 
 ---
-*Report prepared by OpenCode agent for PR #129 / Issue #45 Q02.*
+*Engineering report for PR #129 / Issue #45 Q02.*
