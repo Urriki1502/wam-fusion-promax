@@ -1,7 +1,8 @@
-"""Frozen cold-crash proof after an owned Core flush. No managed-GUI spend.
+"""Native/frozen cold-crash proof after an owned Core flush. No GUI spend.
 
-Consent, a new disposable root, and frozen=True are required for a PASS
-receipt. This scenario constructs CoreSupervisor and the checkpoint engine
+Consent and a new disposable root are required for a PASS receipt. Native
+source is attested; frozen execution additionally uses package provenance.
+This scenario constructs CoreSupervisor and the checkpoint engine
 only. It does not construct a product wallet backend and it does not spend.
 """
 import argparse
@@ -123,6 +124,7 @@ def main(argv=None, *, core=None, source=None, frozen=False):
             raise ValueError('Q05_CRASH_RECOVERY_IDENTITY_CHANGED')
         record['observations'].append({
             'same_owner_core_crash_recovered': True,
+            'height': restored['height'], 'tip': restored['tip'],
             'history_sha256': restored['history_sha256'],
             'reservation_sha256': restored['reservation_sha256'],
             'automatic_wallet_replay': False,

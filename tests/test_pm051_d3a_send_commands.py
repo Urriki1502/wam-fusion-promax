@@ -5,13 +5,15 @@ not cryptographic or durable-state proof (see the separate session probes).
 """
 import threading
 import time
+import sys
 import unittest
 from unittest.mock import patch
 
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication, QDialog, QPushButton
 from wam_regtest.bip39_fusion_gui import Bip39FusionWindow
+from wam_regtest.bip39_locale import t
 from wam_regtest.fusion_pages import PaymentApproval, describe_broadcast_result
 from wam_regtest.wallet_executor import WalletExecutor, immutable
 from wam_regtest.wallet_session import PaymentReview
@@ -51,6 +53,13 @@ class SendCommands(unittest.TestCase):
                     return TXID
                 if action == 'snapshot':
                     return case.snapshot()
+                if action == 'inspect_confirmed':
+                    case.assertEqual(len(args), 1)
+                    return dict(status='Q06_TX_NOT_IN_CONFIRMED_HISTORY',
+                        txid=args[0], height=1, tx_height=None, tx_block_hash=None,
+                        in_mempool=args[0] == TXID, complete_anchored_history=True,
+                        write_attempted=False, signer_allowed=False,
+                        broadcast_allowed=False, mainnet_allowed=False)
                 return None
 
         self.owner = WalletExecutor(Backend)
@@ -199,6 +208,39 @@ class SendCommands(unittest.TestCase):
         self.assertEqual(self.window._pending_confirm_txid, TXID)
         self.assertNotIn('resume_intent', self.actions())
         self.assertNotIn('cancel', self.actions())
+
+    def test_submitted_tx_inspection_has_no_unhandled_qt_delivery_error(self):
+        errors = []
+        # Qt invokes sys.excepthook for a failing Python slot instead of
+        # propagating that exception to unittest. Observe the real delivery.
+        with patch.object(sys, 'excepthook',
+                          lambda kind, value, trace: errors.append(kind.__name__)):
+            self.signed()
+            self.window.broadcast.click()
+            self.dialog().approve.click()
+            self.wait_for(lambda: 'inspect_confirmed' in self.actions()
+                          and self.window._worker is None)
+            self.app.processEvents()
+            self.assertEqual(errors, [])
+        self.assertEqual(self.window.status.text(), t('owner.txid_pending'))
+        self.assertEqual(self.window._pending_confirm_txid, TXID)
+        self.assertEqual(self.actions().count('sign'), 1)
+        self.assertEqual(self.actions().count('broadcast'), 1)
+        self.assertEqual(self.actions().count('inspect_confirmed'), 1)
+        self.assertNotIn('resume_intent', self.actions())
+        self.assertNotIn('cancel', self.actions())
+
+    def test_qt_exception_hook_observes_a_known_queued_slot_failure(self):
+        errors = []
+        def fail_slot():
+            raise RuntimeError('public-Qt-fixture-control')
+        button = QPushButton(self.window)
+        button.clicked.connect(fail_slot, Qt.ConnectionType.QueuedConnection)
+        with patch.object(sys, 'excepthook',
+                          lambda kind, value, trace: errors.append(kind.__name__)):
+            button.click()
+            self.wait_for(lambda: bool(errors))
+            self.assertEqual(errors, ['RuntimeError'])
 
     def test_rapid_sign_clicks_dispatch_one_sign_and_no_broadcast(self):
         dialog = self.prepare()

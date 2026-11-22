@@ -56,6 +56,7 @@ def main():
                [*divergence,'--transition-cut',state]) for state in ('signed','uncertain')]
     cases += [('negative-'+mode,'probe_q05_wallet_checkpoint.py',['--negative',mode]) for mode in
               NEGATIVE_MODES]
+    cases.append(('cold-crash','probe_q05_cold_crash.py',[]))
     if sys.platform=='darwin':cases.append(('authenticated-control','probe_q05_macos_lifecycle.py',[]))
     parent=Path(tempfile.mkdtemp(prefix='wam-q05-native-matrix-')).resolve(strict=True)
     safe=True
