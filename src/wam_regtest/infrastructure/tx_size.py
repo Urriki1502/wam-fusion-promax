@@ -6,7 +6,7 @@ SIGHASH_ALL whenever any output carries silent-payment data (0x09), else
 SIGHASH_DEFAULT. A BIP340 signature is 64 bytes with SIGHASH_DEFAULT and 65
 with any explicit sighash byte (WSP appends 0x01 for SIGHASH_ALL). Every WSP
 payment is a silent payment, so in practice each input carries 65 bytes
-(Codex PEER-098: the earlier 64-byte assumption under-quoted by up to one vB
+(PEER-098: the earlier 64-byte assumption under-quoted by up to one vB
 per four inputs). Every input is a P2TR key-path spend: witness =
 [signature] only.
     weight = 3 * len(serialize(no witness)) + len(serialize(with witness))
