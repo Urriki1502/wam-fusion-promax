@@ -53,47 +53,47 @@
 
 **Reference:** https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
 
-## M-01 — Khôi phục máy sạch, mất anchor, mất journal (độ khó CAO NHẤT)
+## M-01 — Clean-device recovery, missing anchors and missing journals (highest difficulty)
 
-**FACT:** `bip39_recovery_proof.py` chủ ý trả `same_chain_only=true`, `clean_device_recovery=false`, `signed_reservations_restored=false`, `signer_allowed=false`, `broadcast_allowed=false`. `wallet_recovery.py` bảo tồn native anchor floor và từ chối divergent future; `Core migratewallet` không chuyển Core identity của Fusion. [Recovery proof](https://github.com/Urriki1502/wam-privacy-wallet-regtest/blob/b187cde17b12ae5f7c11f0611d5f4b1661bfc90b/src/wam_regtest/bip39_recovery_proof.py#L80-L97).
+**FACT:** `bip39_recovery_proof.py` deliberately reports `same_chain_only=true`, `clean_device_recovery=false`, `signed_reservations_restored=false`, `signer_allowed=false`, and `broadcast_allowed=false`. `wallet_recovery.py` preserves the native anchor floor and rejects divergent future state; `Core migratewallet` does not migrate Fusion's Core identity. [Recovery proof](https://github.com/Urriki1502/wam-privacy-wallet-regtest/blob/b187cde17b12ae5f7c11f0611d5f4b1661bfc90b/src/wam_regtest/bip39_recovery_proof.py#L80-L97).
 
-**Tách 3 loại quyền:** (R1) **key identity** từ 12 từ; (R2) **chain-visible wallet state** từ scan đúng chain, đúng genesis, đầy đủ history/UTXO; (R3) **off-chain irreversible state** gồm giao dịch đã ký/uncertain, reservation, Core/native owner provenance. R1+R2 **không chứng minh** R3; một signed tx chưa broadcast có thể không hiện trên blockchain.
+**Three separate rights:** (R1) **key identity** from 12 words; (R2) **chain-visible wallet state** from a full scan of the correct chain/genesis and its history/UTXO; (R3) **off-chain irreversible state** including signed and uncertain transactions, reservations, and Core/native process identity and provenance. R1+R2 **do not prove** R3: a signed but unbroadcast transaction may be invisible on-chain.
 
-**DESIGN nghiên cứu (KHÔNG triển khai signer):**
-1. Chế độ `RECOVERED_READ_ONLY`: tạo **profile mới sạch** từ mnemonic test, attestation genesis/Core, rescan toàn bộ đúng chain; chỉ xem địa chỉ/balance/history; tuyệt đối không ghi lên anchor/profile cũ.
-2. Chế độ `STATE_CONTINUITY_VERIFIED`: yêu cầu backup journal được xác thực, cùng wallet identity, bản ghi signed/uncertain đầy đủ, native-authorized migration proof; create-only checkpoint và CAS vào anchor mới, crash-safe; nếu bất cứ thứ gì không khớp -> READ_ONLY/BLOCKED.
-3. Tình huống mất **toàn bộ** journal nhưng còn keys: chưa có phương án nào đảm bảo tự động khôi phục quyền ký trong mọi tình huống. Cần policy được quản trị và reviewer phê duyệt về các UTXO rủi ro, thời gian/quy trình reconciliation, cảnh báo về signed tx vô hình. Không tự chọn timeout và tự giải phóng.
+**RESEARCH DESIGN (DO NOT IMPLEMENT SIGNING):**
+1. `RECOVERED_READ_ONLY`: create a new disposable profile from a test mnemonic; attest genesis/Core, perform a full correct-chain rescan; permit address/balance/history reading only. Never overwrite old profiles or anchors.
+2. `STATE_CONTINUITY_VERIFIED`: require an authenticated journal backup, matching wallet identity, complete signed/uncertain records and native-authorized migration proof; use create-only crash-safe checkpoints and compare-and-swap into a new anchor. Any mismatch -> READ_ONLY/BLOCKED.
+3. If **all journals are lost but keys survive**, there is no demonstrated universal method to restore signing authority safely. A separate reviewed policy must address risky UTXOs, reconciliation windows/procedures and warnings about invisible signed transactions. Never select an arbitrary timeout to release them.
 
-**Test vectors bắt buộc:** mất 1 anchor; mất cả anchor+ciphertext; dùng backup cũ; backup mới; signed-before-crash; broadcast-uncertain; chain partition; same-chain restore; wrong genesis; wrong OS; wrong Core hash; concurrent owner; crash tại mỗi bước ghi mới; duplicate tx; reorg. **Không reset native anchors hay data retained owner.**
+**Mandatory vectors:** one missing anchor; both anchor+ciphertext missing; old/new backup; signed-before-crash; broadcast-uncertain; chain partition; same-chain restore; wrong genesis; wrong OS; wrong Core hash; concurrent process claimant; crash at each new-write step; duplicate transaction; reorg. **Do not reset retained native anchors or existing user data.**
 
-**Deliverable trước code:** `M01_RECOVERY_THREAT_MODEL.md`, `M01_RECOVERY_ADR.md`, state/invariant table, migration format proposal, fixture-only 2-machine scenarios, proof of refusal. **DESIGN GATE:** phải được review riêng trước khi viết any wallet writer. **Không được báo M01 Fixed bằng BIP39 rescan đơn thuần.**
+**Before implementation:** `M01_RECOVERY_THREAT_MODEL.md`, `M01_RECOVERY_ADR.md`, state/invariant table, proposed migration format, fixture-only two-computer scenarios and refusal proofs. **DESIGN GATE:** independently review these artifacts before changing any wallet writer. A simple BIP39 rescan must not be called a complete M-01 fix.
 
-## M-02 — SQLite runtime plaintext / dữ liệu privacy
+## M-02 — Plaintext runtime SQLite and privacy data
 
-**FACT:** WSP pinned `store.py` lưu coins/tweaks/contacts/labels/history/reservations SQLite chưa mã hóa, `PRAGMA journal_mode=DELETE`, `synchronous=FULL`; mật khẩu/seed không nằm rõ trong schema được rà soát. `bip39_spend_session.lock()` cố ý **giữ** runtime khi signed/uncertain/faulted để phục vụ forensic, nên unlink luôn không phải giải pháp đúng.
+**FACT:** pinned WSP `store.py` stores coins, tweaks, contacts, labels, history and reservations in unencrypted SQLite, with `PRAGMA journal_mode=DELETE` and `synchronous=FULL`. The inspected schema did not contain plaintext passwords or seeds. `bip39_spend_session.lock()` intentionally **retains** runtime data on signed/uncertain/faulted sessions for forensic recovery; unconditional deletion would be unsafe.
 
-**DESIGN chọn theo hai giai đoạn:**
-- **Lab đo trước:** tạo synthetic history/contacts/labels; lập inventory `db`, `-journal`, swap/crash dump/OS backup/snapshot (trong giới hạn quan sát được), trên macOS APFS/Windows/Linux. Đo vòng đời file khi lock sạch, lock uncertain, crash, restart. Cấm quét seed thật.
-- **Mitigation tối thiểu:** giới hạn thời gian mở, bảo vệ quyền owner, disable backup không phù hợp, giảm PII/retention, redaction logs, không đưa runtime vào artifact/evidence. Nếu mục tiêu privacy cần encryption-at-rest cả khi unlocked, viết ADR tách riêng cho SQLCipher/encrypted VFS hoặc mô hình in-memory + encrypted snapshots **với consistency proof**; không đổi sqlite engine ở B1.
+**TWO-STAGE DESIGN:**
+- **Measure first:** populate synthetic history/contacts/labels; inventory database, `-journal`, swap/crash dumps, OS backups and snapshots within observable limits on macOS APFS, Windows and Linux. Measure file lifetimes after clean lock, uncertain lock, crash and restart. Never scan real seed data.
+- **Minimal mitigation:** limit time spent unlocked, enforce private file permissions, exclude inappropriate backup targets, minimize PII/retention and redact logs; exclude runtime profiles from distributables and evidence. If privacy requires encryption at rest even while unlocked, write a separate ADR for SQLCipher/encrypted VFS or in-memory storage with encrypted snapshots **and consistency proof**. Do not change the SQLite storage engine in this phase.
 
-**Reject:** tự `unlink` runtime uncertain, `PRAGMA secure_delete` như cam kết SSD secure erase, bật WAL/SQLCipher mà chưa kiểm tra compatibility WSP/schema/rollback, đổi toàn bộ state storage chỉ để qua audit. **DoD:** report bề mặt lộ dữ liệu có thể kiểm chứng, mitigations + regression cleanup/fault retention; encryption rollout nếu có cần format migration và crash tests.
+**REJECT:** unlinking uncertain runtime state; promising secure SSD erasure via `PRAGMA secure_delete`; enabling WAL/SQLCipher without WSP/schema/rollback compatibility checks; or replacing all storage solely to pass audit. **Definition of done:** verified exposure inventory, mitigations and regression tests for normal cleanup vs. fault retention. Encryption rollout, if pursued, needs format migration and crash testing.
 
-## M-03 — Secret lifetime / RAM
+## M-03 — Secret lifetime in RAM
 
-**FACT:** `bip39_12.py` tạo immutable `seed: bytes` rồi copy sang `bytearray`; close chỉ ghi đè bytearray. GUI mnemonic/`str`/Python scalar và `_password` có copies ngoài kiểm soát. Mục tiêu “xóa tuyệt đối RAM trong Python” là không chứng minh được.
+**FACT:** `bip39_12.py` constructs an immutable `seed: bytes` before copying into a `bytearray`; close only overwrites the mutable buffer. GUI mnemonic `str` values, Python scalars and `_password` may have additional uncontrolled copies. Complete RAM zeroization cannot be demonstrated in Python.
 
-**DESIGN chọn:** audit các đoạn seed/passphrase đi qua `bip39_12.py`, `bip39_seed_vault.py`, `bip39_owner_backend.py`, `wallet_session.py`, WSP; giảm `bytes(...).decode()` không cần thiết và lifetime plaintext, xóa UI seed ngay sau xác nhận, không lưu log, không xuất core dumps trong bản release nếu có cơ chế chính thức, giảm thông tin trong error. Tách nghiên cứu signer process/native buffer (lockable RAM/avoid dump) thành milestone mới vì thêm IPC/process lại tạo trust boundary mới. Bản hiện tại không được tuyên bố chống same-UID malware/root.
+**SELECTED DESIGN:** trace seed/passphrase flow through `bip39_12.py`, `bip39_seed_vault.py`, `bip39_owner_backend.py`, `wallet_session.py` and WSP. Reduce unnecessary `bytes(...).decode()` operations and plaintext lifetime. Clear seed text from UI as soon as confirmation completes. Do not log secrets; avoid release core dumps when a supported mechanism exists; reduce sensitive data in errors. A separate signer process or native lockable-memory buffer is a later research milestone because IPC/process isolation introduces another trust boundary. The current application must not be described as resistant to same-UID malware or root access.
 
-**Reject:** tự viết hàm overwrite `str` CPython, patch crypto primitives, tuyên bố `mlock` che mọi native copies, gỡ recovery functionality để giảm RAM. **DoD:** explicit secret-flow diagram + test no secret in diagnostics/artifacts/UI post-lock + review mitigation limits. Không yêu cầu phá kho dữ liệu RAM thật.
+**REJECT:** unsupported overwriting of immutable CPython `str`, modifying cryptographic primitives, claiming `mlock` protects every native copy, or removing recovery to improve RAM metrics. **Definition of done:** explicit secret-flow diagram; tests showing no secrets in diagnostics/artifacts/UI after lock; and a documented assessment of mitigation limits. Destructive testing of real RAM or profiles is not required.
 
-## M-04 — Password/KDF chống đoán offline
+## M-04 — Password and KDF resistance to offline guessing
 
-**FACT:** WSP `keystore.py` dùng AES-GCM và scrypt `N=2^15, r=8, p=1` + random salt, AAD purpose/network, envelope `WAMSP02`; minimum 12 bytes là kiểm tra **độ dài**, không đo entropy. OWASP 2026 đề xuất các cấu hình scrypt mạnh hơn (ví dụ `2^17,r=8,p=1` hoặc tổ hợp chi phí tương đương); đề xuất guideline **không** tự chứng minh bản cũ bị crack.
+**FACT:** WSP `keystore.py` uses AES-GCM and scrypt `N=2^15, r=8, p=1` with a random salt, purpose/network AAD and envelope `WAMSP02`. The 12-byte minimum checks **length**, not entropy. OWASP 2026 recommends stronger scrypt settings (for example `2^17,r=8,p=1` or cost-equivalent combinations); this guidance does **not** prove the old format has been cracked.
 
-**DESIGN:** bắt đầu bằng (1) thử password quality policy thân thiện passphrase, danh sách password yếu/chuỗi lặp, NFKD/Unicode; (2) benchmark KDF trên Mac/Windows/Linux thấp nhất được hỗ trợ cho tạo/mở/khôi phục; (3) chọn parameter theo entropy + UX latency mục tiêu; (4) nếu tăng KDF hoặc đổi Argon2id, **tạo envelope version/purpose mới có migration giao dịch được xác thực** ở nguồn WSP được review, với dual-read có điều kiện và single-write mới. Không tự sửa checkout WSP pinned hoặc đổi MAGIC tại runtime.
+**DESIGN:** (1) investigate a usable passphrase-quality policy, common/weak/repeated passwords and NFKD/Unicode; (2) benchmark wallet creation/open/recovery KDF latency on the least powerful supported Mac/Windows/Linux targets; (3) choose parameters using password entropy, memory limits and UX latency; (4) if increasing scrypt costs or moving to Argon2id, define a **new versioned envelope and purpose** with authenticated transactional migration in reviewed WSP source, conditional dual-read and new-format single-write. Do not silently modify pinned WSP or change the runtime MAGIC value.
 
-**Tests:** old envelope read; wrong password; modified salt/nonce; downgrade; Unicode; tiny password; costly input exhaustion; crash midway migration; checksum/Core independent. **Reject:** nâng `N` bằng tìm/thay; reencrypt silently all old profiles; cho phép weak password để tương thích mainnet không giới hạn. **DoD:** measured benchmark, ADR versioned envelopes, accepted memory/cpu bounds, fallback denied safely.  
-**Tham khảo:** https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
+**TESTS:** old-envelope read; wrong password; modified salt/nonce; downgrade; Unicode; short password; costly input exhaustion; mid-migration crash; checksum/Core independence. **REJECT:** replacing `N` without migration; silently re-encrypting old profiles; permitting arbitrarily weak passwords in a mainnet design. **Definition of done:** measured benchmarks, ADR for versioned envelopes, accepted CPU/memory bounds and safe fallback denial.  
+**Reference:** https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
 
 ## M-05 — Checkpoint/journal generation limits
 
