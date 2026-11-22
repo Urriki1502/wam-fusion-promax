@@ -13,7 +13,6 @@
 | Linux Fusion Core | **developer-built unsigned** pins in `scripts/build_linux_wallet.py` |
 | Official Linux archive | GPG-listed `bd010ed6…`; **not** the Fusion Linux builder input |
 | App signatures | none produced this session; macOS historical builds are **ad-hoc**, not Developer ID/notarized |
-| AI/agent assistance | used for documentation and verification commands; **not** a human Owner/Developer/G7 signature |
 | Mainnet | denied |
 
 Independent rebuild: check out `b844dd3`, follow `docs/DEVELOPER_NATIVE_BUILD_HANDOFF.md`, compare SHA256. Bit-for-bit PyInstaller identity is **not** claimed (timestamps, ad-hoc codesign, Mach-O rebuild of collected Python).
