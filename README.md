@@ -1,6 +1,6 @@
 # WAM Privacy Wallet — Real REGTEST candidates
 
-Owner-acceptance audit and proposed UX fix: [results, defects and requalification](docs/OWNER_ACCEPTANCE_AUDIT.md). The qualified RC1 baseline remains unchanged.
+Operator acceptance audit and proposed UX fix: [results, defects and requalification](docs/OWNER_ACCEPTANCE_AUDIT.md). The qualified RC1 baseline remains unchanged.
 
 Experimental native Qt wallet using official signed WAM Core v0.1.11,
 pinned WSP-1 BIP352 and actual SQLite. Receive, Balance, History, review-gated
@@ -17,7 +17,7 @@ PRs [#6](https://github.com/Urriki1502/wam-privacy-wallet-regtest/pull/6)
 
 ## WAM Fusion REGTEST RC1 — 16 October 2026
 
-Qualified code `144d87700b87a241467172adfad3692b41e1d273` has same-source macOS ARM64, Windows x64 and experimental Linux x86_64 packages. **READY FOR OWNER REGTEST TESTING**; human acceptance remains PENDING_OPERATOR. Start with [downloads, exact native CI and checksums](docs/RELEASE_CANDIDATE_QUALIFICATION.md), [owner test guide](docs/OWNER_REGTEST_ACCEPTANCE.md) and [DEV review draft](docs/DEV_WAM_REVIEW_HANDOFF.md).
+Qualified code `144d87700b87a241467172adfad3692b41e1d273` has same-source macOS ARM64, Windows x64 and experimental Linux x86_64 packages. **READY FOR REGTEST OPERATOR TESTING**; human acceptance remains PENDING_OPERATOR. Start with [downloads, exact native CI and checksums](docs/RELEASE_CANDIDATE_QUALIFICATION.md), [operator test guide](docs/OWNER_REGTEST_ACCEPTANCE.md) and [DEV review draft](docs/DEV_WAM_REVIEW_HANDOFF.md).
 
 This stacked integration preserves the existing engineering candidates. These are **Draft engineering units**, not merged V1/Final releases.
 The older [Linux qualification checkpoint](docs/LINUX_QUALIFICATION.md) is historical; the RC1 report above supersedes its artifact list.
@@ -40,7 +40,7 @@ and independent anchor checks must never be bypassed to simulate portability.
 Use the four actual [RC1 artifact links](docs/RELEASE_CANDIDATE_QUALIFICATION.md#published-downloads-and-checksums). The macOS artifact is `WAM-Fusion-REGTEST-RC1-macos-arm64-144d87700b87a241467172adfad3692b41e1d273`.
 It contains `.dmg`, `.app.zip`, `SHA256SUMS.json` and native Qt previews.
 Check the artifact provenance and checksums, then open the app from Finder.
-The original owner-supplied black-and-gold WAM image is used for Finder/Dock
+The original original supplied black-and-gold WAM image is used for Finder/Dock
 and Qt branding; its unchanged bytes and derived ICNS are pinned in
 [assets](assets/README.md).
 
@@ -128,10 +128,10 @@ limitations, not production guarantees.
 
 ## Q01 clean-checkout build procedure
 
-Read root `AGENTS.md` and the single case ledger
+Read the acceptance case ledger
 [`tests/acceptance/issue45.json`](tests/acceptance/issue45.json) first. Q01 is the
 only active acceptance target; a successful build does not close its operator,
-independent review or owner-authorized postmerge gates.
+independent review or authorized postmerge gates.
 
 Use a new checkout, a new **external** venv path and the immutable WSP checkout.
 Windows checkouts must preserve literal Git bytes, including upstream's binary
@@ -167,7 +167,7 @@ Apple command-line build/signing/disk-image tools on macOS; native Windows NTFS
 and Credential Manager; and the existing workflow's Ubuntu 24.04 libraries,
 Xvfb/xcb for desktop, and independently administered root witness for Linux.
 Linux uses the pinned reviewed developer Core artifact, **not** an official
-signed Linux release. Never provision a privileged witness on an owner host as
+signed Linux release. Never provision a privileged witness on an existing-user host as
 part of this installer. OS runner images/system libraries are separately
 recorded prerequisites; wheel locks do not make the entire host hermetic.
 
@@ -176,7 +176,7 @@ installation. They retain pinned Core/WSP checks and real-Core wallet gates.
 `q01_core_negatives.py` tests modified disposable copies of **each** genuine
 Core binary and a missing CLI; `q01_dependency_negatives.py` uses real bare
 interpreters with missing WSP/crypto. These are SOURCE refusal evidence, not
-Core E2E substitutes. No test modifies the original pair or opens owner data.
+Core E2E substitutes. No test modifies the original pair or opens existing user data.
 Builders additionally refuse dirty/staged/hidden executable source and verify
 tracked source remains unchanged before packaging publication. A planned second
 clean build must compare actual payloads; timestamps/signatures/container bytes
