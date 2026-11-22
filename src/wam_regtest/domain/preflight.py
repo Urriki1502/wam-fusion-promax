@@ -3,7 +3,7 @@ from decimal import Decimal
 import re
 
 
-# Confirmed by FE-007 on v0.1.13 (claude-run-20261114T014527Z).
+# Confirmed by FE-007 on v0.1.13.
 # Missing required fields on acceptance fail closed.
 PREFLIGHT_REQUIRED_FIELDS = (
     'txid', 'wtxid', 'vsize', 'fees.base', 'fees.effective-feerate',
