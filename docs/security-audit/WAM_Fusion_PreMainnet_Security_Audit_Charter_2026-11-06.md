@@ -9,9 +9,9 @@
 **Network:** REGTEST only; production/mainnet remains prohibited.  
 **Governance:** `Q06.accepted=false`, G6/G7/V19 BLOCKED, PR Draft, no release/merge.
 
-## Executive decision (Vietnamese)
+## Executive decision
 
-Đề xuất mở audit độc lập cho **thực thi ví REGTEST v0.1.13** trước khi mở bất kỳ tính năng mainnet nào. Mục tiêu là bảo vệ tính đúng đắn của giao dịch, bảo mật seed/khóa riêng, chống lừa đảo Core/RPC/P2P, giữ bền vững reservations/checkpoints, khôi phục được sau lỗi, và bảo vệ toàn bộ chuỗi cung ứng ứng dụng. **Không có chứng chỉ an toàn tuyệt đối**; audit phải ghi lại giới hạn, bằng chứng và rủi ro còn lại. CI xanh không thay G7 độc lập.
+Commission an independent audit of the **REGTEST v0.1.13 wallet implementation** before enabling any mainnet functionality. The audit must assess transaction correctness; seed/private-key protection; resistance to Core/RPC/P2P spoofing; reservation and checkpoint durability; recovery from failures; and the application supply chain. **No absolute-security certification is possible.** The audit must document limits, evidence and residual risk. Green CI does not substitute for independent G7 review.
 
 ## Evidence sources read in preliminary review
 
