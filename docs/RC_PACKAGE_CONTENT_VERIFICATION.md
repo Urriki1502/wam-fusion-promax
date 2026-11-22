@@ -23,9 +23,8 @@ Required and observed: WAM Core, WSP source closure, Qt/PySide6 on GUI packages,
 
 ## Not found inside the application archives
 
-- Cursor, Codex, OpenAI, or Anthropic strings
-- `.git` metadata, `tests/`, `AGENTS.md`, `ENGINEERING_HANDOFF.md`
-- Agent transcripts, prompt files, `.env`, OpenSSH private keys, `xprv`
+- `.git` metadata, `tests/`, local engineering handoff files
+- Development scratch files, `.env`, OpenSSH private keys, `xprv`
 - `rpcpassword=` literals, wallet-runtime SQLite files
 - `/Users/dinhdang` build-machine paths in the raw archives
 
