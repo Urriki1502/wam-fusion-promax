@@ -13,6 +13,7 @@ import re
 import secrets
 import stat
 import sys
+import time
 
 from .core_supervisor import DIAGNOSTIC_CODES as _CORE_DIAGNOSTIC_CODES
 from .fullflush import flush_directory, full_flush
@@ -140,11 +141,47 @@ def _check_acl(fd):
         _no_acl(fd)
 
 
+def _win_lease_held(root):
+    """Return True iff THIS process holds exclusive_lease(root) on Windows."""
+    record = held_lease(root)
+    if (record is None or record.get('platform') != 'win32'
+            or 'handle' not in record or 'file_id' not in record or 'dir_id' not in record):
+        return False
+    import ctypes
+    from . import windows_private_storage as native
+    native.require_native()
+    with native.directory_guard(root) as dir_handle:
+        dir_info = native._metadata(dir_handle, directory=True)
+        if dir_info[:3] != record['dir_id']:
+            raise QuitNoticeError('QUIT_NOTICE_LEASE_INVALID')
+        try:
+            held_info = native._metadata(record['handle'])
+            native.verify_security(record['handle'])
+        except (OSError, ValueError):
+            raise QuitNoticeError('QUIT_NOTICE_LEASE_INVALID') from None
+        if held_info[3] != 0 or held_info[:3] != record['file_id']:
+            raise QuitNoticeError('QUIT_NOTICE_LEASE_INVALID')
+        # Probe OPEN_EXISTING with share=0: must fail with ERROR_SHARING_VIOLATION (32).
+        probe = native.create(str(root / 'supervisor.lock'), 0xc0000000, 0, None, 3, 0x200080, None)
+        if probe not in (None, native.INVALID):
+            native.close(probe)
+            return False
+        err = ctypes.get_last_error()
+        if err == 2:  # ERROR_FILE_NOT_FOUND
+            return False
+        if err != 32:  # Not ERROR_SHARING_VIOLATION -> ambiguous/denied
+            raise QuitNoticeError('QUIT_NOTICE_LEASE_INVALID')
+        after = native._metadata(record['handle'])
+        if after[3] != 0 or after[:3] != record['file_id']:
+            raise QuitNoticeError('QUIT_NOTICE_LEASE_INVALID')
+        return True
+
+
 def _lease_held(root):
     """Return True iff THIS process holds exclusive_lease(root) on the same lock file."""
     root = _root(root)
     if sys.platform == 'win32':
-        raise QuitNoticeError('QUIT_NOTICE_POSIX_REQUIRED')
+        return _win_lease_held(root)
     record = held_lease(root)
     if record is None:
         return False
@@ -324,10 +361,81 @@ def build_notice(
     return validated
 
 
+def _win_durable_publish(root, *, candidate_seq, max_seq, final_fmt, build_payload):
+    """Native Win32 create-new private stage, FlushFileBuffers, and atomic non-replacing rename."""
+    import ctypes as c
+    from ctypes import wintypes as w
+    from . import windows_private_storage as native
+    native.require_native()
+    with native.directory_guard(root):
+        seq = candidate_seq
+        while seq <= max_seq:
+            record, raw = build_payload(seq)
+            if len(raw) > MAX_CONTROL_FILE:
+                raise QuitNoticeError('QUIT_NOTICE_SIZE_DENIED')
+            stage = 'supervisor.notice.stage-' + secrets.token_hex(8)
+            final = final_fmt.format(seq)
+            handle = None
+            try:
+                with native.security_attributes() as sa:
+                    # GENERIC_READ|GENERIC_WRITE|DELETE (0xC0010000), share=0, CREATE_NEW (1),
+                    # FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OPEN_REPARSE_POINT (0x200080).
+                    handle = native.create(str(root / stage), 0xc0010000, 0, sa, 1, 0x200080, None)
+                if handle in (None, native.INVALID):
+                    handle = None
+                    raise QuitNoticeError('QUIT_NOTICE_PUBLISH_DENIED')
+                native._metadata(handle)
+                native.verify_security(handle)
+                offset = 0
+                while offset < len(raw):
+                    chunk = raw[offset:]
+                    written = w.DWORD()
+                    if not native.write(handle, chunk, len(chunk), c.byref(written), None) or not written.value:
+                        raise QuitNoticeError('QUIT_NOTICE_PUBLISH_DENIED')
+                    offset += written.value
+                if not native.flush(handle):
+                    raise QuitNoticeError('QUIT_NOTICE_PUBLISH_DENIED')
+                # Same-directory non-replacing rename via NtSetInformationFile (FileRenameInformation=10).
+                text = final.encode('utf-16-le')
+                buf = c.create_string_buffer(c.sizeof(native.RENAME) + len(text))
+                rename = native.RENAME.from_buffer(buf)
+                rename.flags = 0
+                rename.root = None
+                rename.length = len(text)
+                c.memmove(c.addressof(buf) + native.RENAME.name.offset, text, len(text))
+                io_status = native.IO_STATUS()
+                nt_status = native.rename_native(handle, c.byref(io_status), buf, len(buf), 10)
+                if nt_status == 0:
+                    native._metadata(handle)
+                    native.verify_security(handle)
+                    if not native.flush(handle):
+                        raise QuitNoticeError('QUIT_NOTICE_PUBLISH_DENIED')
+                    return record
+                if (nt_status & 0xFFFFFFFF) == 0xC0000035:  # STATUS_OBJECT_NAME_COLLISION
+                    # Target final seq already exists; remove only our unrenamed stage and advance seq.
+                    disposition = native.DISPOSITION(True)
+                    if not native.setinfo(handle, 4, c.byref(disposition), c.sizeof(disposition)):
+                        raise QuitNoticeError('QUIT_NOTICE_PUBLISH_DENIED')
+                    seq += 1
+                    continue
+                # Any ambiguous rename failure retains the stage for fail-closed reader visibility.
+                raise QuitNoticeError('QUIT_NOTICE_PUBLISH_DENIED')
+            finally:
+                if handle is not None:
+                    native.close(handle)
+        raise QuitNoticeError('QUIT_NOTICE_CAPACITY_REACHED')
+
+
 def _durable_publish(root, *, candidate_seq, max_seq, final_fmt, build_payload):
     assert_exclusive_lease(root)
     if sys.platform == 'win32':
-        raise QuitNoticeError('QUIT_NOTICE_POSIX_REQUIRED')
+        return _win_durable_publish(
+            root,
+            candidate_seq=candidate_seq,
+            max_seq=max_seq,
+            final_fmt=final_fmt,
+            build_payload=build_payload,
+        )
     with _posix_dir(root) as dfd:
         seq = candidate_seq
         while seq <= max_seq:
@@ -631,6 +739,198 @@ def _read_failure_record(dfd):
         )
 
 
+def _win_open_and_read_entry(root, name, *, allow_zero_bytes=False):
+    """Native Win32 pinned-handle metadata, ACL, and bounded read."""
+    import ctypes as c
+    from ctypes import wintypes as w
+    from . import windows_private_storage as native
+    native.require_native()
+    handle = None
+    path_str = str(root / name)
+    for attempt in range(3):
+        # GENERIC_READ|READ_CONTROL (0x80020000), FILE_SHARE_READ (1), OPEN_EXISTING (3),
+        # FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OPEN_REPARSE_POINT (0x200080).
+        handle = native.create(path_str, 0x80020000, 1, None, 3, 0x200080, None)
+        if handle not in (None, native.INVALID):
+            break
+        handle = None
+        err = c.get_last_error()
+        if err == 2:  # ERROR_FILE_NOT_FOUND
+            raise FileNotFoundError(name)
+        if err == 32 and attempt < 2:  # transient ERROR_SHARING_VIOLATION during rename close
+            time.sleep(0.01)
+            continue
+        return None, None, 'NOTICE_UNREADABLE'
+    try:
+        try:
+            before = native._metadata(handle)
+        except ValueError:
+            return None, None, 'NOTICE_NON_REGULAR_ARTIFACT'
+        try:
+            native.verify_security(handle)
+        except ValueError:
+            return None, before, 'NOTICE_ACL_DENIED'
+        size = before[3]
+        min_size = 0 if allow_zero_bytes else 1
+        if not min_size <= size <= MAX_CONTROL_FILE:
+            return None, before, 'NOTICE_SIZE_DENIED'
+        chunks = []
+        remaining = size
+        while remaining > 0:
+            chunk_size = min(remaining, MAX_CONTROL_FILE)
+            buf = c.create_string_buffer(chunk_size)
+            count = w.DWORD()
+            if not native.readfile(handle, buf, chunk_size, c.byref(count), None) or not count.value:
+                return None, before, 'NOTICE_UNREADABLE'
+            chunks.append(buf.raw[:count.value])
+            remaining -= count.value
+        extra_buf = c.create_string_buffer(1)
+        extra_count = w.DWORD()
+        if not native.readfile(handle, extra_buf, 1, c.byref(extra_count), None):
+            return None, before, 'NOTICE_UNREADABLE'
+        if extra_count.value:
+            return None, before, 'NOTICE_CHANGED'
+        try:
+            after = native._metadata(handle)
+            native.verify_security(handle)
+        except ValueError:
+            return None, before, 'NOTICE_CHANGED'
+        if before != after:
+            return None, before, 'NOTICE_CHANGED'
+        return b''.join(chunks), before, None
+    finally:
+        if handle is not None:
+            native.close(handle)
+
+
+def _win_unreadable_from_meta(name, raw, meta, reason):
+    if raw is not None:
+        return {
+            'kind': 'unreadable',
+            'name': name,
+            'raw_sha256': sha256(raw).hexdigest(),
+            'size': len(raw),
+            'reason': reason,
+        }
+    size = meta[3] if meta is not None and 0 <= meta[3] <= MAX_CONTROL_FILE else 0
+    return {
+        'kind': 'unreadable',
+        'name': name,
+        'raw_sha256': sha256(b'').hexdigest(),
+        'size': size,
+        'reason': reason,
+    }
+
+
+def _win_read_failure_record(root):
+    try:
+        raw, meta, err = _win_open_and_read_entry(root, 'supervisor.failure', allow_zero_bytes=False)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        return _win_unreadable_from_meta('supervisor.failure', None, None, 'NOTICE_FAILURE_UNREADABLE')
+    if err is not None:
+        return _win_unreadable_from_meta('supervisor.failure', raw, meta, err)
+    try:
+        obj = json.loads(raw.decode('ascii'), object_pairs_hook=_distinct, parse_constant=_deny_constant)
+        if (type(obj) is not dict or set(obj) != {'stage', 'code'}
+                or type(obj['stage']) is not str
+                or re.fullmatch(r'[a-z0-9_-]{1,32}', obj['stage']) is None
+                or type(obj['code']) is not str
+                or obj['code'] not in NOTICE_CODE_ALLOWLIST):
+            raise ValueError('NOTICE_FAILURE_INVALID')
+        return {
+            'kind': 'failure',
+            'name': 'supervisor.failure',
+            'raw_sha256': sha256(raw).hexdigest(),
+            'size': len(raw),
+            'stage': obj['stage'],
+            'code': obj['code'],
+        }
+    except (UnicodeDecodeError, ValueError, TypeError):
+        return _win_unreadable_from_meta('supervisor.failure', raw, meta, 'NOTICE_FAILURE_UNREADABLE')
+
+
+def _win_read_store(root, *, expected_profile_id=None):
+    from . import windows_private_storage as native
+    native.require_native()
+    notices = []
+    acks = []
+    unreadable = []
+    with native.directory_guard(root):
+        names = sorted(
+            p.name for p in root.iterdir()
+            if p.name.startswith('supervisor.notice')
+        )
+        for name in names:
+            if _RE_STAGE.fullmatch(name) is not None:
+                try:
+                    raw, meta, err = _win_open_and_read_entry(root, name, allow_zero_bytes=True)
+                except FileNotFoundError:
+                    continue
+                except (OSError, ValueError):
+                    raw, meta, err = None, None, 'NOTICE_STAGE_UNREADABLE'
+                reason = err if err is not None else 'NOTICE_STAGE_ORPHAN'
+                unreadable.append(_win_unreadable_from_meta(name, raw, meta, reason))
+                continue
+
+            notice_match = _RE_NOTICE.fullmatch(name)
+            ack_match = _RE_ACK.fullmatch(name)
+            if notice_match is None and ack_match is None:
+                try:
+                    raw, meta, _ = _win_open_and_read_entry(root, name, allow_zero_bytes=True)
+                except (FileNotFoundError, OSError, ValueError):
+                    raw, meta = None, None
+                unreadable.append(_win_unreadable_from_meta(name, raw, meta, 'NOTICE_UNKNOWN_NAME'))
+                continue
+
+            try:
+                raw, meta, err = _win_open_and_read_entry(root, name, allow_zero_bytes=False)
+            except FileNotFoundError:
+                continue
+            except (OSError, ValueError):
+                raw, meta, err = None, None, 'NOTICE_UNREADABLE'
+
+            if err is not None:
+                unreadable.append(_win_unreadable_from_meta(name, raw, meta, err))
+                continue
+
+            try:
+                if notice_match is not None:
+                    seq = int(notice_match.group(1))
+                    record = parse_notice_bytes(
+                        raw, expected_seq=seq, expected_profile_id=expected_profile_id
+                    )
+                    notices.append({
+                        'kind': 'notice',
+                        'name': name,
+                        'seq': record['seq'],
+                        'body_sha256': record['body_sha256'],
+                        'notice': record,
+                    })
+                else:
+                    ack_seq = int(ack_match.group(1))
+                    if not 1 <= ack_seq <= MAX_ACKS:
+                        raise QuitNoticeError('QUIT_NOTICE_ACK_SEQ_DENIED')
+                    record = validate_ack_record(_loads_strict_json(raw))
+                    acks.append({
+                        'ack_seq': ack_seq,
+                        'name': name,
+                        **record,
+                    })
+            except QuitNoticeError as exc:
+                unreadable.append(_win_unreadable_from_meta(name, raw, meta, exc.args[0]))
+
+        failure = _win_read_failure_record(root)
+
+    return {
+        'notices': tuple(notices),
+        'acks': tuple(acks),
+        'unreadable': tuple(unreadable),
+        'failure': failure,
+    }
+
+
 def read_store(root, *, expected_profile_id=None, complete_staged=None):
     """Read notices, acks, unreadable artifacts, and supervisor.failure.
 
@@ -650,6 +950,9 @@ def read_store(root, *, expected_profile_id=None, complete_staged=None):
         do_complete = _lease_held(root)
     else:
         raise QuitNoticeError('QUIT_NOTICE_ARGUMENT_DENIED')
+
+    if sys.platform == 'win32':
+        return _win_read_store(root, expected_profile_id=expected_profile_id)
 
     notices = []
     acks = []

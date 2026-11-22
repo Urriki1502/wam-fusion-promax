@@ -2,8 +2,9 @@
 import copy
 import unittest
 
+from wam_regtest.official_core_v013 import MEMBERS
 from wam_regtest.q05_checkpoint_scenario import NEGATIVE_MODES
-from wam_regtest.q05_native_matrix import require_matrix
+from wam_regtest.q05_native_matrix import BASE_CASES, PLATFORM_CORE_TRUST, require_matrix
 from wam_regtest.release import ARCHIVES, CLI_SHA256
 from wam_regtest.wsp_live import PINNED_WSP_COMMIT
 
@@ -130,6 +131,29 @@ class NativeMatrixTests(unittest.TestCase):
         crash['observations'] = []
         with self.assertRaisesRegex(ValueError, 'NATIVE_MATRIX'):
             self.check()
+
+    def test_windows_and_linux_18_case_native_sets_validate_platform_pins(self):
+        for plat in ('windows-x64', 'linux-x86_64'):
+            with self.subTest(platform=plat):
+                names = sorted(BASE_CASES)
+                matrix = dict(status='PASS', platform=plat,
+                              last_owner_shutdown_verified=True, completed=names,
+                              source_provenance=copy.deepcopy(self.proof))
+                base = dict(status='PASS', owner_shutdown_verified=True, source_sha=self.source,
+                            checkout_sha='b' * 40, source_provenance=self.proof,
+                            platform=plat, core_version='v0.1.13',
+                            core_trust=PLATFORM_CORE_TRUST[plat],
+                            core_sha256=dict(MEMBERS[plat]),
+                            wsp_source_commit=PINNED_WSP_COMMIT, frozen=False,
+                            synthetic_rpc=False, mainnet_allowed=False)
+                receipts = {name: copy.deepcopy(base) for name in names}
+                receipts['cold-crash']['observations'] = copy.deepcopy(
+                    self.receipts['cold-crash']['observations'])
+                require_matrix(matrix, receipts, self.source, plat, source_provenance=self.proof)
+                # Wrong binary keys (e.g. POSIX names on Windows) must be refused.
+                receipts['security']['core_sha256'] = dict(MEMBERS['macos-arm64'])
+                with self.assertRaisesRegex(ValueError, 'NATIVE_MATRIX'):
+                    require_matrix(matrix, receipts, self.source, plat, source_provenance=self.proof)
 
 
 if __name__ == '__main__':

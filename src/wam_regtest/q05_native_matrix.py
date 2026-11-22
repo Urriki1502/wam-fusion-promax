@@ -1,18 +1,31 @@
-"""Verify current macOS native primitives, separately from product GUI proof.
+"""Verify current native Q05 primitives, separately from product GUI proof.
 
 The legacy managed GUI was retired by PM-086. This verifier does not promote
 these receipts to current BIP39 GUI, frozen, physical or full-Q acceptance.
 """
 import re
 
+from .official_core_v013 import MEMBERS
 from .q05_checkpoint_scenario import NEGATIVE_MODES
-from .release import ARCHIVES, CLI_SHA256
 from .wsp_live import PINNED_WSP_COMMIT
 
-MACOS_CASES = frozenset(('security', 'signed-completion', 'uncertain-completion',
+BASE_CASES = frozenset(('security', 'signed-completion', 'uncertain-completion',
                         'signed-divergent-cut', 'uncertain-divergent-cut', 'cold-crash',
-                        'authenticated-control',
                         *('negative-' + mode for mode in NEGATIVE_MODES)))
+MACOS_CASES = BASE_CASES | frozenset(('authenticated-control',))
+WINDOWS_CASES = BASE_CASES
+LINUX_CASES = BASE_CASES
+
+PLATFORM_CASES = {
+    'macos-arm64': MACOS_CASES,
+    'windows-x64': WINDOWS_CASES,
+    'linux-x86_64': LINUX_CASES,
+}
+PLATFORM_CORE_TRUST = {
+    'macos-arm64': 'official-signed-v0.1.13',
+    'windows-x64': 'official-signed-v0.1.13',
+    'linux-x86_64': 'official-signed-v0.1.13-reviewed-loader',
+}
 
 
 def require_matrix(matrix, receipts, source, platform, *, source_provenance):
@@ -20,8 +33,10 @@ def require_matrix(matrix, receipts, source, platform, *, source_provenance):
         if not condition:
             raise ValueError('Q05_NATIVE_MATRIX_RECEIPT_DENIED')
 
-    require(platform == 'macos-arm64' and re.fullmatch('[0-9a-f]{40}', source))
-    expected = MACOS_CASES
+    require(platform in PLATFORM_CASES and re.fullmatch('[0-9a-f]{40}', source))
+    expected = PLATFORM_CASES[platform]
+    expected_core = MEMBERS[platform]
+    expected_trust = PLATFORM_CORE_TRUST[platform]
     completed = matrix.get('completed', [])
     proof = matrix.get('source_provenance', {})
     require(proof == source_provenance
@@ -43,9 +58,8 @@ def require_matrix(matrix, receipts, source, platform, *, source_provenance):
                 and item.get('platform') == platform and item.get('frozen') is False
                 and item.get('synthetic_rpc') is False and item.get('mainnet_allowed') is False
                 and item.get('core_version') == 'v0.1.13'
-                and item.get('core_trust') == 'official-signed-v0.1.13'
-                and item.get('core_sha256') == {'wamd': ARCHIVES[platform][1],
-                                               'wam-cli': CLI_SHA256[platform]}
+                and item.get('core_trust') == expected_trust
+                and item.get('core_sha256') == expected_core
                 and item.get('wsp_source_commit') == PINNED_WSP_COMMIT)
         # The older lifecycle producer binds source/checkout directly and
         # independently authenticates Core; other producers emit the full tree.

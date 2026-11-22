@@ -9,11 +9,24 @@ selected only for zh, zh-Hans, zh-CN, zh-SG, and zh_Hans* names; Traditional
 and other Chinese locales use English.
 This does not select the BIP39 wordlist language.
 """
-from PySide6.QtCore import QLocale
+try:
+    from PySide6.QtCore import QLocale
+except ModuleNotFoundError as _exc:
+    if _exc.name not in ('PySide6', 'PySide6.QtCore'):
+        raise
+    QLocale = None
 
 from .ui_settings import native_store_enabled, ui_settings
 
 from .presentation.strings import CATALOG, SUPPORTED_LANGUAGES, resolve_language, text
+
+
+def _is_missing_pyside(exc):
+    return isinstance(exc, ModuleNotFoundError) and exc.name in ('PySide6', 'PySide6.QtCore')
+
+
+def _system_locale_name():
+    return "" if QLocale is None else QLocale.system().name()
 
 # Tokens the Fusion language picker can select.
 _PICKER_CHOICES = ('system',) + SUPPORTED_LANGUAGES
@@ -72,7 +85,12 @@ _STRINGS = {lang: {key: entries[key] for key in _LEGACY_KEYS if key in entries}
 def stored_language(settings=None):
     """Persisted UI language token. A missing or empty value is 'system'."""
     if settings is None:
-        settings = ui_settings()
+        try:
+            settings = ui_settings()
+        except ModuleNotFoundError as exc:
+            if not native_store_enabled() and _is_missing_pyside(exc):
+                return "system"
+            raise
     value = settings.value("ui_language", "system")
     return value if type(value) is str and value else "system"
 
@@ -86,7 +104,12 @@ def effective_choice(settings=None):
     other stored value falls back to 'system'.
     """
     if settings is None:
-        settings = ui_settings()
+        try:
+            settings = ui_settings()
+        except ModuleNotFoundError as exc:
+            if not native_store_enabled() and _is_missing_pyside(exc):
+                return "en"
+            raise
     if not native_store_enabled() and not settings.contains("ui_language"):
         return "en"
     value = stored_language(settings)
@@ -102,7 +125,7 @@ def _lang():
     production store is enabled. Isolated processes use English until a
     value is stored. A stored value, including 'system', is resolved as before.
     """
-    return resolve_language(effective_choice(), QLocale.system().name())
+    return resolve_language(effective_choice(), _system_locale_name())
 
 
 class Phrase(str):

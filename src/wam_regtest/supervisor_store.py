@@ -438,7 +438,8 @@ def exclusive_lease(root):
     root=_root(root)
     if sys.platform=="win32":
         from . import windows_private_storage as native
-        with native.directory_guard(root):
+        with native.directory_guard(root) as dir_handle:
+            dir_info=native._metadata(dir_handle,directory=True)
             # OPEN_ALWAYS, no sharing: crash closes kernel handle.
             with native.security_attributes() as sa:
                 handle=native.create(str(root/"supervisor.lock"),0xc0000000,0,sa,4,0x200080,None)
@@ -447,7 +448,14 @@ def exclusive_lease(root):
             try:
                 info=native._metadata(handle);native.verify_security(handle)
                 if info[3]!=0:raise SupervisorStorageError("SUPERVISOR_STORAGE_LEASE_INVALID")
-                lease_record={"pid":os.getpid(),"platform":"win32"}
+                # In-process only: never serialized or adopted across processes.
+                lease_record={
+                    "pid":os.getpid(),
+                    "platform":"win32",
+                    "handle":handle,
+                    "file_id":info[:3],
+                    "dir_id":dir_info[:3],
+                }
                 with _LEASE_LOCK:
                     _OWNED_LEASES[root]=lease_record
                 try:yield
@@ -455,6 +463,9 @@ def exclusive_lease(root):
                     with _LEASE_LOCK:
                         if _OWNED_LEASES.get(root) is lease_record:
                             del _OWNED_LEASES[root]
+                    after=native._metadata(handle)
+                    if after[:3]!=info[:3] or after[3]!=0:
+                        raise SupervisorStorageError("SUPERVISOR_STORAGE_LEASE_CHANGED")
             finally:native.close(handle)
     else:
         import fcntl

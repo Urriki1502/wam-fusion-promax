@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 
-LINUX_MANIFEST = '4052c4a75dee853f5a27c2fb1869aee841a075ed8d6187b90a9d1c06a88cf3c2'
+LINUX_MANIFEST = 'c2b9b8f0b549de54f2ad02c0afded0d172e321eb7d2596dfd2c188ef69ec312f'
 
 
 def qualify(directory):
