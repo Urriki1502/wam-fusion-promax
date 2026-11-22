@@ -1,5 +1,7 @@
 # WAM Privacy Wallet — Real REGTEST candidates
 
+**Documentation:** [Browse the English documentation index](docs/README.md) for architecture, security, Core/networking, platform guides, test qualification, releases and historical records. This README also includes historical RC1 material; use exact-commit evidence when evaluating a later candidate.
+
 Operator acceptance audit and proposed UX fix: [results, defects and requalification](docs/OWNER_ACCEPTANCE_AUDIT.md). The qualified RC1 baseline remains unchanged.
 
 Experimental native Qt wallet using official signed WAM Core v0.1.11,
@@ -40,7 +42,7 @@ and independent anchor checks must never be bypassed to simulate portability.
 Use the four actual [RC1 artifact links](docs/RELEASE_CANDIDATE_QUALIFICATION.md#published-downloads-and-checksums). The macOS artifact is `WAM-Fusion-REGTEST-RC1-macos-arm64-144d87700b87a241467172adfad3692b41e1d273`.
 It contains `.dmg`, `.app.zip`, `SHA256SUMS.json` and native Qt previews.
 Check the artifact provenance and checksums, then open the app from Finder.
-The original original supplied black-and-gold WAM image is used for Finder/Dock
+The supplied black-and-gold WAM image is used for Finder/Dock
 and Qt branding; its unchanged bytes and derived ICNS are pinned in
 [assets](assets/README.md).
 
