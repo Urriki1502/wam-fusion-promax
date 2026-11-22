@@ -4,8 +4,107 @@ from pathlib import Path
 import tempfile
 import unittest
 import os
+import subprocess
+from unittest.mock import patch
 
 from wam_regtest.probe_source import verify_python_tree,ProbeSourceError,local_audit_documents
+
+
+class CiProbeSourceContracts(unittest.TestCase):
+    """Use real Git objects, including a two-parent PR checkout."""
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        self.git('init', '-q')
+        self.git('config', 'user.name', 'Source contract fixture')
+        self.git('config', 'user.email', 'source-contract@example.invalid')
+        self.file = self.root / 'src/wam_regtest/__init__.py'
+        self.file.parent.mkdir(parents=True)
+        self.file.write_text('value = 1\n')
+        self.commit('base')
+        base = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-qb', 'candidate')
+        self.file.write_text('value = 2\n')
+        self.candidate = self.commit('candidate')
+        self.git('checkout', '-qb', 'base-docs', base)
+        (self.root / 'README.md').write_text('Non-runtime base update\n')
+        self.commit('docs')
+        self.git('checkout', '-q', 'candidate')
+        self.git('merge', '-q', '--no-ff', 'base-docs', '-m', 'PR merge fixture')
+        self.head = self.git('rev-parse', 'HEAD')
+        self.env = {'GITHUB_ACTIONS': 'true',
+                    'GITHUB_REPOSITORY': 'Urriki1502/wam-fusion-promax',
+                    'GITHUB_SHA': self.head, 'WAM_SOURCE_HEAD': self.candidate}
+
+    def git(self, *args):
+        return subprocess.check_output(['git', *args], cwd=self.root,
+                                       stderr=subprocess.PIPE, text=True).strip()
+
+    def commit(self, message):
+        self.git('add', '.')
+        self.git('commit', '-qm', message)
+        return self.git('rev-parse', 'HEAD')
+
+    def verify(self):
+        import wam_regtest
+        from wam_regtest.probe_source import verify_source
+        # The fixture substitutes only the imported-package location. All Git
+        # objects, file enumeration, byte hashes and status checks remain real.
+        env = dict(os.environ)
+        for key in ('GITHUB_ACTIONS', 'GITHUB_REPOSITORY', 'GITHUB_SHA', 'WAM_SOURCE_HEAD'):
+            env.pop(key, None)
+        env.update(self.env)
+        with patch.dict(os.environ, env, clear=True), \
+                patch.object(wam_regtest, '__file__', str(self.file)):
+            return verify_source(self.root)
+
+    def test_authorized_repositories_accept_runtime_identical_pr_merge(self):
+        for repo in ('Urriki1502/wam-fusion-promax',
+                     'Urriki1502/wam-privacy-wallet-regtest'):
+            with self.subTest(repository=repo):
+                self.env['GITHUB_REPOSITORY'] = repo
+                try:
+                    proof = self.verify()
+                except ProbeSourceError as error:
+                    self.fail('Authorized exact runtime refused: ' + str(error))
+                self.assertEqual(proof['checkout_sha'], self.head)
+                self.assertEqual(proof['candidate_source_sha'], self.candidate)
+                self.assertNotEqual(self.head, self.candidate)
+                self.assertEqual(proof['literal_python_files_verified'], 1)
+
+    def test_unknown_repository_and_missing_or_mismatched_context_refuse(self):
+        self.env['GITHUB_REPOSITORY'] = 'Urriki1502/wam-privacy-wallet-regtest'
+        for key, value in (('GITHUB_REPOSITORY', 'attacker/wam-fusion-promax'),
+                           ('GITHUB_REPOSITORY', 'Urriki1502/wam-fusion-promax-extra'),
+                           ('GITHUB_REPOSITORY', 'https://github.com/Urriki1502/wam-fusion-promax'),
+                           ('GITHUB_SHA', None), ('GITHUB_SHA', self.candidate),
+                           ('WAM_SOURCE_HEAD', ''), ('WAM_SOURCE_HEAD', 'not-a-sha')):
+            with self.subTest(key=key, value=value):
+                before = dict(self.env)
+                if value is None:
+                    self.env.pop(key, None)
+                else:
+                    self.env[key] = value
+                try:
+                    with self.assertRaisesRegex(ProbeSourceError, 'CI_SOURCE_CONTEXT_DENIED'):
+                        self.verify()
+                finally:
+                    self.env = before
+
+    def test_runtime_merge_drift_dirty_and_untracked_python_refuse(self):
+        self.env['GITHUB_REPOSITORY'] = 'Urriki1502/wam-privacy-wallet-regtest'
+        self.file.write_text('value = 3\n')
+        with self.assertRaisesRegex(ProbeSourceError, 'CLEAN_SOURCE_REQUIRED'):
+            self.verify()
+        self.head = self.commit('runtime drift in checkout')
+        self.env['GITHUB_SHA'] = self.head
+        with self.assertRaisesRegex(ProbeSourceError, 'CANDIDATE_CHECKOUT_PYTHON_DIFFERS'):
+            self.verify()
+        self.env['WAM_SOURCE_HEAD'] = self.head
+        (self.file.parent / 'shadow.py').write_text('value = 4\n')
+        with self.assertRaisesRegex(ProbeSourceError, 'UNTRACKED_PYTHON_INPUT_DENIED'):
+            self.verify()
 
 
 class NativeProbeSourceContracts(unittest.TestCase):

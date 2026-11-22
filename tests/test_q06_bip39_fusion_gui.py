@@ -120,7 +120,6 @@ class ApprovalWorkerOrdering(unittest.TestCase):
 
     def test_gui_wait_deadline_retains_original_future_without_resubmission(self):
         from concurrent.futures import Future
-        from PySide6.QtCore import QTimer
         from PySide6.QtWidgets import QApplication
         from PySide6.QtTest import QTest
         from wam_regtest.managed_gui import ControlWorker
@@ -135,19 +134,62 @@ class ApprovalWorkerOrdering(unittest.TestCase):
         ready, denied, pending = [], [], []
         worker.ready.connect(lambda action, result: ready.append(result))
         worker.denied.connect(denied.append)
-        worker.pending.connect(pending.append)
-        QTimer.singleShot(80, lambda: future.set_result('original-result'))
+        def finish_after_timeout(code):
+            pending.append(code)
+            if not future.done():
+                future.set_result('original-result')
+        worker.pending.connect(finish_after_timeout)
         worker.start()
-        for _ in range(100):
-            app.processEvents()
-            if ready:
-                break
-            QTest.qWait(10)
-        self.assertTrue(worker.wait(1000))
+        try:
+            for _ in range(100):
+                app.processEvents()
+                if ready:
+                    break
+                QTest.qWait(10)
+            self.assertTrue(worker.wait(1000))
+        finally:
+            # A missing pending notification must fail within the existing
+            # bound, while still releasing this test-only worker for cleanup.
+            if not future.done():
+                future.set_result('cleanup-only-result')
+            self.assertTrue(worker.wait(1000))
         self.assertEqual(calls, ['snapshot'])
         self.assertEqual(ready, ['original-result'])
         self.assertEqual(denied, [])
         self.assertEqual(pending, ['WALLET_EXECUTOR_OPERATION_STILL_PENDING'])
+
+    def test_precompleted_original_future_does_not_report_a_wait_timeout(self):
+        from concurrent.futures import Future
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtTest import QTest
+        from wam_regtest.managed_gui import ControlWorker
+        app = QApplication.instance() or QApplication([])
+        future = Future()
+        future.set_result('already-complete')
+        calls = []
+        class Executor:
+            def submit(self, action, *args, **kwargs):
+                calls.append(action)
+                return future
+        worker = ControlWorker(Executor(), 'snapshot', kwargs={'timeout':0.01})
+        ready, denied, pending = [], [], []
+        worker.ready.connect(lambda action, result: ready.append(result))
+        worker.denied.connect(denied.append)
+        worker.pending.connect(pending.append)
+        worker.start()
+        try:
+            for _ in range(100):
+                app.processEvents()
+                if ready:
+                    break
+                QTest.qWait(10)
+            self.assertTrue(worker.wait(1000))
+        finally:
+            self.assertTrue(worker.wait(1000))
+        self.assertEqual(calls, ['snapshot'])
+        self.assertEqual(ready, ['already-complete'])
+        self.assertEqual(denied, [])
+        self.assertEqual(pending, [])
 
     def test_delayed_modal_approval_signs_once_after_prepare_worker_finishes(self):
         from PySide6.QtCore import QTimer
