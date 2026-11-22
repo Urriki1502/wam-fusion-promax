@@ -372,7 +372,7 @@ def assert_tma(response, vsize, fee, txid, wtxid):
         if type(rate_value) is float:
             rate_value = _tma_float_to_decimal(rate_value, require_whole_atoms=False)
         rate = exact_atoms(rate_value)
-        # Confirmed by FE-007 on v0.1.13 (claude-run-20261114T014527Z).
+        # Confirmed by FE-007 on v0.1.13.
         rate_holds = vsize > 0 and rate == (fee * 1000) // vsize
     except (ValueError, OverflowError):
         rate_holds = False
