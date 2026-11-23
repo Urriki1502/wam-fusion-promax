@@ -13,8 +13,7 @@ import sys
 import tempfile
 import zipfile
 from .custody import create_directory
-
-APPROVED_LINUX_MANIFEST='4052c4a75dee853f5a27c2fb1869aee841a075ed8d6187b90a9d1c06a88cf3c2'
+from .linux_official_core import APPROVED_MANIFESTS, MANIFEST_SHA256 as APPROVED_LINUX_MANIFEST
 class OwnedLifecycleError(ValueError):pass
 
 class PlatformAdapter:
@@ -107,7 +106,7 @@ class LinuxX64Adapter(PlatformAdapter):
 
     def prepare_trust(self,core_dir,manifest=None,witness=None,*,test_witness=False):
         pin=manifest or APPROVED_LINUX_MANIFEST
-        if pin!=APPROVED_LINUX_MANIFEST:
+        if pin not in APPROVED_MANIFESTS:
             raise OwnedLifecycleError('LINUX_APPROVED_MANIFEST_DENIED')
         on_disk=None
         for path in (core_dir/'LINUX_OFFICIAL_CORE_MANIFEST.json',
@@ -119,7 +118,7 @@ class LinuxX64Adapter(PlatformAdapter):
                 else:
                     on_disk=path.read_text().strip()
                 break
-        if on_disk is not None and on_disk!=APPROVED_LINUX_MANIFEST:
+        if on_disk is not None and on_disk!=pin:
             raise OwnedLifecycleError('LINUX_QUALIFIED_ARTIFACT_MANIFEST_DENIED')
         endpoint=witness
         if endpoint is None:
@@ -134,7 +133,7 @@ class LinuxX64Adapter(PlatformAdapter):
             self._witness=NativeRootWitness
             endpoint=NativeRootWitness.root/'anchor.sock'
         from wam_regtest.linux_runtime import configure
-        configure(core_dir,APPROVED_LINUX_MANIFEST,endpoint,authorized=True)
+        configure(core_dir,pin,endpoint,authorized=True)
         return endpoint
 
     def make_anchor(self,root):

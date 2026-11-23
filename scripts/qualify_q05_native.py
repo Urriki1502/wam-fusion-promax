@@ -56,6 +56,7 @@ def main():
                [*divergence,'--transition-cut',state]) for state in ('signed','uncertain')]
     cases += [('negative-'+mode,'probe_q05_wallet_checkpoint.py',['--negative',mode]) for mode in
               NEGATIVE_MODES]
+    cases.append(('cold-crash','probe_q05_cold_crash.py',[]))
     if sys.platform=='darwin':cases.append(('authenticated-control','probe_q05_macos_lifecycle.py',[]))
     parent=Path(tempfile.mkdtemp(prefix='wam-q05-native-matrix-')).resolve(strict=True)
     safe=True
@@ -67,9 +68,9 @@ def main():
                      '--root',str(root),'--receipt',str(receipt),'--confirm-disposable-regtest',*options]
             if script!='probe_q05_macos_lifecycle.py':command+=['--wsp-source',str(a.wsp_source)]
             if witness is not None:
+                from wam_regtest.linux_official_core import MANIFEST_SHA256
                 command+=['--linux-root-witness',str(witness),'--linux-developer-manifest',
-                    a.linux_developer_manifest or
-                    '4052c4a75dee853f5a27c2fb1869aee841a075ed8d6187b90a9d1c06a88cf3c2']
+                    a.linux_developer_manifest or MANIFEST_SHA256]
                 if a.test_root_witness:
                     command+=['--qualification-test-witness']
             record['commands'].append(command)

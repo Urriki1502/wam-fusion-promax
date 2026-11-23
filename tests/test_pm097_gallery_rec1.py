@@ -119,7 +119,7 @@ class GalleryRec1ScenesTest(unittest.TestCase):
 
     def test_render_gallery_en_and_vi_includes_rec1_scenes(self):
         from wam_regtest.qualification.ui_gallery import render_gallery
-        from tests.test_pm024_ui_gallery import SCENES_PER_WINDOW
+        from test_pm024_ui_gallery import SCENES_PER_WINDOW
 
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / 'gallery'

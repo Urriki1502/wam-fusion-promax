@@ -54,8 +54,8 @@ def main():
             from test_linux_anchor_witness import NativeRootWitness
             NativeRootWitness.setUpClass()
             witness=NativeRootWitness
-            args+=["--linux-developer-manifest",
-                   "4052c4a75dee853f5a27c2fb1869aee841a075ed8d6187b90a9d1c06a88cf3c2",
+            from wam_regtest.linux_official_core import MANIFEST_SHA256 as _LINUX_MANIFEST
+            args+=["--linux-developer-manifest",_LINUX_MANIFEST,
                    "--linux-root-witness",str(witness.root/"anchor.sock")]
         # Capture only fixed public phase names. A frozen windowed Windows
         # executable has no stdout; receipt is always the proof authority.

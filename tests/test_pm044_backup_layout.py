@@ -5,6 +5,7 @@ import sys
 import tempfile
 import textwrap
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -103,6 +104,11 @@ class BackupLayout(unittest.TestCase):
         env = dict(os.environ)
         env.pop('QT_REDUCE_MOTION', None)
         env.pop('GITHUB_ACTIONS', None)
+        # unittest discovery adds this directory only in the parent process.
+        # Bootstrap the same sibling fixtures in the fresh interpreter without
+        # relying on the caller's PYTHONPATH or a checkout-root package import.
+        code = ('import sys; sys.path.insert(0, '
+                + repr(str(Path(__file__).resolve().parent)) + ')\n' + code)
         result = subprocess.run([sys.executable, '-X', 'faulthandler', '-c', code],
                                 env=env, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

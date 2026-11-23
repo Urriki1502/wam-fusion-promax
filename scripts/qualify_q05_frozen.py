@@ -78,8 +78,9 @@ def main():
             os.environ['WAM_ROOT_WITNESS_NATIVE_TESTS']='1'
             from test_linux_anchor_witness import NativeRootWitness
             NativeRootWitness.setUpClass();witness=NativeRootWitness
+            from wam_regtest.linux_official_core import MANIFEST_SHA256 as _LINUX_MANIFEST
             if args is not None:
-                args+=['--linux-developer-manifest','4052c4a75dee853f5a27c2fb1869aee841a075ed8d6187b90a9d1c06a88cf3c2',
+                args+=['--linux-developer-manifest',_LINUX_MANIFEST,
                     '--linux-root-witness',str(witness.root/'anchor.sock'),'--qualification-test-witness']
         base=None
         if a.headless:
@@ -113,8 +114,8 @@ def main():
             command=[str(binary),'--ci-q05-managed-wallet','--scenario',scenario,
                 '--root',str(target),'--receipt',str(result),'--confirm-disposable-regtest',*options]
             if witness is not None:
-                command+=['--linux-developer-manifest',
-                    '4052c4a75dee853f5a27c2fb1869aee841a075ed8d6187b90a9d1c06a88cf3c2',
+                from wam_regtest.linux_official_core import MANIFEST_SHA256 as _LINUX_MANIFEST
+                command+=['--linux-developer-manifest',_LINUX_MANIFEST,
                     '--linux-root-witness',str(witness.root/'anchor.sock'),'--qualification-test-witness']
             commands.append(command)
             safe=False

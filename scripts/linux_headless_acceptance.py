@@ -32,8 +32,9 @@ try:
     if args.qt:environment['QT_QPA_PLATFORM']='xcb'
     context=tempfile.TemporaryDirectory(prefix='wam-q01-linux-frozen-cwd-') if args.executable else nullcontext(None)
     with context as clean:
+        from wam_regtest.linux_official_core import MANIFEST_SHA256
         result=subprocess.run([*command,
-            '--manifest-sha256','4052c4a75dee853f5a27c2fb1869aee841a075ed8d6187b90a9d1c06a88cf3c2',
+            '--manifest-sha256',MANIFEST_SHA256,
             '--anchor-socket',str(NativeRootWitness.root/'anchor.sock'),
             '--confirm-experimental-developer-regtest','--confirm-qt-e2e' if args.qt else '--confirm-headless-e2e',
             '--report',str(report)],env=environment,cwd=clean,stdin=subprocess.DEVNULL,timeout=600)
@@ -62,8 +63,9 @@ try:
         # process-global policy or privileged installer is available there.
         q04_report=report.parent/'q04-evidence.json'
         with tempfile.TemporaryDirectory(prefix='wam-q04-linux-frozen-cwd-') as clean:
+            from wam_regtest.linux_official_core import MANIFEST_SHA256
             subprocess.run([str(args.executable.absolute()), 'q04-external-miner',
-                '--manifest-sha256','4052c4a75dee853f5a27c2fb1869aee841a075ed8d6187b90a9d1c06a88cf3c2',
+                '--manifest-sha256',MANIFEST_SHA256,
                 '--anchor-socket',str(NativeRootWitness.root/'anchor.sock'),
                 '--confirm-experimental-developer-regtest','--report',str(q04_report)],
                 env=environment,cwd=clean,stdin=subprocess.DEVNULL,timeout=600,check=True)

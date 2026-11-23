@@ -81,3 +81,31 @@ class PackagedManagedContracts(unittest.TestCase):
              patch.object(sys,'argv',['wallet','--ci-q05-managed-wallet','--root','/explicit']):
             self.assertEqual(main(),0)
             probe.assert_called_once_with(self.root/'core',self.root/'wsp',['--root','/explicit'])
+
+    def test_headless_error_text_and_onboarding_do_not_require_pyside6(self):
+        import subprocess
+        probe = (
+            "import sys, tempfile\n"
+            "from pathlib import Path\n"
+            "class BlockPySide:\n"
+            "    def find_spec(self, fullname, path, target=None):\n"
+            "        if fullname == 'PySide6' or fullname.startswith('PySide6.'):\n"
+            "            raise ModuleNotFoundError(\"No module named 'PySide6'\", name=fullname)\n"
+            "        return None\n"
+            "sys.meta_path.insert(0, BlockPySide())\n"
+            "from wam_regtest.gui_errors import error_text\n"
+            "from wam_regtest.managed_onboarding import selected_profile\n"
+            "msg = error_text('WALLET_OPERATION_DENIED_STATE_RETAINED')\n"
+            "assert isinstance(msg, str) and len(msg) > 0\n"
+            "with tempfile.TemporaryDirectory() as d:\n"
+            "    p = selected_profile(Path(d), True)\n"
+            "    assert p.name.startswith('wam-fusion-core-')\n"
+            "assert not any(k == 'PySide6' or k.startswith('PySide6.') for k in sys.modules)\n"
+            "print('HEADLESS_NO_PYSIDE6_PASS')\n"
+        )
+        res = subprocess.run(
+            [sys.executable, '-c', probe],
+            cwd=ROOT, capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(res.returncode, 0, res.stderr + res.stdout)
+        self.assertIn('HEADLESS_NO_PYSIDE6_PASS', res.stdout)

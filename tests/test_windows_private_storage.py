@@ -90,6 +90,68 @@ with s.directory_guard(root),s.security_attributes() as sa:
             if p.poll() is None:p.kill()
             p.wait(timeout=5)
 
+    def test_plain_mkdir_root_is_refused_by_exclusive_lease(self):
+        from wam_regtest.supervisor_store import exclusive_lease
+        bare = self.base / 'wam-fusion-core-abcdef0123456789'
+        bare.mkdir()
+        with self.assertRaises(store.WindowsCustodyError):
+            with exclusive_lease(bare):
+                pass
+
+    def test_native_win32_quit_notice_lease_publish_read_ack_and_orphan(self):
+        from wam_regtest.quit_notice import (
+            QuitNoticeError,
+            acknowledge_unresolved,
+            publish_notice,
+            read_store,
+            unacknowledged,
+        )
+        from wam_regtest.supervisor_store import exclusive_lease
+        root = self.base / 'wam-fusion-core-0123456789abcdef'
+        store.create_private_directory(root)
+        profile_id = 'a' * 32
+        # Missing lease must refuse publish.
+        with self.assertRaisesRegex(QuitNoticeError, 'QUIT_NOTICE_LEASE_REQUIRED'):
+            publish_notice(
+                root, profile_id=profile_id, session_kind='Q05',
+                wallet_outcome='RUNTIME_PRESERVED', core_stop='CLEAN',
+                codes=('MANAGED_LIVE_OWNER_CLOSE_DENIED',), journal_seq=1,
+            )
+        # Empty store reads cleanly with or without lease.
+        self.assertEqual(unacknowledged(root, expected_profile_id=profile_id), ())
+        with exclusive_lease(root):
+            pub = publish_notice(
+                root, profile_id=profile_id, session_kind='Q05',
+                wallet_outcome='RUNTIME_PRESERVED', core_stop='UNCERTAIN',
+                codes=('MANAGED_LIVE_OWNER_CLOSE_DENIED',), journal_seq=2,
+            )
+            self.assertEqual(pub['seq'], 1)
+            unresolved = unacknowledged(root, expected_profile_id=profile_id)
+            self.assertEqual(len(unresolved), 1)
+            self.assertEqual(unresolved[0]['kind'], 'notice')
+            self.assertEqual(unresolved[0]['body_sha256'], pub['body_sha256'])
+            # Wrong profile surfaces as unreadable, never silently ignored.
+            wrong = read_store(root, expected_profile_id='b' * 32)
+            self.assertEqual(len(wrong['notices']), 0)
+            self.assertEqual(len(wrong['unreadable']), 1)
+            self.assertEqual(wrong['unreadable'][0]['reason'], 'QUIT_NOTICE_PROFILE_MISMATCH')
+            # Orphan stage file surfaces as unreadable NOTICE_STAGE_ORPHAN.
+            orphan = root / 'supervisor.notice.stage-0123456789abcdef'
+            with store.directory_guard(root), store.security_attributes() as sa:
+                h = store.create(str(orphan), 0xc0000000, 0, sa, 1, 0x200080, None)
+                self.assertNotIn(h, (None, store.INVALID))
+                store.close(h)
+            with_orphan = unacknowledged(root, expected_profile_id=profile_id)
+            self.assertEqual({x['kind'] for x in with_orphan}, {'notice', 'unreadable'})
+            self.assertTrue(any(x.get('reason') == 'NOTICE_STAGE_ORPHAN' for x in with_orphan))
+            # Acknowledge both notice and orphan stage.
+            acks = acknowledge_unresolved(root, expected_profile_id=profile_id)
+            self.assertEqual(len(acks), 2)
+            self.assertEqual(unacknowledged(root, expected_profile_id=profile_id), ())
+        # Persists cleanly across reopen without lease.
+        self.assertEqual(unacknowledged(root, expected_profile_id=profile_id), ())
+
+
 class WindowsCustodyHostScope(unittest.TestCase):
     def test_native_scope_not_simulated_on_other_hosts(self):
         if sys.platform!='win32':

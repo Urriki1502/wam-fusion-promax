@@ -114,9 +114,9 @@ def main(argv=None, *, core=None, source=None, frozen=False):
                        '--linux-developer-manifest',a.linux_developer_manifest]
             # Linux auto test-witness lives in this parent, pass its endpoint.
             elif sys.platform=='linux' and adapter._witness is not None:
+                from .linux_official_core import MANIFEST_SHA256
                 args+=['--linux-root-witness',str(adapter._witness.root/'anchor.sock'),
-                       '--linux-developer-manifest',a.linux_developer_manifest or
-                       '4052c4a75dee853f5a27c2fb1869aee841a075ed8d6187b90a9d1c06a88cf3c2']
+                       '--linux-developer-manifest',a.linux_developer_manifest or MANIFEST_SHA256]
             subprocess.run(args,check=True,timeout=30,stdin=subprocess.DEVNULL,
                            stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             child=json.loads(child_receipt.read_text())

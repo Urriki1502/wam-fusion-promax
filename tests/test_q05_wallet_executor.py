@@ -140,7 +140,11 @@ class ExplicitRecoveryContracts(unittest.TestCase):
         tmp = custody.private_temporary_directory('q05_exec_') if sys.platform == 'darwin' else tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = Path(tmp.name) / 'wam-fusion-core-0123456789abcdef'
-        root.mkdir(mode=0o700)
+        if sys.platform == 'win32':
+            from wam_regtest.windows_private_storage import create_private_directory
+            create_private_directory(root)
+        else:
+            root.mkdir(mode=0o700)
         b=self.backend();b.root=root;b.owner.root=root
         b.owner.profile={'profile_id':'a'*32};b.owner.journal=SimpleNamespace(events=[])
         b.owner.process.poll.return_value=None

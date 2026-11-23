@@ -13,7 +13,9 @@ import re
 import subprocess
 import stat
 
-REPOSITORY='Urriki1502/wam-privacy-wallet-regtest'
+CI_REPOSITORIES=frozenset((
+    'Urriki1502/wam-privacy-wallet-regtest',
+    'Urriki1502/wam-fusion-promax'))
 LOCAL_AUDIT_DOCUMENTS=frozenset((
     'docs/DEVELOPER_INDEPENDENT_REBUILD_GUIDE.md',
     'docs/INDEPENDENT_RC_AUDIT_56ea3618.md',
@@ -97,9 +99,9 @@ def verify_source(root):
     non_runtime={}
     if ci:
         candidate=os.environ.get('WAM_SOURCE_HEAD','')
-        if (os.environ.get('GITHUB_REPOSITORY')!=REPOSITORY
+        if (os.environ.get('GITHUB_REPOSITORY') not in CI_REPOSITORIES
                 or not re.fullmatch('[0-9a-f]{40}',candidate)
-                or os.environ.get('GITHUB_SHA',head)!=head):
+                or os.environ.get('GITHUB_SHA')!=head):
             raise ProbeSourceError('Q05_CI_SOURCE_CONTEXT_DENIED')
         status=_git(root,'status','--porcelain','--untracked-files=no')
     else:

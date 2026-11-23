@@ -1224,6 +1224,7 @@ class StatusCard(QFrame):
         super().__init__()
         self.setObjectName('FusionPanel')
         self.setMinimumWidth(0)
+        self.setMinimumHeight(64)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SHELL['card_x'], SHELL['card_y'], SHELL['card_x'], SHELL['card_y'])

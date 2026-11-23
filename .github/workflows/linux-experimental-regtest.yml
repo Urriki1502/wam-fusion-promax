@@ -123,6 +123,10 @@ jobs:
         run: python -I scripts/q01_environment.py --profile headless --environment "${{ runner.temp }}/q01-env" --receipt q01-install.json
       - name: Q01 native missing-dependency refusal (no Core execution)
         run: python scripts/q01_dependency_negatives.py
+      - name: Install native headless OS packages before loader closure attestation
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libevent-dev libsqlite3-dev binutils
       - name: Authenticate official v0.1.13 Core and reviewed loader closure
         run: |
           python - <<'PYCORE'
@@ -134,8 +138,6 @@ jobs:
           PYCORE
       - name: Native headless dependency closure and actual wallet executable
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y libevent-dev libsqlite3-dev binutils
           chmod 700 qualified-linux-core/linux-core/wamd qualified-linux-core/linux-core/wam-cli
           python scripts/q01_core_negatives.py --core-dir qualified-linux-core/linux-core --output q01-core-negatives.json
           python scripts/linux_headless_acceptance.py --core-dir qualified-linux-core/linux-core
@@ -191,6 +193,10 @@ jobs:
         run: python -I scripts/q01_environment.py --profile gui --environment "${{ runner.temp }}/q01-env" --receipt q01-install.json
       - name: Q01 native missing-dependency refusal (no Core execution)
         run: python scripts/q01_dependency_negatives.py
+      - name: Install native Qt OS packages before loader closure attestation
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libevent-dev libsqlite3-dev binutils xvfb xauth libegl1 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxcb-shape0 libdbus-1-3 fonts-noto-core
       - name: Authenticate official v0.1.13 Core and reviewed loader closure
         run: |
           python - <<'PYCORE'
@@ -202,8 +208,6 @@ jobs:
           PYCORE
       - name: Native xcb Qt over actual Core and independent root witness
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y libevent-dev libsqlite3-dev binutils xvfb xauth libegl1 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxcb-shape0 libdbus-1-3 fonts-noto-core
           chmod 700 qualified-linux-core/linux-core/wamd qualified-linux-core/linux-core/wam-cli
           python scripts/q01_core_negatives.py --core-dir qualified-linux-core/linux-core --output q01-core-negatives.json
           python - <<'PYQT'
@@ -263,6 +267,14 @@ jobs:
         run: python -I scripts/q01_environment.py --profile ${{ matrix.frontend == 'desktop' && 'gui' || 'headless' }} --environment "${{ runner.temp }}/q01-env" --receipt q01-install.json
       - name: Q01 native missing-dependency refusal (no Core execution)
         run: python scripts/q01_dependency_negatives.py
+      - name: Native dependencies and pinned source closure
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libevent-dev libsqlite3-dev binutils
+      - name: Native desktop dependency closure
+        if: matrix.frontend == 'desktop'
+        run: |
+          sudo apt-get install -y xvfb xauth libegl1 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxcb-shape0 libdbus-1-3 fonts-noto-core
       - name: Authenticate official v0.1.13 Core and reviewed loader closure
         run: |
           python - <<'PYCORE'
@@ -272,16 +284,8 @@ jobs:
           target.parent.mkdir(mode=0o700)
           stage(target)
           PYCORE
-      - name: Native dependencies and pinned source closure
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y libevent-dev libsqlite3-dev binutils
           chmod 700 qualified-linux-core/linux-core/wamd qualified-linux-core/linux-core/wam-cli
           python scripts/q01_core_negatives.py --core-dir qualified-linux-core/linux-core --output q01-core-negatives.json
-      - name: Native desktop dependency closure
-        if: matrix.frontend == 'desktop'
-        run: |
-          sudo apt-get install -y xvfb xauth libegl1 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxcb-shape0 libdbus-1-3 fonts-noto-core
       - name: Freeze and execute FINAL headless binary with real Core
         if: matrix.frontend == 'headless'
         env:
@@ -365,6 +369,10 @@ jobs:
         env:
           WAM_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: python -I scripts/q01_environment.py --profile headless --environment "${{ runner.temp }}/q01-env" --receipt q01-install.json
+      - name: Install native OS packages before loader closure attestation
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libevent-dev libsqlite3-dev binutils
       - name: Authenticate official v0.1.13 Core and reviewed loader closure
         run: |
           python - <<'PYCORE'
@@ -376,8 +384,6 @@ jobs:
           PYCORE
       - name: Q04 genuine Core miner coexistence and read-only attachment
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y libevent-dev libsqlite3-dev binutils
           chmod 700 qualified-linux-core/linux-core/wamd qualified-linux-core/linux-core/wam-cli
           python scripts/q04_miner_coexistence.py --core-dir "${GITHUB_WORKSPACE}/qualified-linux-core/linux-core" --max-duration 180
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -409,6 +415,10 @@ jobs:
         env:
           WAM_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: python -I scripts/q01_environment.py --profile headless --environment "${{ runner.temp }}/q01-env" --receipt q01-install.json
+      - name: Install native OS packages before loader closure attestation
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libevent-dev libsqlite3-dev binutils
       - name: Authenticate official v0.1.13 Core and reviewed loader closure
         run: |
           python - <<'PYCORE'
@@ -420,8 +430,6 @@ jobs:
           PYCORE
       - name: Q04 RPC contention handling on genuine Core
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y libevent-dev libsqlite3-dev binutils
           chmod 700 qualified-linux-core/linux-core/wamd qualified-linux-core/linux-core/wam-cli
           python scripts/q04_contention.py --core-dir "${GITHUB_WORKSPACE}/qualified-linux-core/linux-core" --max-duration 180
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -513,6 +521,10 @@ jobs:
           architecture: 'x64'
       - name: Q01 hash-locked GUI environment
         run: python -I scripts/q01_environment.py --profile gui --environment "${{ runner.temp }}/q05-gui-env" --receipt q05-install.json
+      - name: Install native ACL and Qt runtime before loader closure attestation
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y acl libevent-dev libsqlite3-dev binutils xvfb xauth libegl1 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxcb-shape0 libdbus-1-3 fonts-noto-core
       - name: Authenticate official v0.1.13 Core and reviewed loader closure
         run: |
           python - <<'PYCORE'
@@ -522,10 +534,6 @@ jobs:
           target.parent.mkdir(mode=0o700)
           stage(target)
           PYCORE
-      - name: Install native ACL and Qt runtime
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y acl libevent-dev libsqlite3-dev binutils xvfb xauth libegl1 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxcb-shape0 libdbus-1-3 fonts-noto-core
           chmod 700 qualified-linux-core/linux-core/wamd qualified-linux-core/linux-core/wam-cli
       - name: Real witnessed managed wallet with explicit qualification-only witness
         timeout-minutes: 18
@@ -536,27 +544,22 @@ jobs:
             --core-dir "${GITHUB_WORKSPACE}/qualified-linux-core/linux-core" \
             --wsp-source "${GITHUB_WORKSPACE}/wsp-upstream" \
             --output-dir "${RUNNER_TEMP}/q05-native-matrix" --confirm-disposable-regtest \
-            --linux-developer-manifest 4052c4a75dee853f5a27c2fb1869aee841a075ed8d6187b90a9d1c06a88cf3c2 \
+            --linux-developer-manifest c2b9b8f0b549de54f2ad02c0afded0d172e321eb7d2596dfd2c188ef69ec312f \
             --test-root-witness
-      - name: Require actual combined-source GUI receipt
+      - name: Require exact native case set and owned crash receipts (not product GUI UAT)
         shell: python
         run: |
           import json,os
           from pathlib import Path
+          from wam_regtest.q05_native_matrix import LINUX_CASES, require_matrix
+          from wam_regtest.probe_source import verify_source
           evidence=Path(os.environ['RUNNER_TEMP'])/'q05-native-matrix'
           matrix=json.loads((evidence/'matrix.json').read_text())
-          assert matrix['status']=='PASS' and matrix['last_owner_shutdown_verified'] is True
-          assert matrix['source_provenance']['candidate_source_sha']==os.environ['WAM_SOURCE_HEAD']
-          assert len(matrix['completed'])==18
-          assert {'signed-divergent-cut','uncertain-divergent-cut'}<=set(matrix['completed'])
-          r=json.loads((evidence/'gui.json').read_text())
-          assert r['status']=='PASS' and r['owner_shutdown_verified'] is True
-          assert r['source_sha']==os.environ['WAM_SOURCE_HEAD']
-          assert r['synthetic_rpc'] is False and r['frozen'] is False
-          assert r['mainnet_allowed'] is False and len(r['observations'])==7
-          assert r['observations'][-1]['same_wallet_tip_history_reservations'] is True
-          assert r['observations'][-1]['crash_scope']=='after-owned-Core-flush-without-clean-shutdown'
-          assert r['observations'][-2]['owned_Core_flush_before_cold_crash'] is True
+          receipts={name:json.loads((evidence/(name+'.json')).read_text())
+                    for name in LINUX_CASES}
+          require_matrix(matrix,receipts,os.environ['WAM_SOURCE_HEAD'],'linux-x86_64',
+                         source_provenance=verify_source(Path.cwd()))
+          print('Q05_NATIVE_PRIMITIVES_PASS; retired managed-GUI route is not product GUI coverage')
       - name: Preserve native evidence including FAIL receipts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
