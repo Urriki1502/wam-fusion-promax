@@ -189,8 +189,8 @@ post-binding drift refuse. Local targeted startup/binding/lifecycle checks:
 A first local attempt correctly refused the new flag before the binding
 allowlist was updated. Its original diagnostic parent retained the disposable
 child; the process action is blocked on original-parent recovery capability.
-The exact live-owner observation and required recovery boundary are recorded
-in the ignored ENGINEERING_HANDOFF.md. No foreign-PID adoption, signal, lock
+The exact live-owner observation and required recovery boundary were recorded
+in local session notes. No foreign-PID adoption, signal, lock
 removal or user-profile operation was performed. Further local diagnostics use
 an explicitly separate port range and NEW namespaces. This retained failure
 and the macOS CI failures prevent any engineering-handoff/completion claim.

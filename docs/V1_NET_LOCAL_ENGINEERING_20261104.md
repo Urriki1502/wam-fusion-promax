@@ -48,7 +48,7 @@ After final frozen qualification, a separate focused native test at the SAME sou
 
 V19 physical two-machine execution, Windows/Linux Shared qualification, owner physical G6, genuinely independent G7 and formal exact-main integration remain unqualified. Power-loss/fault injection across the NEW reconciliation publication is not represented by the successful normal-path real-Core run; source pending-CAS/native-cut tests are separately labelled fixtures. No claim of full hardware/power-loss or compromised-host protection is added.
 
-[Two-computer procedure](V1_NET_TWO_COMPUTER_ACCEPTANCE.md) is reproducible preparation, not evidence of two-device PASS. `ENGINEERING_HANDOFF.md` is the mutable canonical Codex↔Cursor transfer record. AGENTS.md requires reading it first and mutual exclusion through the existing lease. No automatic quota measurement or unexecuted Cursor handoff is claimed. Owner acceptance/remote handoff remain owner-controlled; no push, merge, remote CI or mainnet was performed.
+[Two-computer procedure](V1_NET_TWO_COMPUTER_ACCEPTANCE.md) is reproducible preparation, not evidence of two-device PASS. Owner acceptance/remote handoff remain owner-controlled; no push, merge, remote CI or mainnet was performed.
 
 ---
 

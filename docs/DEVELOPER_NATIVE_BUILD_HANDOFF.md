@@ -97,7 +97,7 @@ Until that host runs, Linux is **BLOCKED / NOT EXECUTED**.
 
 `scripts/build_macos_bundle.sh` at `17adf5c` produced unnotarized ad-hoc
 `.app.zip` / `.dmg` under `package-output/`. See
-`ENGINEERING_HANDOFF.md` and `docs/RELEASE_CANDIDATE_V22_MANIFEST.md`.
+`docs/RELEASE_CANDIDATE_V22_MANIFEST.md`.
 Do not rebuild Windows or Linux from those Mach-O bytes.
 
 ## Operator run (all OS, disposable profile only)

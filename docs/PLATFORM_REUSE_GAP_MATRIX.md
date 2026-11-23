@@ -1,6 +1,6 @@
 # Platform reuse / gap matrix — RC1 vs Fusion V2.2
 
-Previous UI pin: **`b844dd371d4ac5dc3d0469eb899d6709e8ac407f`**. Functional source after the Q06 frozen deny-token classification is the commit that lands this matrix with `windows_package_entry.py` / `linux_package_entry.py` (see `ENGINEERING_HANDOFF.md`).
+Previous UI pin: **`b844dd371d4ac5dc3d0469eb899d6709e8ac407f`**. Functional source after the Q06 frozen deny-token classification is the commit that lands this matrix with `windows_package_entry.py` / `linux_package_entry.py`.
 Historical qualified RC1 source: **`144d87700b87a241467172adfad3692b41e1d273`**
 This document is engineering inventory. It is **not** V2.2 native PASS, a human
 sign-off, or a waiver of Q06 / G6 / G7 / V19.

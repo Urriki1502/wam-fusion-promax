@@ -3,7 +3,7 @@
 Pinned source: `17adf5c5cbb1213ea5abd95a2ecdd9464b0874a2`  
 WSP: `ac55f13423620252bdbf848c7e8a280c3b84721e`  
 Q06 `accepted=false`. G6/G7 **unchanged** until named humans complete them.  
-Agents (Cursor/Codex) **must not** fill Owner, Developer, or Independent verdicts.
+Automated tools and non-signoff contributors **must not** fill Owner, Developer, or Independent verdicts.
 
 Status vocabulary: `PASS` (named evidence), `FAIL` (retained), `PENDING`, `BLOCKED`, `NOT EXECUTED`. Skipped ≠ PASS.
 
@@ -98,6 +98,6 @@ Final release decision: **NOT AUTHORIZED**. `production_qualified=false`. `offic
 - V19 hardware absent.
 - Official Core ignores `rpcbind`/`port` unless they sit in a `[regtest]` section.
 
-## Agent attestation (not a human verdict)
+## Documentation attestation (not a human verdict)
 
-Prepared locally by Cursor as documentation/recipes only. No Owner PASS, Developer PASS, G6, G7, Q06 acceptance, or production release is claimed.
+Prepared locally as documentation and qualification recipes only. No Owner PASS, Developer PASS, G6, G7, Q06 acceptance, or production release is claimed.

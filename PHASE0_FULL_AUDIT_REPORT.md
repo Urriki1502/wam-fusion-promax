@@ -14,7 +14,7 @@ Evidence vocabulary: **VERIFIED** means directly inspected bytes, source, Git ob
 
 ## Governing contract and current remote state
 
-Read the live [Issue #45 specification](https://github.com/Urriki1502/wam-privacy-wallet-regtest/issues/45), [owner Q-GATE v2](https://github.com/Urriki1502/wam-privacy-wallet-regtest/issues/45#issuecomment-6379544993), root AGENTS, canonical ledger, README, acceptance/security/custody/recovery/build contracts and relevant source paths. The present directive confines work to Phase 0 and prohibits acceptance changes.
+Read the live [Issue #45 specification](https://github.com/Urriki1502/wam-privacy-wallet-regtest/issues/45), [owner Q-GATE v2](https://github.com/Urriki1502/wam-privacy-wallet-regtest/issues/45#issuecomment-6379544993), repository governance rules, canonical ledger, README, acceptance/security/custody/recovery/build contracts and relevant source paths. The present directive confines work to Phase 0 and prohibits acceptance changes.
 
 Permanent definitions are Q01 build provenance; Q02 authenticated Core/chain; Q03 RPC/credentials; Q04 coexistence/reconnection; Q05 owned persistent Core/custody; Q06 BIP39-12 and BIP352. “Q05 Send” in the owner incident describes shared transaction machinery; it does not rename Q05 or transfer Q06 cases. Q07 remains BIP39-24. T-01–T-09, K-01–K-10, relevant transaction/GUI/release requirements and §G must remain in repair scope. The architecture matrix includes the actual case IDs and their frozen ledger statuses.
 
@@ -26,7 +26,7 @@ Remote PR-head runs `41569725929`, `41569725908`, `41569725920`, `41569725907`, 
 
 ## A–D. Workspace, source and artifact provenance
 
-[WORKSPACE_MANIFEST.md](WORKSPACE_MANIFEST.md) contains exact branches, hashes and source/artifact linkage. Its generated inventory below covers all canonical top-level categories without dumping binaries/caches/secrets. [Legacy inventory](LEGACY_WORKSPACE_INVENTORY.md) identifies older repos and evidence separately. Canonical source bytes match all 405 HEAD blobs; pinned WSP's 33 Python files match literal Git objects. No source replacement/copy/clone is required or performed.
+[WORKSPACE_MANIFEST.md](WORKSPACE_MANIFEST.md) contains exact branches, hashes and source/artifact linkage. Its generated inventory below covers all canonical top-level categories without dumping binaries/caches/secrets. Older local developer worktrees and historical evidence were inventoried separately during Phase 0 (local inventory removed during repository cleanup). Canonical source bytes match all 405 HEAD blobs; pinned WSP's 33 Python files match literal Git objects. No source replacement/copy/clone is required or performed.
 
 `scripts/build_macos_bundle.sh` performs source capture, pinned WSP closure, PyInstaller collect-submodules, original Core byte restoration, ad-hoc app signing, final frozen diagnostics, source verification and archive hashing. Existing build/PYZ TOCs name `wam_regtest.bip39_fusion_gui`. ZIP source stamp names current HEAD; ZIP app executable matches dist and Q05 frozen receipt. All 54 manifest-member hashes match. These checks establish consistent local artifacts; they do not prove a clean dependency supply chain or the DMG's interior independently.
 
@@ -101,7 +101,7 @@ No new tests were executed. Frozen ledger counts are quoted in the matrix and re
 
 ## K–P. Risk, consolidation, repair and V1-NET
 
-[Gap register](Q05_Q06_GAP_REGISTER.md) names risks and evidence confidence. [Legacy inventory](LEGACY_WORKSPACE_INVENTORY.md) proposes manifest-first future archival, with no deletion or movement. [Repair plan](Q05_Q06_REPAIR_PLAN.md) orders transaction integrity, checkpoint/reservation safety, Unlock/backend/UI correctness, then visual improvements. Historical builds, original profiles and all FAIL receipts must remain preserved.
+[Gap register](Q05_Q06_GAP_REGISTER.md) names risks and evidence confidence. Manifest-first archival without premature deletion was proposed for legacy local worktrees. [Repair plan](Q05_Q06_REPAIR_PLAN.md) orders transaction integrity, checkpoint/reservation safety, Unlock/backend/UI correctness, then visual improvements. Historical builds, original profiles and all FAIL receipts must remain preserved.
 
 V1-NET is BLOCKED until repaired Q06 result receives explicit owner authorization, after integrated real local acceptance and owner physical review in the owner's prescribed order. Current `network_policy._FIXED` enforces listen=0/connect=0 and local RPC; do not modify Q06 profiles to enable peers. Future two real nodes on one Mac precede multi-machine evidence; independent RPC/P2P ports, shared genesis/tip, transaction propagation, restart/reconnect, reorg/custody negatives and actual device proof remain required. No GUI-to-GUI network or consensus change is needed.
 

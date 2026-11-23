@@ -21,7 +21,7 @@ Advanced account/balance/tip labels also use wrapping/height-for-width instead o
 - `src/wam_regtest/package_entry.py`: hidden `--ci-ui-layout` invokes the fixture after the existing bundle integrity check; no normal launch change.
 - `scripts/build_macos_bundle.sh`: narrow `--ui-layout-focused` path reuses packaging/signing/hash checks without rerunning wallet/Core scenarios.
 - `src/wam_regtest/release_candidate.py`: UI-only qualification explicitly does not claim full native wallet/Core E2E.
-- This report. Mutable ignored root `ENGINEERING_HANDOFF.md` is updated separately.
+- This report.
 
 ## Actual checks and evidence
 
