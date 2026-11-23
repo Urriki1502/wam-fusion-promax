@@ -1,189 +1,179 @@
-# WAM Privacy Wallet — Real REGTEST candidates
+# WAM Fusion ProMax
 
-Owner-acceptance audit and proposed UX fix: [results, defects and requalification](docs/OWNER_ACCEPTANCE_AUDIT.md). The qualified RC1 baseline remains unchanged.
+**A native, security-focused WAM wallet prototype built around genuine WAM Core and BIP352 Silent Payments.**
 
-Experimental native Qt wallet using official signed WAM Core v0.1.11,
-pinned WSP-1 BIP352 and actual SQLite. Receive, Balance, History, review-gated
-Prepare / Sign / Broadcast, confirmed change, encrypted backup, Lock / Unlock,
-same-Mac recovery, Keychain anti-rollback, background sync and macOS Auto /
-Light / Dark are implemented. **Disposable REGTEST only: no personal keys,
-real funds, mainnet or production qualification.**
+WAM Fusion ProMax provides a desktop wallet for developing and qualifying WAM transactions on a **disposable REGTEST network**. The project combines a 12-word BIP39 wallet, a pinned Silent Payments implementation, a genuine WAM Core node, and native desktop interfaces. It prioritizes explicit transaction authorization, state integrity, recovery safety, and evidence-based testing.
 
-PRs [#6](https://github.com/Urriki1502/wam-privacy-wallet-regtest/pull/6)
-(packaging), [#7](https://github.com/Urriki1502/wam-privacy-wallet-regtest/pull/7)
-(encrypted recovery), [#8](https://github.com/Urriki1502/wam-privacy-wallet-regtest/pull/8)
-(native payments) and [#9](https://github.com/Urriki1502/wam-privacy-wallet-regtest/pull/9)
-(cross-session recovery and stale-writer protection) are merged.
+> [!WARNING]
+> **REGTEST ONLY — NOT READY FOR MAINNET OR REAL FUNDS.** Do not import real recovery phrases, private keys, personal wallets, or production node data. A successful unit test, CI workflow, or experimental package build does not authorize financial use or distribution as a production wallet.
 
-## WAM Fusion REGTEST RC1 — 16 October 2026
+## Project status
 
-Qualified code `144d87700b87a241467172adfad3692b41e1d273` has same-source macOS ARM64, Windows x64 and experimental Linux x86_64 packages. **READY FOR OWNER REGTEST TESTING**; human acceptance remains PENDING_OPERATOR. Start with [downloads, exact native CI and checksums](docs/RELEASE_CANDIDATE_QUALIFICATION.md), [owner test guide](docs/OWNER_REGTEST_ACCEPTANCE.md) and [DEV review draft](docs/DEV_WAM_REVIEW_HANDOFF.md).
-
-This stacked integration preserves the existing engineering candidates. These are **Draft engineering units**, not merged V1/Final releases.
-The older [Linux qualification checkpoint](docs/LINUX_QUALIFICATION.md) is historical; the RC1 report above supersedes its artifact list.
-macOS retains official signed Core/Keychain; Windows retains official signed
-Core/Credential Manager. Linux rejects the published executable-stack release
-and uses an explicitly approved, exact upstream source build plus an independent
-administratively provisioned root witness. It is not an official signed Linux
-Core release. The original WAM coin artwork is shared unchanged.
-
-Linux now reuses the same WalletSession and Fusion Qt screens, approvals,
-reservations, native WSP signer and scanner. Source and frozen no-Qt headless / xcb
-desktop gates are separate. Start with [headless](docs/LINUX_HEADLESS.md),
-[Qt](docs/LINUX_QT.md), [packaging](docs/LINUX_PACKAGING.md) and
-[root witness policy](docs/LINUX_ROOT_WITNESS_POLICY.md).
-Portable/cross-OS backup migration remains unimplemented; platform-bound backups
-and independent anchor checks must never be bypassed to simulate portability.
-
-## Download and launch the actual application
-
-Use the four actual [RC1 artifact links](docs/RELEASE_CANDIDATE_QUALIFICATION.md#published-downloads-and-checksums). The macOS artifact is `WAM-Fusion-REGTEST-RC1-macos-arm64-144d87700b87a241467172adfad3692b41e1d273`.
-It contains `.dmg`, `.app.zip`, `SHA256SUMS.json` and native Qt previews.
-Check the artifact provenance and checksums, then open the app from Finder.
-The original owner-supplied black-and-gold WAM image is used for Finder/Dock
-and Qt branding; its unchanged bytes and derived ICNS are pinned in
-[assets](assets/README.md).
-
-The app starts an isolated real REGTEST daemon with zero peers, establishes
-its genuine BIP352 baseline, then offers **fresh random test keys** or recovery
-of the **latest anchored encrypted backup on this Mac**. Enter a test-only
-passphrase of at least 12 characters. Every payment requires exact review,
-a separate Sign approval and a separate Broadcast action. Settings can mine
-one test block to confirm it. The Security page provides encrypted backup,
-Lock, Unlock and recovery. Keep the latest backup after each state change;
-older anchored snapshots are rejected. Closing stops Core and removes the
-private disposable chain/runtime. Save a current backup before closing if
-same-Mac recovery is needed; recovery creates a new receive epoch on a fresh
-chain while preserving original keys and irreversible reservations.
-
-The app has an **ad-hoc outer signature and is not Developer ID notarized**.
-Gatekeeper may require Finder right-click → Open on a downloaded preview.
-Signed upstream Core members remain byte-for-byte unchanged. A release
-signature authenticates those binaries; it does not prove loader integrity,
-same-user malware resistance or production wallet custody.
-
-## Source and reproducible build procedure
-
-```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e '.[gui]' 'pyinstaller==6.22.3'
-git clone https://github.com/Urriki1502/wam-silent-payments wsp-upstream
-git -C wsp-upstream checkout ac55f13423620252bdbf848c7e8a280c3b84721e
-python -m pip install -e ./wsp-upstream
-python -m wam_regtest.release --platform macos-arm64 --destination core
-python -m unittest discover -s tests -v
-bash scripts/build_macos_bundle.sh
-```
-
-GnuPG (`brew install gnupg`) is required for intake from the fixed official
-HTTPS endpoint. The verifier pins signing fingerprint
-`4BD4A8D3AFD43F5CBCB500E23798462FE00ADBA4`, signed archive and both independent
-executable hashes:
-
-| Official v0.1.11 ARM64 member | SHA-256 |
+| Area | Current position |
 | --- | --- |
-| `wamd` | `7298de701e467eb28b4806cbcbe35edb393861b4b97117017fee4c1b194e3068` |
-| `wam-cli` | `81a031ebf9b3060b19061b29756d43bcd09b32ad778348b8c3d8321397076e82` |
+| Network | **REGTEST only**. Mainnet operation is not authorized. |
+| Development baseline | `promax/main` — PR #3 CI remediation integrated at `3b84db8c28f456f5c80a9f0b736c09f3c8a9c3c3` over application base `02e0fbd4a32e0c4ce3bd41bdc0db7e94165ee6f7` (November 2026). |
+| WAM Core | Official signed **v0.1.13** binaries, checked against pinned hashes and signing evidence. |
+| Silent Payments | Pinned WSP source: `ac55f13423620252bdbf848c7e8a280c3b84721e` (BIP352). |
+| macOS ARM64 | Scoped CI qualification passed on PR #3 (`d540e039b438aa0513e54779681d21a8e54e503a`) alongside local FC-31 engineering evidence on `02e0fbd4a32e0c4ce3bd41bdc0db7e94165ee6f7`. This is not full application or release acceptance. |
+| Windows / Linux | Scoped GitHub Actions workflows for Windows x64 and Linux x86_64 passed on PR #3 (`d540e039b438aa0513e54779681d21a8e54e503a`); runner CI results do **not** replace physical-host G6 or independent G7 acceptance. |
+| Product acceptance | **Not complete**. Normal-UI production-app E2E, dynamic privacy checks, cross-platform and physical/independent gates require separate evidence. |
+| Release | No approved mainnet build, production signing, or notarized public release is claimed. |
 
-Builds authenticate Core and the pinned scanner, preserve original Core bytes
-after PyInstaller, run the **final frozen executable** through complete real
-Core / WSP / SQLite / Qt / payment / recovery gates, then create and verify
-the DMG. Checksums record each output, source commit, Core and original logo.
-This is a reproducible procedure, **not a claim of byte-identical builds**;
-dependency versions, signatures, ZIP and DMG metadata can differ.
+This table identifies the reference candidate, not a promise that every later commit or CI run is qualified. Always compare an acceptance receipt's **source SHA, executable hash, platform and test scope** with the artifact being assessed. Historical RC1 documents describe earlier Core versions and must not be used as current build instructions.
 
-To launch the operational GUI from source:
+## Functional scope
 
-```bash
-wam-regtest wallet --core-dir core --wsp-source-root wsp-upstream \
-  --confirm-disposable-regtest --confirm-public-fixture-payment
+The source implements or exercises the following REGTEST functionality. Implementation presence is **not** equivalent to an accepted end-to-end user journey.
+
+| Capability | Implementation scope |
+| --- | --- |
+| Wallet onboarding | Create, open and supported restore flows for a **12-word BIP39** test wallet |
+| Receiving | BIP352 Silent Payment receiving codes, genuine Core scanning and verified wallet snapshots |
+| Wallet views | Overview, Receive, Send, History, Security, Settings and relevant network controls |
+| Payments | Separate Prepare, Review, Sign and Broadcast stages with explicit authorization |
+| Transaction safety | Amount/fee checks, dust policy, durable input reservations and uncertainty handling |
+| Chain behavior | Real-Core confirmations, restart, reconciliation and reorganization scenarios |
+| Storage and custody | Encrypted key material, native platform protections, checkpoint/anchor consistency checks |
+| Desktop | PySide6/Qt interface, theme handling, localization and platform-specific packaging |
+| Networking | Isolated REGTEST by default; explicitly configured, manual two-computer Core P2P for shared REGTEST |
+| Qualification | Unit/negative contracts, native Core tests, frozen-package probes and reproducible test fixtures |
+
+**Intentional limitations:** no silent migration of earlier wallet formats, no automatic re-broadcast of uncertain transactions, no automatic release of signed reservations, and no assumption that 12 words alone restore every off-chain transaction state. Clean-device recovery, two-physical-host qualification and cross-platform migration have additional restrictions. PayJoin is not an enabled V1 transaction flow.
+
+## Architecture
+
+```text
+WAM Fusion ProMax
+├── Qt desktop interface / onboarding
+│   └── explicit user review and action state
+├── wallet executor / transaction state machine
+│   ├── BIP39 12-word key and recovery flows
+│   ├── BIP352 WSP scanner and signing integration
+│   ├── reservation, checkpoint and storage controls
+│   └── verified wallet snapshots and history
+├── genuine WAM Core v0.1.13
+│   ├── localhost-only wallet RPC
+│   └── isolated or manually peered REGTEST node
+└── source, native and frozen qualification
 ```
 
-`smoke`, `demo` and `gui` retain the original read-only public-fixture baseline.
-Public fixture keys are globally known and must never receive actual funds.
-They are separate from the operational wallet's fresh random test keys.
+Key directories and entrypoints:
 
-## Qualification and remaining limits
+| Path | Purpose |
+| --- | --- |
+| `src/wam_regtest/` | Application, wallet, Core integration, GUI and platform code |
+| `src/wam_regtest/production_entry.py` | Separate, allowlisted macOS frozen wallet entrypoint |
+| `src/wam_regtest/package_entry.py` | Qualification/development bundle entrypoint |
+| `src/wam_regtest/wallet_executor.py` | Serialized wallet command boundary |
+| `src/wam_regtest/wallet_session.py` | Payment and state integrity contracts |
+| `src/wam_regtest/managed_onboarding.py` | Supported create/open/restore routes |
+| `src/wam_regtest/official_core_v013.py` | Immutable upstream Core release identities |
+| `scripts/` | Isolated environment, verification, build and qualification tools |
+| `requirements/` | Hash-locked dependency profiles |
+| `tests/` | Unit, integration, adversarial and acceptance contracts |
+| `tests/acceptance/issue45.json` | Case-level acceptance ledger |
+| `docs/` | Technical designs, operating procedures and historical evidence |
+| `release-candidates/` | **Historical** candidate manifests; not current download endorsements |
 
-The canonical-vector and macOS workflows cover 28 BIP352 vector suites and
-native Apple Silicon real-Core source/frozen acceptance. Windows and Linux
-qualification use their platform-specific native jobs. These include real reorg depths
-1, 12 and 100, stale-writer rejection, native OS lease contention across vault
-directories and recovery on a new Core chain. No mock RPC can replace these
-gates. Negative unit contracts are additional tests, not real E2E evidence.
+## Getting started (development / disposable REGTEST)
 
-Offscreen CI does not prove macOS appearance or hands-on Finder behavior.
-The supplemental frozen `--ci-real-core-wallet-cocoa` gate requires Cocoa and
-native Light/Dark/Auto events on a Mac. Automated local checks must be reported
-separately from human operator testing.
+The checked-in source is **not** a ready-to-use mainnet wallet. Start in a clean checkout without personal wallet profiles or existing Core datadirs.
 
-[Wallet scope](docs/WALLET-REGTEST.md), [security reuse and limits](docs/SECURITY-REUSE.md)
-and [acceptance rules](docs/ACCEPTANCE.md) describe exact boundaries. Keychain
-loss/replacement and ambiguous ciphertext/anchor updates fail closed; there
-is no Cross-Mac recovery. Unlocked SQLite contains private plaintext state,
-memory clearing is best effort, old signed/uncertain reservations stay locked
-and recovery rotation is capped at 16 epochs. These are developer-preview
-limitations, not production guarantees.
+**Prerequisites for the macOS ARM64 path:** Apple Silicon macOS, Git, GnuPG, Xcode command-line tools and **CPython 3.12.10**. Linux and Windows have separately defined toolchains and qualification requirements. The hash-locked build flow uses isolated environments; arbitrary `pip install` combinations are not equivalent.
 
-## Q01 clean-checkout build procedure
-
-Read root `AGENTS.md` and the single case ledger
-[`tests/acceptance/issue45.json`](tests/acceptance/issue45.json) first. Q01 is the
-only active acceptance target; a successful build does not close its operator,
-independent review or owner-authorized postmerge gates.
-
-Use a new checkout, a new **external** venv path and the immutable WSP checkout.
-Windows checkouts must preserve literal Git bytes, including upstream's binary
-fuzz corpus: use `git -c core.autocrlf=false clone ...` for both repositories.
-The native workflows configure this on their disposable checkout steps.
+### 1. Check out the candidate and pinned WSP
 
 ```bash
-git clone https://github.com/Urriki1502/wam-silent-payments wsp-upstream
+git clone --branch promax/main https://github.com/Urriki1502/wam-fusion-promax.git
+cd wam-fusion-promax
+
+git clone https://github.com/Urriki1502/wam-silent-payments.git wsp-upstream
 git -C wsp-upstream checkout --detach ac55f13423620252bdbf848c7e8a280c3b84721e
-python -I scripts/q01_environment.py --profile gui \
-  --environment /absolute/new/external/q01-env --receipt q01-install.json
+
+git rev-parse HEAD
+git -C wsp-upstream rev-parse HEAD
 ```
 
-The declared bootstrap interpreter is CPython **3.12.10 on macOS/Windows** and
-**3.12.15 on Linux**; setup-python's current manifest supplies these native
-architectures (3.12.15 is unavailable there on macOS/Windows). Subsequent build
-and test commands must use that new venv's `bin/python` or `Scripts/python.exe`
-with `-I`. Builders and their PyInstaller children use isolated startup before
-source authentication, so an untracked root startup module cannot execute first.
-CI exports its path only after the installer step. `--profile headless` has no
-Qt; Linux desktop uses the separate GUI profile. Wheel versions and hashes live
-in `requirements/q01-*.lock`, install reports record actual download hashes,
-and editable backend resolution cannot fetch additional undeclared dependencies.
-The existing source/frozen WSP import guards remain mandatory. Windows freezes additionally restrict the builder's DLL search PATH to the
-declared CPython/venv and Windows system directories, disable UPX, reject
-ambient Qt OpenSSL DLLs, and preserve/hash CPython's own SSL pair. The frozen
-CI probe requires Qt's existing native Schannel backend without opening a TLS
-connection. This does not qualify new network functionality; all genuine Core,
-WSP and custody workflows remain separately mandatory.
+To reproduce a **specific historical qualification**, check out its exact recorded source SHA rather than relying on a moving branch. Do not use a personal WSP checkout that differs from the pinned commit.
 
-Required OS prerequisites remain explicit: Git and native CPython; GPG plus
-Apple command-line build/signing/disk-image tools on macOS; native Windows NTFS
-and Credential Manager; and the existing workflow's Ubuntu 24.04 libraries,
-Xvfb/xcb for desktop, and independently administered root witness for Linux.
-Linux uses the pinned reviewed developer Core artifact, **not** an official
-signed Linux release. Never provision a privileged witness on an owner host as
-part of this installer. OS runner images/system libraries are separately
-recorded prerequisites; wheel locks do not make the entire host hermetic.
+### 2. Create a hash-locked development environment
 
-Run existing platform native and final frozen builders only after the fresh
-installation. They retain pinned Core/WSP checks and real-Core wallet gates.
-`q01_core_negatives.py` tests modified disposable copies of **each** genuine
-Core binary and a missing CLI; `q01_dependency_negatives.py` uses real bare
-interpreters with missing WSP/crypto. These are SOURCE refusal evidence, not
-Core E2E substitutes. No test modifies the original pair or opens owner data.
-Builders additionally refuse dirty/staged/hidden executable source and verify
-tracked source remains unchanged before packaging publication. A planned second
-clean build must compare actual payloads; timestamps/signatures/container bytes
-may differ and no bit-identical reproducibility is currently claimed.
+The target environment directory and receipt file **must not exist** before the command. Choose new absolute paths outside the repository:
 
-## Sources
+```bash
+python3.12 -I scripts/q01_environment.py --profile gui \
+  --environment "$HOME/wam-q01-gui-fresh" \
+  --receipt "$HOME/wam-q01-install-fresh.json"
+```
 
-- [Official Core v0.1.11](https://github.com/wamcoin-core-dev/wam-coin/releases/tag/v0.1.11)
-- [Pinned WSP-1](https://github.com/Urriki1502/wam-silent-payments/tree/ac55f13423620252bdbf848c7e8a280c3b84721e)
-- [Legacy wallet reference](https://github.com/Urriki1502/wam-privacy-wallet) (read-only audit; no bulk architecture import)
+This authenticates the tracked source and pinned WSP, installs the declared wheel hashes and writes an installation receipt. It is a **source-install gate**, not genuine-Core or frozen acceptance.
+
+### 3. Run source checks and obtain official Core
+
+```bash
+"$HOME/wam-q01-gui-fresh/bin/python" -I scripts/run_macos_source_tests.py
+
+"$HOME/wam-q01-gui-fresh/bin/python" -I -m wam_regtest.release \
+  --platform macos-arm64 --destination core
+```
+
+Core download requires upstream signature and digest verification. Use a **new** destination rather than overwriting an existing `core/` directory. Core staging alone must not be reported as a wallet E2E PASS.
+
+### 4. Build the macOS packages (separate qualification required)
+
+```bash
+PATH="$HOME/wam-q01-gui-fresh/bin:$PATH" bash scripts/build_macos_bundle.sh
+```
+
+The default build uses `scripts/build_macos_production.py` to produce a separately identified **distribution candidate** and a **qualification-only** application. The latter is not a substitute for normal-UI testing of the distributed binary. Building or signing an experimental package does not constitute notarization or production acceptance.
+
+For platform-specific procedures and older exact-SHA results, use the [documentation index](docs/README.md). Do not transplant historic Q01/Q05/RC1 commands to the current candidate without reconciling their Core and source pins.
+
+## Security model and restrictions
+
+- **No mainnet or real-wallet access:** all provided engineering and test flows are restricted to fresh REGTEST profiles.
+- **Explicit payment authorization:** signing and broadcast are distinct. An ambiguous network outcome must not trigger blind retries.
+- **Irreversible-state protection:** signed, uncertain and broadcast reservations are retained conservatively across faults and reorgs.
+- **Trusted inputs:** accept only pinned Core/WSP identities; reject unexpected network/genesis, malformed credentials and unverified storage state.
+- **Local network boundary:** application RPC remains on localhost. Shared REGTEST allows only explicitly configured Core-to-Core P2P connections.
+- **Storage limits:** unlocked runtime SQLite and process memory can contain sensitive state. Encryption, native anchors and best-effort clearing do not guarantee protection against a compromised machine.
+- **Recovery limits:** key recovery, chain scanning and restoration of off-chain irreversible transaction state are separate capabilities. A recovered seed is not proof of a fully recoverable signing session.
+- **Supply-chain limits:** a signed upstream Core does not certify the Fusion wrapper. Ad-hoc signatures or artifact hashes do not replace publisher trust, independent audit or platform acceptance.
+
+## Testing and acceptance
+
+The repository includes GitHub Actions for BIP352 vectors, genuine WAM Core, macOS, Windows and Linux contracts. Their outcomes are scoped to the **exact tested commit**. Failed, skipped, stale or blocked cases are not PASS.
+
+For the November 2026 baseline, PR #3 (`d540e039b438aa0513e54779681d21a8e54e503a`, merged into `promax/main` at `3b84db8c28f456f5c80a9f0b736c09f3c8a9c3c3`) passed all five GitHub Actions qualification workflows across macOS ARM64, Windows x64, and Linux x86_64, while local FC-31 evidence reported a scoped macOS qualification on `02e0fbd4a32e0c4ce3bd41bdc0db7e94165ee6f7`. Full user-facing and physical acceptance remains open; do not infer physical G6, independent G7, or production readiness from CI or historical records.
+
+Before a future release decision, the remaining evidence includes:
+
+1. Full normal-UI end-to-end journeys on the **actual distributed app**, using disposable REGTEST wallets.
+2. Runtime privacy testing along those same journeys, including Q20.
+3. Exact-commit Windows/Linux native and frozen qualification where applicable.
+4. Real two-computer V19 checks and required physical and independent security review.
+5. Case-by-case reconciliation of the acceptance ledger without changing historical FAIL evidence.
+
+The [Actions dashboard](https://github.com/Urriki1502/wam-fusion-promax/actions) shows remote workflow results. **No green badge is treated as proof of complete V1 acceptance.**
+
+## Documentation
+
+Start with the [organized documentation index](docs/README.md). Useful reference documents include:
+
+- [Acceptance scope and definitions](docs/ACCEPTANCE.md)
+- [Wallet operation on disposable REGTEST](docs/WALLET-REGTEST.md)
+- [Official Core v0.1.13 provenance](docs/WAM_CORE_V013_PROVENANCE.md)
+- [Security assumptions and limitations](docs/SECURITY-REUSE.md)
+- [V1 scope and compatibility ADR](docs/ADR_WAM_FUSION_V1_12WORD_SCOPE_20261106.md)
+- [Shared REGTEST / two-computer procedure](docs/V1_NET_TWO_COMPUTER_ACCEPTANCE.md)
+- [Package-content review](docs/RC_PACKAGE_CONTENT_VERIFICATION.md)
+- [Historical release-candidate qualification](docs/RELEASE_CANDIDATE_QUALIFICATION.md)
+
+Documents dated before this candidate may use old Core versions, branches, identifiers or acceptance states. Treat them as **historical evidence**, not current instructions unless they explicitly match the source SHA under test.
+
+## Project boundaries
+
+WAM Fusion ProMax is an engineering and security-qualification project. It is not a custodial service, exchange, blockchain consensus implementation or approved production wallet. No real-funds warranty or complete recovery guarantee is provided.
+
+See [LICENSE](LICENSE) for license terms and [third-party notices](third_party/) for included upstream material.
