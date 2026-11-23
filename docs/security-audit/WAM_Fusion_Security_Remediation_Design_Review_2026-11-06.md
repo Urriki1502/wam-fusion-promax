@@ -1,237 +1,212 @@
 # WAM Fusion — Independent Remediation Design Review (v1.0)
 
-**Ngày:** 06-11-2026 (Asia/Ho_Chi_Minh)  
-**Mục tiêu:** làm rõ phương án kỹ thuật *trước khi* giao Codex sửa lỗi; tối thiểu hóa phạm vi thay đổi, token, CI reruns và rủi ro custody.  
+**Date:** 2026-11-06 (Asia/Ho_Chi_Minh)  
+**Objective:** Clarify technical remediation designs prior to implementation; minimize change scope, CI reruns, and custody risk.  
 **Repository:** https://github.com/Urriki1502/wam-privacy-wallet-regtest  
-**Audit baseline bất biến:** PR #141, commit `b187cde17b12ae5f7c11f0611d5f4b1661bfc90b`; base `c61e3c5be4b8519dc6c4d9eb56d124fce84cf02d`; Core v0.1.13; WSP `ac55f13423620252bdbf848c7e8a280c3b84721e`.  
-**Nguồn findings:** `WAM_Fusion_Phase_A_Security_Audit_Report_2026-11-06.md` (2 High, 9 Medium, 1 Low; 6 nhóm NOT VERIFIED).  
-**Mức độ kiểm chứng tài liệu này:** đọc trực tiếp các module/chứng cứ GitHub tại đúng SHA; so sánh tài liệu GitHub, Apple, Qt, Microsoft, SQLite và OWASP. **Chưa chạy payload/fuzz, chưa chứng minh exploit, chưa truy cập máy Mac của chủ sở hữu.** Đây là *security design review*, không phải G7 độc lập hay cấp phép mainnet.
+**Immutable audit baseline:** PR #141, commit `b187cde17b12ae5f7c11f0611d5f4b1661bfc90b`; base `c61e3c5be4b8519dc6c4d9eb56d124fce84cf02d`; Core v0.1.13; WSP `ac55f13423620252bdbf848c7e8a280c3b84721e`.  
+**Findings source:** `WAM_Fusion_Phase_A_Security_Audit_Report_2026-11-06.md` (2 High, 9 Medium, 1 Low; 6 `NOT VERIFIED` groups).  
+**Verification level of this document:** Direct source and GitHub configuration inspection at the exact SHA, cross-checked against GitHub, Apple, Qt, Microsoft, SQLite, and OWASP documentation. **No exploit payloads or fuzzers were executed, no exploit was proven, and no owner production host was accessed.** This is a *security design review*, not an independent G7 sign-off or mainnet authorization.
 
-## Quy tắc ra quyết định
+## Decision rules
 
-- **FACT:** đúng theo source/cấu hình được xem; **DESIGN:** giải pháp chọn để triển khai; **HYPOTHESIS:** cần tái hiện; **OPEN:** cần quyết định thiết kế/chứng cứ trước khi sửa.
-- **READY TO IMPLEMENT:** giải pháp ít ảnh hưởng custody, đã xác định file và test. **DESIGN GATE:** phải chứng minh invariant/race/crash. **RESEARCH GATE:** thiếu dữ liệu hoặc hạ tầng.
-- Nhóm mức độ High/Medium của audit là mức **rủi ro dự kiến khi sử dụng tiền thật**, không đồng nghĩa có khai thác thành công hoặc có CVE.
-- **Không được:** tự bật mainnet, sửa WSP/core consensus, xóa/reset native anchors, xóa signed/uncertain reservations, chỉnh ledger để ép PASS, xóa lỗi lịch sử, chạy trên ví hoặc node mainnet thật, force-push, merge hoặc phát hành.
-- **Local-first:** source + native macOS + frozen app/DMG trên máy local, rồi mới push và kiểm thử Windows/Linux/macOS cùng commit. Không biến 3-OS CI thành G6/G7/V19.
+- **FACT:** Directly observed in inspected source or configuration; **DESIGN:** Selected technical approach; **HYPOTHESIS:** Requires reproduction first; **OPEN:** Requires design decision or additional evidence before code changes.
+- **READY TO IMPLEMENT:** Low custody impact with bounded file scope and clear tests. **DESIGN GATE:** Must prove invariants, concurrency, and crash behavior before implementation. **RESEARCH GATE:** Missing empirical data or lab infrastructure.
+- Audit High/Medium classifications reflect **projected risk under real-funds use**, not proof of an active exploit or CVE.
+- **Prohibited actions:** Enabling mainnet, modifying WSP or Core consensus, deleting or resetting native anchors, removing signed/uncertain reservations, editing the ledger to force PASS, erasing historical failures, running against real wallets or mainnet nodes, force-pushing, merging, or publishing releases.
+- **Local-first qualification:** Run source, native macOS, and frozen `.app`/`.dmg` verification locally before pushing and qualifying Windows/Linux/macOS on the exact commit. Three-OS CI does not replace G6/G7/V19.
 
-## Ma trận thực thi tối ưu
+## Remediation execution matrix
 
-| ID | Kết luận | Độ sẵn sàng | Action tối ưu ngay | Chấp nhận hoàn thành khi |
+| ID | Summary | Readiness | Optimal immediate action | Definition of Done |
 |---|---|---|---|---|
-| H-01 | Publisher trust chưa bao trùm Fusion | RESEARCH/OWNER | Đặc tả ký và thử bản lab, **không** tự tạo production trust | Có quy trình verify độc lập & signer/release owner |
-| H-02 | `main` không protected; rulesets=0 | ADMIN READY | Owner bật bảo vệ `main` ở UI GitHub | Chống direct/force push được chứng thực bằng cấu hình |
-| M-01 | Clean-device/disaster recovery thiếu proof | DESIGN GATE | ADR + threat model + test fixtures, không sửa vault | Có proof giữ irreversible state trước khi unlock spend |
-| M-02 | SQLite runtime plaintext khi unlocked | RESEARCH GATE | Inventory dữ liệu, retention, forensic test | Có threat model rò dữ liệu & biện pháp đã test |
-| M-03 | Xóa secret trong RAM best effort | RESEARCH GATE | Lifetime/copies audit; không tuyên bố zeroization | Có mitigation theo giới hạn runtime đã chứng minh |
-| M-04 | KDF cố định & password yếu khả thi | DESIGN GATE | Benchmark + password policy; format upgrade riêng | Versioned migration + fixture cross-platform PASS |
-| M-05 | Generation cap 4096 / Linux 10000 | DESIGN GATE | Stress near-limit chỉ với fixtures | Rotation/compaction crash-safe, reservation preserved |
-| M-06 | Thiếu auto-lock theo idle/OS session | DESIGN GATE | State-machine + race tests trước code | Không approval stale; lock đúng khi worker in-flight |
-| M-07 | Actions tham chiếu tag mutable | READY TO IMPLEMENT | Pin full verified SHAs trong 11 workflow | Diff chỉ uses/permissions; CI unaffected |
-| M-08 | RPC slow-trickle/hang nghi vấn | REPRODUCE FIRST | Bounded lab transport fixture | Trước/sau có evidence; không retry write |
-| M-09 | Manual peer không được crypto-authenticate | RESEARCH/NETWORK | Threat model, V19/partition lab, không giả tăng bảo mật | Có P2P test/định nghĩa trust rõ |
-| L-01 | Backup verifier nhận <3 vị trí từ GUI | READY AFTER MINI DESIGN | Backend-owned one-use challenge | One/two/replay/substitution FAIL; exact 3 PASS |
+| H-01 | Publisher trust does not cover the Fusion wrapper | RESEARCH/OWNER | Specify signing architecture and lab-test on disposable copies; **do not** self-mint production trust | Independent verification flow and owner-controlled signer/release separation |
+| H-02 | `main` unprotected; `rulesets=0` | ADMIN READY | Owner enables `main` branch protection in GitHub UI | Direct/force-push prevention verified via effective rules |
+| M-01 | Clean-device/disaster recovery lacks proof | DESIGN GATE | Write ADR, threat model, and fixture tests; do not alter vault writer yet | Proof preserving irreversible state before spend unlock |
+| M-02 | Plaintext runtime SQLite while unlocked | RESEARCH GATE | Inventory runtime data, retention, and forensic behavior | Documented leakage threat model and tested mitigations |
+| M-03 | RAM secret clearing is best-effort only | RESEARCH GATE | Audit secret lifetimes/copies; do not claim full zeroization | Runtime-bounded mitigations verified by negative tests |
+| M-04 | Fixed KDF parameters and weak password acceptance | DESIGN GATE | Benchmark KDF and design password policy; separate versioned format upgrade | Versioned migration and cross-platform fixture PASS |
+| M-05 | Checkpoint generation cap (4096 / Linux 10000) | DESIGN GATE | Near-limit stress tests with fixtures only | Crash-safe rotation/compaction preserving reservations |
+| M-06 | Missing idle/OS session auto-lock | DESIGN GATE | Complete state-machine and race tests before implementation | No stale approvals; safe locking while worker is in-flight |
+| M-07 | GitHub Actions reference mutable tags | READY TO IMPLEMENT | Pin verified full commit SHAs across all 11 workflows | Diff limited to `uses`/permissions; CI unaffected |
+| M-08 | Potential RPC slow-trickle hang | REPRODUCE FIRST | Build bounded loopback lab transport fixture | Before/after evidence; never retry financial writes |
+| M-09 | Manual P2P peer lacks cryptographic authentication | RESEARCH/NETWORK | Threat model and V19/partition lab; no superficial security claims | P2P test evidence and explicit trust boundary documentation |
+| L-01 | Backup verifier accepts <3 positions from GUI | READY AFTER MINI DESIGN | Backend-owned single-use 3-position challenge | 1/2-word, replay, and substitution FAIL; exact 3 PASS |
 
-## H-01 — Toàn vẹn **nhà phát hành** gói Fusion
+## H-01 — Publisher integrity of Fusion packages
 
-**FACT:** `scripts/build_macos_bundle.sh` sử dụng `codesign --force --sign - --timestamp=none "$APP"` và ghi app/DMG là ad-hoc, chưa notarized. Core v0.1.13 được pin member hash riêng; điều đó **không** chứng minh Fusion wrapper được nhà phát hành cho phép. `docs/SBOM_PREP_HOST.md` chỉ liệt kê dependency host, không phải frozen SBOM. [Source](https://github.com/Urriki1502/wam-privacy-wallet-regtest/blob/b187cde17b12ae5f7c11f0611d5f4b1661bfc90b/scripts/build_macos_bundle.sh#L90-L104).
+**FACT:** `scripts/build_macos_bundle.sh` runs `codesign --force --sign - --timestamp=none "$APP"` and documents the app/DMG as ad-hoc and unnotarized. Core v0.1.13 member hashes are verified separately, which **does not** certify that the Fusion wrapper was authorized by a publisher. `docs/SBOM_PREP_HOST.md` lists host dependencies rather than a frozen-artifact SBOM. [Source](https://github.com/Urriki1502/wam-privacy-wallet-regtest/blob/b187cde17b12ae5f7c11f0611d5f4b1661bfc90b/scripts/build_macos_bundle.sh#L90-L104).
 
-**DESIGN chọn:** chia **build không có release secrets** và **ký/phát hành có kiểm soát bởi release owner**. Tạo manifest nguồn + WSP/Core member pin + hash của *artifact thành phẩm sau ký*; ký metadata bằng khóa do owner quản lý, người tải xác minh bằng public trust root phân phối độc lập. macOS: Developer ID + hardened runtime + notarization/stapling *nếu có chứng thư phù hợp*. Windows: Authenticode + kiểm tra signer chain và timestamp. Linux: detached signature của package/manifest, khóa ký xác minh bên ngoài package. Signature workflow không được sửa byte Core đã được chứng minh từ upstream; đặc biệt thử mâu thuẫn giữa signing outer app và hash nested `wamd`/`wam-cli` trước khi chốt packaging.
+**Selected DESIGN:** Separate **secret-free builds** from **owner-controlled signing and release publication**. Generate a manifest covering source SHA, WSP/Core member pins, and post-signing artifact hashes; sign release metadata with an owner-managed key verified against an independently distributed public trust root. macOS: Developer ID + hardened runtime + notarization/stapling *when appropriate certificates are provisioned*. Windows: Authenticode + signer chain and timestamp verification. Linux: detached signature over package/manifest with out-of-band public verification key. The signing workflow must never alter upstream verified Core bytes; explicitly test whether outer app signing interacts with nested `wamd`/`wam-cli` hashes before freezing packaging design.
 
-**Không chọn:** chỉ ghi `SHA256SUMS.txt` cùng ZIP; tự tạo khóa trên CI runner rồi gọi là publisher; tự thay Core gốc bằng build mới để dễ ký; chỉ dựa vào chữ ký Core để suy ra chữ ký Fusion.
+**Rejected approaches:** Bundling `SHA256SUMS.txt` inside the same ZIP alone; minting keys on a CI runner and calling them publisher keys; rebuilding Core from source solely to simplify signing; inferring Fusion wrapper trust from upstream Core signatures alone.
 
-**Việc Codex có thể làm ngay:** viết `docs/security-audit/H01_RELEASE_TRUST_ADR.md`, kiểm tra thao tác ký thử **trên bản copy disposable**, không có khóa sản xuất, đo Core member hashes trước/sau. **Không được tự bật notarization/release**. **DoD:** quy trình phân phối trust key, key custody/rotation/revocation, chứng thực offline, phân tách CI build vs owner release, output SHA256/SBOM/signer report. **Chặn mainnet release** cho đến khi hoàn tất.  
-**Tham khảo:** https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution
+**Immediate engineering scope:** Author `docs/security-audit/H01_RELEASE_TRUST_ADR.md`, test signing mechanics **on disposable copies** without production keys, and measure Core member hashes before/after. **Do not enable production notarization or releases.** **DoD:** Trust-key distribution procedure, key custody/rotation/revocation policy, offline verification steps, CI-build vs owner-release separation, and SHA256/SBOM/signer output format. **Blocks mainnet release** until completed.  
+**Reference:** https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution
 
-## H-02 — Ruleset GitHub `main`
+## H-02 — GitHub `main` branch ruleset
 
-**FACT:** GitHub API trả `main.protected=false`, `/rulesets=[]` ngày 06-11-2026. Đây là **rủi ro quản trị/supply chain**, không phải bug ký ví và không phải điều kiện buộc dừng REGTEST local audit.
+**FACT:** GitHub API returned `main.protected=false` and `/rulesets=[]` on 2026-11-06. This is a **governance and supply-chain risk**, not a wallet signing bug, and does not block local REGTEST auditing.
 
-**DESIGN chọn (owner thực hiện):** Ruleset chỉ áp dụng `main`; require pull request; block force push; block branch deletion; không cấp bypass cho AI/tool token. Thêm required checks sau khi đối chiếu tên check thực sự chạy trên target `main` (CI có workflow manual/PR/path khác nhau); chọn GitHub Actions làm expected app nếu khả thi. Với repo chủ yếu một người, không bật mandatory human approval **cho đến khi có reviewer có thể approve**, để tránh tự khóa merge. Xác minh bằng UI/effective rules, không thử push phá chính sách.
+**Selected DESIGN (owner action):** Apply a ruleset targeting `main` only; require pull requests; block force-pushes; block branch deletion; grant no bypass to automation tokens. Add required status checks only after reconciling exact check names that actually execute on `main` (workflows vary across manual, PR, and path triggers), selecting GitHub Actions as the expected app where applicable. For a primarily single-maintainer repository, defer mandatory external approval **until an eligible reviewer is assigned**, avoiding self-lockout. Verify via UI and effective rules rather than attempting prohibited pushes.
 
-**Không chọn:** bật 20 required checks ngay; bảo vệ mọi feature branch khiến Codex không thể push; giao Codex token Full Access tự chỉnh rules rồi tự miễn trừ. **DoD:** ảnh hoặc biên bản cấu hình + mô tả bypass actors + rule enforcement. Không cần sửa source; không làm gián đoạn PR #141.
+**Rejected approaches:** Enabling 20 required checks blindly; locking all feature branches; granting broad admin tokens to automation to modify or bypass rulesets. **DoD:** Configuration record, documented bypass actors, and verified rule enforcement. No source changes required; does not disrupt PR #141.  
+**Reference:** https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
 
-**Tham khảo:** https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
+## M-01 — Clean-device recovery, lost anchor, and lost journal (highest complexity)
 
-## M-01 — Khôi phục máy sạch, mất anchor, mất journal (độ khó CAO NHẤT)
+**FACT:** `bip39_recovery_proof.py` intentionally reports `same_chain_only=true`, `clean_device_recovery=false`, `signed_reservations_restored=false`, `signer_allowed=false`, and `broadcast_allowed=false`. `wallet_recovery.py` preserves the native anchor floor and refuses divergent futures; Core `migratewallet` does not transfer Fusion Core identity. [Recovery proof](https://github.com/Urriki1502/wam-privacy-wallet-regtest/blob/b187cde17b12ae5f7c11f0611d5f4b1661bfc90b/src/wam_regtest/bip39_recovery_proof.py#L80-L97).
 
-**FACT:** `bip39_recovery_proof.py` chủ ý trả `same_chain_only=true`, `clean_device_recovery=false`, `signed_reservations_restored=false`, `signer_allowed=false`, `broadcast_allowed=false`. `wallet_recovery.py` bảo tồn native anchor floor và từ chối divergent future; `Core migratewallet` không chuyển Core identity của Fusion. [Recovery proof](https://github.com/Urriki1502/wam-privacy-wallet-regtest/blob/b187cde17b12ae5f7c11f0611d5f4b1661bfc90b/src/wam_regtest/bip39_recovery_proof.py#L80-L97).
+**Separate three distinct authorities:** (R1) **key identity** derived from 12 words; (R2) **chain-visible wallet state** obtained by scanning the exact chain, genesis, and full UTXO history; (R3) **off-chain irreversible state**, including signed/uncertain transactions, input reservations, and Core/native owner provenance. R1+R2 **do not prove** R3; a signed transaction not yet broadcast may not appear on-chain.
 
-**Tách 3 loại quyền:** (R1) **key identity** từ 12 từ; (R2) **chain-visible wallet state** từ scan đúng chain, đúng genesis, đầy đủ history/UTXO; (R3) **off-chain irreversible state** gồm giao dịch đã ký/uncertain, reservation, Core/native owner provenance. R1+R2 **không chứng minh** R3; một signed tx chưa broadcast có thể không hiện trên blockchain.
+**Research DESIGN (do NOT implement signer unlock yet):**
+1. `RECOVERED_READ_ONLY` mode: initialize a **clean new profile** from a test mnemonic, attest genesis and Core identity, and rescan the full chain; allow read-only address/balance/history inspection only; never write to older anchors or profiles.
+2. `STATE_CONTINUITY_VERIFIED` mode: require an authenticated backup journal, matching wallet identity, complete signed/uncertain reservation records, and native-authorized migration proof; perform create-only checkpoint publication and crash-safe CAS onto a new anchor; any mismatch falls back to `READ_ONLY`/`BLOCKED`.
+3. Total journal loss with keys retained: no automatic mechanism guarantees safe signing recovery in every scenario. Requires an owner- and reviewer-approved policy defining at-risk UTXOs, reconciliation windows/procedures, and warnings regarding unbroadcast signed transactions. Engineering automation must not invent arbitrary timeouts to auto-release locks.
 
-**DESIGN nghiên cứu (KHÔNG triển khai signer):**
-1. Chế độ `RECOVERED_READ_ONLY`: tạo **profile mới sạch** từ mnemonic test, attestation genesis/Core, rescan toàn bộ đúng chain; chỉ xem địa chỉ/balance/history; tuyệt đối không ghi lên anchor/profile cũ.
-2. Chế độ `STATE_CONTINUITY_VERIFIED`: yêu cầu backup journal được xác thực, cùng wallet identity, bản ghi signed/uncertain đầy đủ, native-authorized migration proof; create-only checkpoint và CAS vào anchor mới, crash-safe; nếu bất cứ thứ gì không khớp -> READ_ONLY/BLOCKED.
-3. Tình huống mất **toàn bộ** journal nhưng còn keys: chưa có phương án nào đảm bảo tự động khôi phục quyền ký trong mọi tình huống. Cần policy được owner và reviewer phê duyệt về các UTXO rủi ro, thời gian/quy trình reconciliation, cảnh báo về signed tx vô hình. Không cho Codex tự chọn timeout và tự giải phóng.
+**Mandatory test vectors:** Single lost anchor; lost anchor + ciphertext; stale backup; newer backup; signed-before-crash; broadcast-uncertain; chain partition; same-chain restore; wrong genesis; wrong OS; wrong Core hash; concurrent owner; crash at every write boundary; duplicate transaction; reorg. **Never reset native anchors or retained owner data.**
 
-**Test vectors bắt buộc:** mất 1 anchor; mất cả anchor+ciphertext; dùng backup cũ; backup mới; signed-before-crash; broadcast-uncertain; chain partition; same-chain restore; wrong genesis; wrong OS; wrong Core hash; concurrent owner; crash tại mỗi bước ghi mới; duplicate tx; reorg. **Không reset native anchors hay data retained owner.**
+**Pre-code deliverables:** `M01_RECOVERY_THREAT_MODEL.md`, `M01_RECOVERY_ADR.md`, state/invariant table, migration format proposal, fixture-only two-machine scenarios, and refusal proofs. **DESIGN GATE:** Must pass independent review before modifying any wallet writer. **Never declare M-01 fixed via plain BIP39 rescan alone.**
 
-**Deliverable trước code:** `M01_RECOVERY_THREAT_MODEL.md`, `M01_RECOVERY_ADR.md`, state/invariant table, migration format proposal, fixture-only 2-machine scenarios, proof of refusal. **DESIGN GATE:** phải được review riêng trước khi viết any wallet writer. **Không được báo M01 Fixed bằng BIP39 rescan đơn thuần.**
+## M-02 — Plaintext runtime SQLite / privacy surface
 
-## M-02 — SQLite runtime plaintext / dữ liệu privacy
+**FACT:** Pinned WSP `store.py` stores coins, tweaks, contacts, labels, history, and reservations in unencrypted SQLite with `PRAGMA journal_mode=DELETE` and `synchronous=FULL`; passwords and seeds are not stored in the inspected schema. `bip39_spend_session.lock()` intentionally **retains** the runtime database when signed, uncertain, or faulted state exists for forensic preservation, so unconditional `unlink` is incorrect.
 
-**FACT:** WSP pinned `store.py` lưu coins/tweaks/contacts/labels/history/reservations SQLite chưa mã hóa, `PRAGMA journal_mode=DELETE`, `synchronous=FULL`; mật khẩu/seed không nằm rõ trong schema được rà soát. `bip39_spend_session.lock()` cố ý **giữ** runtime khi signed/uncertain/faulted để phục vụ forensic, nên unlink luôn không phải giải pháp đúng.
+**Two-stage DESIGN:**
+- **Empirical lab measurement first:** Populate synthetic history, contacts, and labels; inventory `.db`, `-journal`, swap/crash dump, and OS backup/snapshot exposure (within observable bounds) across macOS APFS, Windows, and Linux. Measure file lifecycle across clean lock, uncertain lock, crash, and restart. Never inspect real seeds.
+- **Minimal mitigations:** Minimize unlocked window duration, enforce owner-only permissions, exclude runtime paths from OS backups where supported, minimize PII/retention, redact logs, and exclude runtime files from artifacts/evidence. If threat model requires encryption-at-rest while unlocked, author a separate ADR evaluating SQLCipher/encrypted VFS or in-memory + encrypted snapshot models **with formal consistency proofs**; do not swap the SQLite engine in initial remediation batches.
 
-**DESIGN chọn theo hai giai đoạn:**
-- **Lab đo trước:** tạo synthetic history/contacts/labels; lập inventory `db`, `-journal`, swap/crash dump/OS backup/snapshot (trong giới hạn quan sát được), trên macOS APFS/Windows/Linux. Đo vòng đời file khi lock sạch, lock uncertain, crash, restart. Cấm quét seed thật.
-- **Mitigation tối thiểu:** giới hạn thời gian mở, bảo vệ quyền owner, disable backup không phù hợp, giảm PII/retention, redaction logs, không đưa runtime vào artifact/evidence. Nếu mục tiêu privacy cần encryption-at-rest cả khi unlocked, viết ADR tách riêng cho SQLCipher/encrypted VFS hoặc mô hình in-memory + encrypted snapshots **với consistency proof**; không đổi sqlite engine ở B1.
+**Rejected approaches:** Unconditionally unlinking uncertain runtimes; treating `PRAGMA secure_delete` as SSD secure-erase proof; enabling WAL or SQLCipher without verifying WSP schema and rollback compatibility; rewriting all state storage solely to satisfy an audit checklist. **DoD:** Verifiable data-exposure inventory, tested mitigations, and cleanup/fault-retention regressions; any future encryption rollout requires versioned migration and crash tests.
 
-**Reject:** tự `unlink` runtime uncertain, `PRAGMA secure_delete` như cam kết SSD secure erase, bật WAL/SQLCipher mà chưa kiểm tra compatibility WSP/schema/rollback, đổi toàn bộ state storage chỉ để qua audit. **DoD:** report bề mặt lộ dữ liệu có thể kiểm chứng, mitigations + regression cleanup/fault retention; encryption rollout nếu có cần format migration và crash tests.
+## M-03 — Secret lifetime / RAM exposure
 
-## M-03 — Secret lifetime / RAM
+**FACT:** `bip39_12.py` produces immutable `seed: bytes` before copying into a `bytearray`; closing overwrites only the `bytearray`. GUI mnemonic strings, Python scalars, and `_password` create unmanaged copies in interpreter and toolkit memory. "Absolute RAM zeroization in Python" is not provable.
 
-**FACT:** `bip39_12.py` tạo immutable `seed: bytes` rồi copy sang `bytearray`; close chỉ ghi đè bytearray. GUI mnemonic/`str`/Python scalar và `_password` có copies ngoài kiểm soát. Mục tiêu “xóa tuyệt đối RAM trong Python” là không chứng minh được.
+**Selected DESIGN:** Trace every seed and passphrase path through `bip39_12.py`, `bip39_seed_vault.py`, `bip39_owner_backend.py`, `wallet_session.py`, and WSP; eliminate unnecessary `bytes(...).decode()` conversions and shorten plaintext lifetimes; clear GUI seed displays immediately after acknowledgement; prohibit secret logging; disable core dumps in release builds via supported OS mechanisms; minimize diagnostic error detail. Defer dedicated isolated signer processes / locked native memory buffers to a separate milestone because introducing IPC adds a new trust boundary. Current builds must not claim defense against same-UID malware or root compromise.
 
-**DESIGN chọn:** audit các đoạn seed/passphrase đi qua `bip39_12.py`, `bip39_seed_vault.py`, `bip39_owner_backend.py`, `wallet_session.py`, WSP; giảm `bytes(...).decode()` không cần thiết và lifetime plaintext, xóa UI seed ngay sau xác nhận, không lưu log, không xuất core dumps trong bản release nếu có cơ chế chính thức, giảm thông tin trong error. Tách nghiên cứu signer process/native buffer (lockable RAM/avoid dump) thành milestone mới vì thêm IPC/process lại tạo trust boundary mới. Bản hiện tại không được tuyên bố chống same-UID malware/root.
+**Rejected approaches:** Unsafe CPython `str` mutation hacks; patching cryptographic primitives; claiming `mlock` covers all native allocations; removing recovery functionality to shrink memory footprint. **DoD:** Explicit secret-flow diagram, regression tests confirming zero secrets in diagnostics/artifacts/UI post-lock, and documented runtime mitigation boundaries.
 
-**Reject:** tự viết hàm overwrite `str` CPython, patch crypto primitives, tuyên bố `mlock` che mọi native copies, gỡ recovery functionality để giảm RAM. **DoD:** explicit secret-flow diagram + test no secret in diagnostics/artifacts/UI post-lock + review mitigation limits. Không yêu cầu phá kho dữ liệu RAM thật.
+## M-04 — Password quality and offline KDF hardening
 
-## M-04 — Password/KDF chống đoán offline
+**FACT:** Pinned WSP `keystore.py` uses AES-GCM with `scrypt(N=2^15, r=8, p=1)`, random salt, purpose/network AAD, and envelope `WAMSP02`; the 12-byte minimum enforces **length**, not entropy. OWASP 2026 guidelines recommend stronger scrypt parameters (e.g., `N=2^17, r=8, p=1` or equivalent cost); guideline updates alone do **not** prove existing envelopes are broken.
 
-**FACT:** WSP `keystore.py` dùng AES-GCM và scrypt `N=2^15, r=8, p=1` + random salt, AAD purpose/network, envelope `WAMSP02`; minimum 12 bytes là kiểm tra **độ dài**, không đo entropy. OWASP 2026 đề xuất các cấu hình scrypt mạnh hơn (ví dụ `2^17,r=8,p=1` hoặc tổ hợp chi phí tương đương); đề xuất guideline **không** tự chứng minh bản cũ bị crack.
+**Selected DESIGN:** (1) Evaluate passphrase-friendly password quality checks, common/repetitive password rejection, and NFKD/Unicode normalization; (2) benchmark KDF latency on the lowest-supported macOS, Windows, and Linux hardware for create/unlock/restore; (3) select parameters balancing brute-force cost and UX latency; (4) if raising KDF parameters or adopting Argon2id, introduce a **new versioned envelope/purpose with verified transactional migration** inside reviewed upstream WSP source, supporting conditional dual-read and single-format writes. Never silently patch pinned WSP checkouts or alter `MAGIC` values at runtime.
 
-**DESIGN:** bắt đầu bằng (1) thử password quality policy thân thiện passphrase, danh sách password yếu/chuỗi lặp, NFKD/Unicode; (2) benchmark KDF trên Mac/Windows/Linux thấp nhất được hỗ trợ cho tạo/mở/khôi phục; (3) chọn parameter theo entropy + UX latency mục tiêu; (4) nếu tăng KDF hoặc đổi Argon2id, **tạo envelope version/purpose mới có migration giao dịch được xác thực** ở nguồn WSP được review, với dual-read có điều kiện và single-write mới. Không tự sửa checkout WSP pinned hoặc đổi MAGIC tại runtime.
+**Tests:** Legacy envelope read; wrong password; tampered salt/nonce; downgrade attempt; Unicode inputs; short/weak password; excessive-cost input DoS; mid-migration crash; independent Core checksum check. **Rejected approaches:** Search-and-replace bumping of `N`; silent re-encryption of existing profiles; allowing weak passwords without bounds for future mainnet use. **DoD:** Measured benchmarks, versioned envelope ADR, accepted CPU/memory bounds, and fail-closed fallback denial.  
+**Reference:** https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
 
-**Tests:** old envelope read; wrong password; modified salt/nonce; downgrade; Unicode; tiny password; costly input exhaustion; crash midway migration; checksum/Core independent. **Reject:** nâng `N` bằng tìm/thay; reencrypt silently all old profiles; cho phép weak password để tương thích mainnet không giới hạn. **DoD:** measured benchmark, ADR versioned envelopes, accepted memory/cpu bounds, fallback denied safely.  
-**Tham khảo:** https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
+## M-05 — Checkpoint and journal generation limits
 
-## M-05 — Checkpoint/journal generation limits
+**FACT:** Q06 scanner checkpoints cap at `MAX_CHECKPOINT_GENERATIONS=4096`; Linux root-witness reads cap at 10,000 `.anchor` files and verify contiguous generations. This is a documented long-term availability ceiling, not direct key loss.
 
-**FACT:** Q06 scanner checkpoint `MAX_CHECKPOINT_GENERATIONS=4096`; Linux root-witness read giới hạn 10.000 `.anchor` và kiểm tra các generations liên tiếp. Đây là giới hạn availability dài hạn có căn cứ; không phải bằng chứng mất khóa trực tiếp.
+**Selected DESIGN:** Phase 1: add read-only metrics/early warnings (e.g., 80%/90% thresholds) and near-limit fixture stress tests to measure size, latency, and daily write rates. Phase 2: write an ADR for **CAS-protected epoch compaction** featuring an authenticated summary proving complete state, preserving signed/uncertain reservations, journaling transitions before any deletion, and requiring native witness/owner attestation; power-cut injection before/after every `fsync` and anchor advance must yield either verified state or fail-closed refusal. Crash logic must pass review before implementation.
 
-**DESIGN:** Phase 1: readonly metrics/cảnh báo sớm (ví dụ 80/90% cap) và fixture stress sát ngưỡng; định lượng kích thước, độ trễ, write rate/ngày. Phase 2 ADR cho **epoch/compaction dưới CAS**: có authenticated summary mới chứng minh đầy đủ state, giữ reservation signed/uncertain, transition được journal trước khi xóa bất cứ gì, native witness/chứng thực chủ sở hữu; crash-cut trước/sau mỗi fsync/anchor advance đều trả về trạng thái xác minh được hoặc từ chối. Cần review logic crash trước implementation.
+**Rejected approaches:** Arbitrarily raising 4096/10000 limits; resetting generation counters to 1; deleting `.anchor`/snapshot files; weakening contiguity checks. **DoD:** Near-cap and over-cap fixtures, steady-state endurance tests, and cross-platform fault injection with zero irreversible state loss. Until verified, retain fail-closed limits and document them explicitly.
 
-**Reject:** tăng số 4096/10000 tùy tiện; reset counter về 1; xóa file `.anchor`/snapshot; bỏ no-gap check. **DoD:** fixture đến/quá cap + steady-state long-run + failure injection cross-platform; no irreversible state loss. Nếu chưa đạt, giữ fail-closed và báo giới hạn.
+## M-06 — Idle and OS session auto-lock architecture
 
-## M-06 — Auto-lock/OS session lock: chốt kiến trúc trước khi viết GUI
+**FACT:** Q06 GUI supports manual Lock only; the executor runs one operation in-flight; `wallet_executor.request()` timeout **does not cancel** an active operation; `PaymentApproval.open()` is asynchronous and may remain pending; no idle timer or OS session-lock hook currently feeds this path. `wallet_session.lock()` and `bip39_spend_session.lock()` preserve uncertain state; naive timer-driven `lock` calls can be rejected while the worker is busy.
 
-**FACT:** GUI Q06 chỉ có manual Lock; executor một thao tác in-flight; `wallet_executor.request()` timeout **không hủy operation**; `PaymentApproval.open()` async và dialog có thể chờ; không có timeout/OS lock ở đường này. `wallet_session.lock()` và `bip39_spend_session.lock()` có logic bảo toàn uncertain; gọi `lock` từ timer khi worker busy có thể bị từ chối.
+**Proposed DESIGN: Authorization-epoch state machine with two lock layers.**
+- `UNLOCKED(epoch=N)` receiving an idle or OS-lock trigger transitions **synchronously** to `LOCK_REQUESTED(epoch=N+1)` at the GUI/security gate, immediately invalidating open modal approvals, clearing/masking displayed UI state, and blocking new consent. UI clearing alone is never treated as proof of backend lock completion.
+- Backend `sign`/`broadcast` receives *current epoch + commitment* and validates under the serialized owner boundary immediately before the **irreversible point**. If `LOCK_REQUESTED` linearizes before authorization, refuse. If user approval and native Sign/Broadcast **already started**, never kill, cancel, or retry; allow completion or preserve uncertain state, then finalize session lock under the owner executor.
+- When idle/OS lock fires while the worker is busy, record the lock request in an independent synchronized flag/state (rather than relying solely on `executor.submit('lock')`, which may be denied), queue controlled closure behind the active worker, and keep UI in deny state until `LOCKED`/`FAULTED`. **Never allow Sign/Broadcast to consume an approval created in a prior epoch.**
+- Unlock requires password + original Core/native anchor attestation; OS unlock never auto-unlocks the wallet; signed/uncertain reservations are never cleared. Application restarts in the locked state.
+- **Proposed UX defaults (pending sign-off):** 5-minute default idle timeout with 1/5/15-minute options; immediate lock on OS session lock/suspend. Activity resets only on genuine user interaction within the application, not timers, sync loops, or network events. If an OS lacks reliable native lock notifications, document the limitation rather than faking PASS.
 
-**DESIGN đề xuất: máy trạng thái có _authorization epoch_ và hai lớp khóa.**
-- `UNLOCKED(epoch=N)` -> nhận idle/OS lock -> **đồng bộ** `LOCK_REQUESTED(epoch=N+1)` tại GUI/security gate; ngay lập tức vô hiệu các modal approvals, xóa/che dữ liệu UI, không cấp consent mới. Không dùng việc xóa UI như bằng chứng backend đã khóa.
-- Backend sign/broadcast nhận *current epoch + commitment*; validate dưới serialized owner boundary ngay trước **điểm không thể đảo ngược**. Nếu lock request đến trước authorization linearization -> refuse. Nếu user đã approve và native Sign/Broadcast **thật sự bắt đầu** trước đó, không kill/cancel/retry; thao tác hoàn tất hoặc giữ uncertain, rồi khóa session dưới owner executor.
-- Khi idle/OS event xảy ra lúc worker busy, request lock được ghi theo state/flag độc lập được đồng bộ (không chỉ `executor.submit('lock')` có thể bị từ chối); một lệnh close được hàng đợi một cách có kiểm soát sau worker, và UI tiếp tục deny cho đến khi state `LOCKED`/`FAULTED`. **Không cho phép Sign/Broadcast sử dụng một approval còn sống từ epoch trước**.
-- Unlock bắt buộc password + original Core/native anchor attestation; không dùng OS unlock tự unlock ví; không giải phóng signed/uncertain reservation. Khởi động lại app ở trạng thái locked.
-- **Giá trị thiết kế đề xuất, chưa chốt UX:** default idle 5 phút, các lựa chọn 1/5/15 phút; OS session lock/suspend -> lock ngay. Sự kiện hoạt động là thao tác người dùng thực trong app, không phải timer/sync/network activity tự gia hạn. Nếu không nhận được native OS event đáng tin trên một OS, đánh dấu giới hạn thay vì giả PASS.
+**Event sources:** Qt `QApplication.installEventFilter()` for keyboard/mouse; macOS `NSWorkspace` active-session/sleep notifications; Windows `WM_WTSSESSION_CHANGE` session registration; Linux `systemd-logind` `LockedHint` / desktop-specific signals verified per environment. A Qt event filter alone is **not** equivalent to OS screen lock.
 
-**Nguồn event:** Qt `QApplication.installEventFilter()` cho keyboard/mouse; macOS `NSWorkspace` active-session/sleep notifications; Windows `WM_WTSSESSION_CHANGE` + đăng ký notification; Linux systemd-logind session `LockedHint`/desktop-specific signal cần xác thực cơ chế trên từng desktop. Qt event filter một mình **không** tương đương OS screen lock.
+**Pre-PR tests:** Idle countdown, keyboard/mouse activity, open modal invalidation, approve-during-show race, timer firing right as Prepare completes, sign-in-flight, broadcast-uncertain, worker timeout, OS lock/wake, hidden window, missed lock event, unresponsive GUI, Core disconnect, multi-window, quit/restart, and cross-platform native/frozen runs. **Never mark CI PASS via synthetic OS events without separate native observation.**
 
-**Tests trước PR:** countdown/idle, keyboard/mouse, modal đang mở, approve-during-show race, timer đúng lúc Prepare complete, sign-in-flight, broadcast-uncertain, worker timeout, OS lock/wake, GUI hidden, lost lock event, GUI unresponsive, Core disconnect, 2 windows, quit/restart, cross-platform native/frozen. **Không chốt CI PASS bằng synthetic OS event nếu chưa có native observation riêng.**
+**Mandatory pre-implementation deliverable:** `M06_AUTOLOCK_ADR.md`, state-transition table, OS lock adapters, and negative test skeleton — **must pass review before implementation**. **Rejected approaches:** Timer calling `_command('lock')` alone; killing the executor; canceling signed transactions; auto-unlocking on OS wake.  
+**References:** https://doc.qt.io/qt-6/eventsandfilters.html ; https://developer.apple.com/documentation/appkit/nsworkspace/sessiondidresignactivenotification ; https://learn.microsoft.com/en-us/windows/win32/termserv/wm-wtssession-change
 
-**Output B1B bắt buộc:** `M06_AUTOLOCK_ADR.md` + state-transition table + lock event adapters + negative tests skeleton; **review rồi mới cho Codex code**. **Reject:** timer chỉ gọi `_command('lock')`; kill executor; cancel signed tx; auto-unlock theo OS.  
-**Tham khảo:** https://doc.qt.io/qt-6/eventsandfilters.html ; https://developer.apple.com/documentation/appkit/nsworkspace/sessiondidresignactivenotification ; https://learn.microsoft.com/en-us/windows/win32/termserv/wm-wtssession-change
+## M-07 — Pin GitHub Actions to immutable SHAs
 
-## M-07 — Pin CI Actions, nhỏ và rõ
+**FACT (verified across all 11 `.github/workflows/` files):** External `uses:` entries reference **4 Actions**: `actions/checkout@v4`, `actions/setup-python@v5`, `actions/upload-artifact@v4`, and `actions/download-artifact@v4`. Most jobs declare `permissions: contents: read`; some require `actions: read`.
 
-**FACT được kiểm tra ở 11 workflow `.github/workflows/`:** các `uses:` bên ngoài được thấy thuộc **4 Actions**: `actions/checkout@v4`, `actions/setup-python@v5`, `actions/upload-artifact@v4`, `actions/download-artifact@v4`. Đa số job đã khai báo `permissions: contents: read`; một số cần `actions: read`.
+**READY DESIGN:** Resolve full immutable commit SHAs **from each official upstream Action repository**, verifying the corresponding release tag and repository owner; replace mutable tags across all 11 workflow YAML files while keeping human-readable version comments; verify zero mutable `uses:` entries remain; enforce least-privilege job permissions; ensure fork PRs receive no release secrets; validate YAML syntax and execute existing workflows.
 
-**DESIGN READY:** lấy immutable full commit SHA **từ chính repository phát hành Action**, kiểm tra release/tag tương ứng và hash/owner; thay `uses` tương ứng trong cả 11 YAML, giữ comment phiên bản; kiểm tra toàn bộ `uses:` không sót; quyền token theo job tối thiểu; PR từ fork không được cấp release secrets; validate YAML và chạy workflow hiện hữu. GitHub Actions dependency lockfile hiện là phương án mạnh hơn nếu project hỗ trợ; không cần đưa thêm tooling vào B1 nếu chỉ để nâng security đơn giản.
+**Rejected approaches:** Copying SHAs from unverified third-party sources; switching to unpinned `latest` tags; broadening token write permissions to bypass failures; rewriting CI pipelines in a way that invalidates historical evidence. **DoD:** Zero mutable `uses:` entries remaining, documented SHA provenance, YAML parse PASS, tests unaffected, and consistent artifacts.  
+**Reference:** https://docs.github.com/en/actions/reference/security/secure-use
 
-**Không chọn:** sao chép SHA từ blog/ngẫu nhiên; chuyển sang latest tag không pin; thay token quyền write rộng để khắc phục workflow failure; viết lại toàn bộ CI làm mất evidence. **DoD:** no mutable `uses:` left, provenance of every selected SHA, workflow parse PASS, tests unaffected, artifact compare.  
-**Tham khảo:** https://docs.github.com/en/actions/reference/security/secure-use
+## M-08 — Transport liveness (reproduce before patching)
 
-## M-08 — Transport liveness: chưa được phép sửa khi chưa tái hiện
+**FACT:** `json_rpc.py` enforces an HTTP response size cap, `response.read(cap+1)`, and socket timeout, but lacks an **overall wall-clock deadline** across an entire response stream; `wallet_executor.py` preserves pending operations on caller timeout, matching the no-retry policy for financial writes. **HYPOTHESIS:** A slow-trickle peer or Core process sending bytes just inside each socket timeout could stall the executor or lock path.
 
-**FACT:** `json_rpc.py` có HTTP response size cap; `response.read(cap+1)` và socket timeout, nhưng không có **wall-clock absolute deadline** cho cả stream; `wallet_executor.py` giữ pending khi caller timeout, đúng chính sách không retry financial writes. **HYPOTHESIS:** peer/Core bị chậm dần từng chunk có thể trì hoãn executor/lock.
+**Reproduction design:** Create a bounded loopback lab fixture emitting chunks just before each socket timeout until total elapsed time exceeds the budget; measure wall-clock duration, resource consumption, state transitions, GUI refusal behavior, and original-Core binding. The simulated transport is **strictly for reproduction**; qualification still requires genuine Core. If reproduced, add an absolute monotonic deadline and bounded stream read *at the transport read layer only*, without interrupting or retrying write paths, while keeping operations pending whenever uncertainty exists. Whether genuine Core can trigger this condition remains a separate question.
 
-**Thiết kế thử:** tạo fixture loopback chỉ trả chunks đều đặn trước mỗi socket timeout nhưng tổng thời gian vượt ngân sách; đo wall-clock, resource, state, GUI refusal và original-core binding. Lab riêng dùng transport giả **chỉ để tái hiện**; nghiệm thu vẫn yêu cầu genuine Core. Nếu tái hiện, đưa absolute monotonic deadline và bounded read worker *chỉ ở transport read*, không ngắt/retry write path; vẫn preserve original operation pending nếu có uncertainty. Phân loại Core thật có thể gây lỗi này không là câu hỏi khác.
+**Rejected approaches:** Raising timeouts to 240/600/900s to mask stalls; killing or canceling workers on timeout; retrying RPC write calls. **DoD:** Deterministic before/after slow-trickle regression test, genuine Core unaffected, safe eventual UI lock, and accurate state reporting.
 
-**Reject:** tăng timeout 240/600/900 để che; tự cancel/kill worker khi timeout; tự gửi lại RPC write. **DoD:** deterministic before/after slow-trickle regression; native Core unaffected; UI lock eventually safe and states accurately reported.
+## M-09 — Peer trust, P2P, and future mainnet discovery
 
-## M-09 — Peer trust/P2P/mainnet
+**FACT:** `shared_regtest.py` checks IP/port, handshake version/subversion, and peer limits; it does not bind remote peers to cryptographic channel identities. This is an intentional manual REGTEST policy, **not** evidence that a remote peer can control Core RPC or sign wallet transactions. BIP352 does not provide IP-level anonymity.
 
-**FACT:** `shared_regtest.py` chỉ kiểm tra địa chỉ IP/port, handshake version/subversion và giới hạn peers; không có channel binding cryptographic identity cho remote peer. Đây là cơ chế REGTEST manual được xác định trước, **không** phải bằng chứng peer có thể điều khiển Core RPC hoặc ký ví. BIP352 không ẩn danh IP.
+**REGTEST DESIGN:** Preserve manual P2P for V19; run actual two-host tests covering wrong genesis, spoofed peer, network partition, stale chain, fork/reorg, unexpected peers, self-peering, inbound/outbound connectivity, localhost-only RPC enforcement, and preservation of signed/uncertain state. Peer host trust is operator-selected; version strings are not identity proofs.
 
-**DESIGN REGTEST:** giữ manual P2P cho V19; actual two-host setup test: peer sai genesis, peer giả, partition, stale chain, fork/reorg, unexpected peers, self-peer, inbound/outbound, RPC vẫn loopback; kiểm tra bảo toàn signed/uncertain. Peer host trust được người vận hành chọn; chỉ version string không là identity proof.
+**Future MAINNET DESIGN (out of scope for current PR):** Rely on Core v0.1.13 native peer discovery and chain validation, evaluating eclipse resistance, peer diversity, and transport privacy (e.g., Tor) under a separate security review. Never invent a Fusion UI peer-trust layer claiming to protect Core TCP without genuine cryptographic channel binding. **DoD:** Physical V19 two-host evidence, documented network threat model, and explicit privacy boundaries; never enable automatic peer discovery in REGTEST.
 
-**DESIGN MAINNET (tương lai, ngoài PR):** dùng Core v0.1.13 native peer discovery/chain validation, nghiên cứu eclipse resistance, peer diversity, transport privacy/Tor nếu hỗ trợ/được review. Không phát minh lớp xác thực peer trong Fusion UI rồi tuyên bố bảo vệ underlying Core TCP nếu chưa có crypto-binding thực sự. **DoD:** V19 actual physical evidence + network threat model và rõ giới hạn privacy; không tự bật auto-discovery trong REGTEST hiện tại.
+## L-01 — Backup 3-word challenge enforcement
 
-## L-01 — Backup 3-word challenge: cụ thể hóa cơ chế đủ để code
+**FACT:** `bip39_backup_page.py` (GUI) calls `random.sample(range(1, 13), 3)` and submits both **positions and answers** to `backup_verify`. `bip39_owner_backend.py:665-700` accepts any non-empty subset of 1–12 distinct positions, allowing a single correct word to write an acknowledged HMAC. Backend MAC authentication already exists; the gap is **challenge generation and binding**, not BIP39 checksum validation.
 
-**FACT:** `bip39_backup_page.py` (GUI) gọi `random.sample(range(1,13),3)` và chuyển **positions và answers** vào `backup_verify`. `bip39_owner_backend.py:665-700` cho phép positions không rỗng (1–12 distinct), nên một từ chính xác cũng có thể viết acknowledged HMAC. Backend đã có MAC cho acknowledgement; hạn chế nằm ở **quyền tạo/kiểm soát challenge**, không ở BIP39 checksum.
+**Selected DESIGN:** Move challenge generation into `Bip39ReadOnlyBackend`, selecting exactly **3 distinct positions** using CSPRNG `secrets.SystemRandom().sample(...)` and storing them inside the *in-memory owner session* with an opaque `challenge_id`, profile/seed identifier, session epoch, expiry (proposed 120 seconds), and single-use consumed/invalidated flag. The GUI only requests a challenge and displays the 3 positions; submission sends **only `challenge_id` + 3 answers** (never caller-chosen positions). The backend verifies active challenge, exact count of 3, unused/unexpired status, matching profile/epoch, and expected words, **consuming** the challenge once before writing the acknowledgement. Cancel, lock, restart, seed change, wrong answer, or timeout invalidates the challenge; the UI may request a fresh challenge without revealing correct words. Never persist challenges or mnemonics. Retain the existing HMAC/sidecar envelope unless tests uncover an independent defect.
 
-**DESIGN đã chọn:** chuyển quyền tạo challenge sang `Bip39ReadOnlyBackend`, sinh đúng **3 vị trí khác nhau** bằng CSPRNG `secrets.SystemRandom().sample(...)`, giữ trong *memory owner session* với `challenge_id` opaque, profile/seed identifier, session epoch, expiry (đề xuất 120 giây), used/invalidated bit. GUI chỉ yêu cầu challenge và hiển thị 3 positions; submission **không gửi positions tự chọn**, chỉ `challenge_id + 3 answers`. Backend xác minh current challenge, exact 3, chưa dùng/chưa hết hạn/đúng profile/epoch, so sánh expected phrases, và **consume** challenge một lần trước khi ghi ack. Cancel, lock, restart, seed change, wrong answer hoặc timeout invalidates; UI có thể yêu cầu challenge mới, không tự tiết lộ từ đúng. Không persist challenge hoặc mnemonic. Giữ HMAC/sidecar envelope hiện hữu, trừ khi test phát hiện vấn đề độc lập.
+**Tests:** Exact 3 correct PASS; 1 or 2 positions FAIL; altered positions FAIL; answer replay FAIL; stale `challenge_id` FAIL; wrong wallet FAIL; expired challenge FAIL; lock/reopen FAIL; wrong word FAIL; concurrent submissions for the same challenge allow at most one success; deferred backup obtains a fresh challenge; zero seed/password leakage in errors/logs; genuine frozen Qt flow PASS. **Note:** While the mnemonic remains visible in the UI during the challenge flow, this remains a UX acknowledgement rather than cryptographic proof of offline paper backup.
 
-**Test:** exact 3 correct PASS; 1/2 vị trí FAIL; altered positions FAIL; answer replay FAIL; old id FAIL; wrong wallet FAIL; expired FAIL; lock/reopen FAIL; wrong word FAIL; same-challenge simultaneous requests => only one success; deferred backup obtains fresh challenge; no seed/password in error/log; genuine frozen Qt flow vẫn PASS. **Lưu ý** GUI trước giờ hiển thị word grid, nên nếu vẫn còn mnemonic trong UI khi challenge chạy, không gọi nó là proof người dùng đã viết ra giấy; đây là UX acknowledgement, không chứng minh backup offline tồn tại.
+**Files:** `src/wam_regtest/bip39_backup_page.py`, `bip39_fusion_gui.py`, `bip39_owner_backend.py`, command allowlist in `wallet_executor.py` if an internal command is added, `tests/test_q06_bip39_backup_ack.py`, `tests/test_q06_bip39_owner_backend.py`, `tests/test_q06_bip39_fusion_gui.py`. **DoD:** Backend alone rejects bypasses independently of the GUI, original HMAC remains valid, legacy profile reading is unchanged, and Core/WSP pins remain untouched. **READY TO IMPLEMENT** once the `challenge_id`/expiry contract is finalized.
 
-**Files:** `src/wam_regtest/bip39_backup_page.py`, `bip39_fusion_gui.py`, `bip39_owner_backend.py`, command allowlist trong `wallet_executor.py` nếu thêm RPC nội bộ, `tests/test_q06_bip39_backup_ack.py`, `tests/test_q06_bip39_owner_backend.py`, `tests/test_q06_bip39_fusion_gui.py`. **DoD:** backend alone denies bypass (independent of GUI), original HMAC still valid, old profile reading unchanged, no altered Core/WSP pins. **READY TO IMPLEMENT** sau khi cố định contract của `challenge_id`/expiry.
+## Six `NOT VERIFIED` surfaces (evidence gaps, NOT confirmed vulnerabilities)
 
-## Sáu NOT VERIFIED — đây là chứng cứ cần thu thập, KHÔNG phải sáu lỗ hổng đã kết luận
-
-| NV | Nghiên cứu/thử nghiệm cụ thể | Output bắt buộc | Trạng thái triển khai |
+| ID | Required research / verification | Mandatory output | Implementation status |
 |---|---|---|---|
-| NV-01 Crypto/BIP352/nonce | BIP39 128→512-bit vectors, WSP BIP352/PSBTv2 differential tests với thư viện độc lập, malformed points/PSBT parser fuzz, native secp256k1 hash + nonce code audit | vector diff + seed corpus redacted + crash-free parser stats | Research; không thay crypto trong B1 |
-| NV-02 Dependencies/loader | SBOM CycloneDX/SPDX từ *final frozen artifacts* trên 3 OS; kiểm tra wheel native, Qt plugins, OpenSSL, SQLite, DLL/dylib/ELF loader/RPATH và CVE thời điểm audit + reachability | per-artifact SBOM + dated SCA + exception ledger | Research; có thể chạy song song |
-| NV-03 Power-cut/dual rollback | Disposable wallet + fault injection theo fsync/CAS/anchor/SQLite, separate physical power-cut lab, rollback both stores and evidence retention | crash-state transition map + recovery/refusal proof | High-risk lab; không trên máy chủ sở hữu |
-| NV-04 GUI/clipboard | Recipient dài/Unicode, clipboard substitution, DPI 100/125/150, accessibility/screen reader, stale modal, amount/fee normalization across OS | physical screenshot/test receipts không chứa seed | Research then UX fixes |
-| NV-05 Network/privacy | Hai host V19, peer compromise, packet capture có phép, log/crash/artifact secret scan, privacy disclosure | redacted PCAP metadata + 2-host proof | G6/V19 + network review riêng |
-| NV-06 Chain/fee/migration | Reorg 1/12/100, fee/dust exact-intent policy, full-history same-chain restore, *separate* v0.1.11→v0.1.13 identity migration test | funds-correctness matrix + owner-approved migration ADR | Research; cấm silent migration |
+| NV-01 Crypto / BIP352 / nonce | BIP39 128→512-bit vectors, WSP BIP352/PSBTv2 differential tests against independent libraries, malformed point/PSBT parser fuzzing, native secp256k1 hash and nonce audit | Vector diffs + redacted seed corpus + crash-free parser stats | Research; no crypto changes in initial batch |
+| NV-02 Dependencies / loader | CycloneDX/SPDX SBOM from *final frozen artifacts* across 3 OSes; audit native wheels, Qt plugins, OpenSSL, SQLite, DLL/dylib/ELF loader/RPATH, point-in-time CVEs, and reachability | Per-artifact SBOM + dated SCA + exception ledger | Research; executable in parallel |
+| NV-03 Power-cut / dual rollback | Disposable wallet + fault injection across `fsync`/CAS/anchor/SQLite, separate physical power-cut lab, dual-store rollback, and evidence retention | Crash-state transition map + recovery/refusal proof | High-risk lab; never on owner production host |
+| NV-04 GUI / clipboard | Long/Unicode recipients, clipboard substitution, 100/125/150% DPI, accessibility/screen reader, stale modal handling, amount/fee normalization across OSes | Physical screenshots/receipts with zero secrets | Research followed by scoped UX fixes |
+| NV-05 Network / privacy | Two-host V19, compromised peer scenarios, authorized packet capture, secret scanning of logs/crashes/artifacts, privacy disclosure | Redacted PCAP metadata + two-host proof | G6/V19 + dedicated network review |
+| NV-06 Chain / fee / migration | 1/12/100-block reorgs, exact-intent fee/dust policy, full-history same-chain restore, *separate* v0.1.11→v0.1.13 identity migration tests | Funds-correctness matrix + owner-approved migration ADR | Research; silent migration prohibited |
 
-## Điều kiện giữ nguyên (không được đổi để sửa lỗi)
+## Non-negotiable invariants (must remain unchanged)
 
-1. `REGTEST` only, `mainnet_allowed=false`, localhost-only Core RPC, manual P2P unchanged; no live mainnet seeds/funds.
-2. Core signed v0.1.13 original member hashes and WSP source pin remain unchanged; wallet profile old Core/version + native anchors không tự migrate.
-3. `prepare` validates recipient/amount/fee, durable reservation; `sign` validates exact commitment and UTXO/tip; `broadcast` requires distinct approval and persists uncertain BEFORE network call.
-4. Timeout/exception from sign/broadcast không tự retry, không tự release signed/uncertain, không adopt Core/owner bằng PID.
-5. Existing historical FAIL receipts and `tests/acceptance/issue45.json` kept as-is pending evidence-specific owner decision; G6/G7/V19 blocked, Q06 `accepted=false`.
-6. Qt dialog `PaymentApproval.open()` liveness fix preserved; no return to blocking `exec()` for this flow.
+1. `REGTEST` only, `mainnet_allowed=false`, localhost-only Core RPC, and manual P2P policy remain unchanged; no live mainnet seeds or funds.
+2. Official signed Core v0.1.13 member hashes and pinned WSP source remain unchanged; legacy Core/version profiles and native anchors are never auto-migrated.
+3. `prepare` validates recipient/amount/fee and persists a durable reservation; `sign` validates exact commitment and UTXO/tip state; `broadcast` requires separate approval and persists uncertain state BEFORE the network call.
+4. Timeouts or exceptions during sign/broadcast never trigger automatic retry, never release signed/uncertain reservations, and never adopt Core/owners by PID.
+5. Historical FAIL receipts and `tests/acceptance/issue45.json` remain unmodified pending case-specific owner decisions; G6/G7/V19 remain blocked and Q06 remains `accepted=false`.
+6. The Qt `PaymentApproval.open()` non-blocking liveness fix is preserved; do not revert to blocking `exec()` on this path.
 
-## Thứ tự triển khai tối ưu token
+## Recommended remediation sequence
 
-**T0 — Owner (không dùng Codex credits):** cấu hình Ruleset `main` cho H-02 nếu muốn bảo vệ sớm; review thay đổi UI, không tự cấp bypass cho agent.
+- **T0 — Repository administration (H-02):** Owner configures the `main` branch ruleset and verifies effective rule enforcement without granting automation bypass rights.
+- **T1 — Scoped PR A (L-01):** Implement backend challenge contract and negative regression tests across bounded files; run focused tests → full unit suite → local macOS native/frozen qualification → push → 3-OS CI. **Keep separate from auto-lock work.**
+- **T2 — Scoped PR B (M-07):** Pin all 4 external Actions to verified immutable commit SHAs across all 11 workflows; validate YAML and run 3-OS CI.
+- **T3 — Design gate (M-06):** Complete `M06_AUTOLOCK_ADR.md`, epoch state machine, OS adapters, and race test matrix for security review before writing implementation code.
+- **T4 — Research gate (M-01 / M-05 / M-02 / M-03 / M-04):** Produce ADRs, threat models, and disposable-lab measurements prior to any runtime wallet writer changes.
+- **T5 — Independent verification (NV-01 through NV-06 + M-08 reproduction):** Separate discovery from remediation and retain exact-SHA evidence.
+- **T6 — Release trust architecture (H-01):** Establish owner-controlled signing root and verification procedures once source hardening stabilizes.
+- **T7 — Full requalification and external gates (G6 / G7 / V19):** Exact-commit native and frozen qualification across macOS, Windows, and Linux, physical two-host V19 verification, independent security review, and case-by-case ledger reconciliation. Mainnet promotion remains a separate future decision.
 
-**T1 — Codex small isolated PR A (L-01):** làm backend challenge contract + tests; chỉ 5–7 file chính; local focused tests ⇒ toàn bộ unit ⇒ macOS native/frozen ⇒ push ⇒ 3-OS CI. **Không đồng thời auto-lock.**
+## Engineering change-control discipline
 
-**T2 — Codex small isolated PR B (M-07):** sửa 11 workflow / bốn Actions, kiểm chứng SHAs và YAML + 3-OS CI; có thể song song chuẩn bị design M06 bằng reviewer chỉ-đọc, nhưng không concurrent writer cùng worktree.
+- Scope runtime fixes to **one finding per PR**, restricting edits to justified files and preserving all non-negotiable invariants.
+- Verify clean Git status, active branch/SHA, and the engineering lease before modifying source.
+- Prove failing negative regressions before applying fixes where applicable; never mask failures by inflating timeouts or using remote CI to debug locally reproducible macOS issues.
+- Pass local focused, unit, and macOS native/frozen gates before pushing; never treat macOS unit tests as substitutes for native Windows or Linux CI.
+- Map every remediation change cleanly from `finding → code diff → regression test → exact source SHA → artifact digest → residual risk`.
+- Self-review by the implementing engineer never qualifies as **independent G7 review**; independent verification requires a separate qualified reviewer and independent evidence.
 
-**T3 — DESIGN ONLY M06:** ADR state machine/epoch/OS adapters; security review và test matrix rồi mới implementation PR. T1/T2 không cần chờ M06.
-
-**T4 — RESEARCH ONLY M01/M05:** custodial recovery và snapshot compaction; không cho Codex sửa runtime cho đến khi design gate PASS. M02/M03/M04 thí nghiệm trên disposable lab, sau đó mới roadmap implementation.
-
-**T5 — Independent audit NV-01/02/03/04/05/06 + M08 reproduction:** phân công người/runner; tách tìm lỗi và sửa lỗi; giữ bằng chứng exact SHA.
-
-**T6 — H01 release architecture/owner credentials:** chỉ sau khi source/hardening ổn định; ký final artifacts phải có owner-controlled trust root. Không cần ký production gấp để tiếp tục REGTEST.
-
-**T7 — Full requalification + G6/G7/V19:** native/frozen exact commit, human Mac/Windows/Linux, 2 actual Core hosts, independent security reviewer, Q06 ledger reconcile đúng từng case. Mainnet promotion là một dự án/quyết định khác.
-
-## Quy tắc giảm token cho Codex
-
-- Giao **một finding/một PR** khi ảnh hưởng runtime; chỉ những module được chỉ định, không đọc lại 500 file repo sau khi handoff đã có source + invariant + test targets.
-- Prompt mỗi nhiệm vụ có đủ: `exact SHA`, `finding ID`, `allowed files`, `must-preserve invariants`, `focused tests`, `LOCAL-FIRST`, `stop conditions`, `output report`.
-- Trước khi viết: kiểm tra `git status`, clean worktree, engineering lease, đúng branch, đọc *tối đa* các file trong phạm vi; Codex được mở rộng chỉ khi ghi lý do phụ thuộc cụ thể.
-- Sửa theo test chứng minh lỗi, không tái cấu trúc vô cớ, không tăng timeout tùy tiện, không dùng CI để debug lỗi có thể tái hiện Mac local.
-- Không push giữa các lỗi local; push sau local gate; CI Windows/Linux không thể được thay bằng macOS unit tests.
-- Mỗi kết quả tạo mapping `finding→code diff→test→source SHA→artifact hash→residual risk` trong `ENGINEERING_HANDOFF.md`, không claim done nếu lacks proof.
-- Không dùng thuật ngữ **independent G7 review** cho Codex tự review code của mình; cần người khác có năng lực và chứng cứ riêng.
-
-## Prompt ngắn mẫu **CHỈ KHI** chốt từng thiết kế
-
-```text
-Continue in ~/Documents/WAM-Q06-Audit-20261102.
-Read AGENTS.md, ENGINEERING_HANDOFF.md, and
- docs/security-audit/WAM_Fusion_Security_Remediation_Design_Review_2026-11-06.md.
-Verify exact source/branch and acquire engineering lease.
-Implement ONLY finding <ID> per its DESIGN/DoD section.
-Do not widen scope or weaken the nonnegotiable invariants.
-Prove failing negative regression before fixing (where applicable).
-Run focused → unit → local native/frozen Mac tests; fix locally.
-Only after local gate PASS may you push scoped branch and run native CI.
-Preserve PR #141 and historical evidence; no merge/mainnet/release.
-Report finding→diff→test→exact commit→remaining risk.
-```
-
-## Tài liệu tham chiếu đã đối chiếu
+## Verified references
 
 - Baseline PR #141: https://github.com/Urriki1502/wam-privacy-wallet-regtest/pull/141
-- WAM Fusion audit: `docs/security-audit/WAM_Fusion_Phase_A_Security_Audit_Report_2026-11-06.md`
-- WSP pinned keystore/store: https://github.com/Urriki1502/wam-silent-payments/tree/ac55f13423620252bdbf848c7e8a280c3b84721e/src/wam_sp
+- WAM Fusion audit report: `docs/security-audit/WAM_Fusion_Phase_A_Security_Audit_Report_2026-11-06.md`
+- Pinned WSP keystore/store: https://github.com/Urriki1502/wam-silent-payments/tree/ac55f13423620252bdbf848c7e8a280c3b84721e/src/wam_sp
 - GitHub Rulesets: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
-- GitHub Actions secure use: https://docs.github.com/en/actions/reference/security/secure-use
+- GitHub Actions security hardening: https://docs.github.com/en/actions/reference/security/secure-use
 - Apple notarization: https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution
 - Qt event filters: https://doc.qt.io/qt-6/eventsandfilters.html
-- Apple session notification: https://developer.apple.com/documentation/appkit/nsworkspace/sessiondidresignactivenotification
-- Microsoft WTS lock: https://learn.microsoft.com/en-us/windows/win32/termserv/wm-wtssession-change
-- OWASP KDF: https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
-- SQLite WAL/consistency context: https://www.sqlite.org/wal.html
+- Apple session notifications: https://developer.apple.com/documentation/appkit/nsworkspace/sessiondidresignactivenotification
+- Microsoft WTS session notifications: https://learn.microsoft.com/en-us/windows/win32/termserv/wm-wtssession-change
+- OWASP Password Storage Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
+- SQLite WAL and consistency context: https://www.sqlite.org/wal.html
 
-**Phạm vi đánh giá:** quyết định thiết kế khả thi, không phải kết quả fix hoặc security certification. Với các mục đánh dấu DESIGN/RESEARCH GATE, nhiệm vụ Codex đầu tiên là tạo bằng chứng/ADR chứ không triển khai writer. Tuyệt đối không hứa 'an toàn tuyệt đối'.
+**Review scope note:** This document records feasible remediation designs rather than completed fixes or security certification. For items marked `DESIGN GATE` or `RESEARCH GATE`, ADRs and empirical lab evidence are required before implementing wallet writers. No claim of absolute security is made.

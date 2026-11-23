@@ -65,7 +65,7 @@ This index groups architecture, platform, security, qualification and release do
 ## Qualification and acceptance
 
 - [ACCEPTANCE](ACCEPTANCE.md)
-- [Q02 engineering report (historical Vietnamese)](Q02_ENGINEERING_REPORT_VI_20261025.md)
+- [Q02 engineering report (historical, translated to English)](Q02_ENGINEERING_REPORT_VI_20261025.md)
 - [Q04 FROZEN QUALIFICATION](Q04_FROZEN_QUALIFICATION.md)
 - [Q05 CHECKPOINT RECOVERY DESIGN](Q05_CHECKPOINT_RECOVERY_DESIGN.md)
 - [Q05 INTEGRATION REVIEW](Q05_INTEGRATION_REVIEW.md)
@@ -99,10 +99,20 @@ This index groups architecture, platform, security, qualification and release do
 - [Physical and operator acceptance audit (historical)](OWNER_ACCEPTANCE_AUDIT.md)
 - [REGTEST operator acceptance guide (historical)](OWNER_REGTEST_ACCEPTANCE.md)
 
+## Root historical audit and acceptance records
+
+- [Joint acceptance checklist](../JOINT_ACCEPTANCE_CHECKLIST.md)
+- [Phase 0 full audit report](../PHASE0_FULL_AUDIT_REPORT.md)
+- [PM-105 shared probe diagnostics](../PM-105-shared-probe-diagnostics.md)
+- [Q01–Q06 architecture matrix](../Q01_Q06_ARCHITECTURE_MATRIX.md)
+- [Q05–Q06 gap register](../Q05_Q06_GAP_REGISTER.md)
+- [Q05–Q06 repair plan](../Q05_Q06_REPAIR_PLAN.md)
+- [Workspace manifest (historical)](../WORKSPACE_MANIFEST.md)
+
 ## Evidence policy
 
 - The canonical [acceptance ledger](../tests/acceptance/issue45.json) owns case-level verdicts; narrative reports do not supersede it.
-- Upstream [Core release evidence](evidence/core-v013/verified-members.json) records signed identities and hashes. Other historical receipts are kept in their original locations.
+- Upstream [Core release evidence](evidence/core-v013/verified-members.json) records signed identities and hashes. Other immutable receipts under `docs/evidence/` and `release-candidates/` are preserved unmodified in their original locations.
 - The [workflow definitions](../.github/workflows/) and [Actions runs](https://github.com/Urriki1502/wam-fusion-promax/actions) qualify only the commit, platform and tests actually executed.
-- English is used for this navigation and new project documentation. Archived files may retain historical identifiers, titles or original languages; avoid modifying immutable evidence solely for presentation.
+- Maintained repository documentation is standardized in technical English. Historical identifiers, filenames, SHA digests, and immutable evidence artifacts remain unchanged for provenance integrity.
 - No release, mainnet use, real-wallet access or acceptance override is authorized by these documents.
