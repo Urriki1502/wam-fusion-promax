@@ -12,7 +12,7 @@ WAM Fusion ProMax provides a desktop wallet for developing and qualifying WAM tr
 | Area | Current position |
 | --- | --- |
 | Network | **REGTEST only**. Mainnet operation is not authorized. |
-| Development baseline | `promax/main` — PR #3 CI remediation integrated at `3b84db8c28f456f5c80a9f0b736c09f3c8a9c3c3` over application base `02e0fbd4a32e0c4ce3bd41bdc0db7e94165ee6f7` (November 2026). |
+| Development baseline | `main` — PR #3 CI remediation integrated at `3b84db8c28f456f5c80a9f0b736c09f3c8a9c3c3` over application base `02e0fbd4a32e0c4ce3bd41bdc0db7e94165ee6f7` (November 2026). |
 | WAM Core | Official signed **v0.1.13** binaries, checked against pinned hashes and signing evidence. |
 | Silent Payments | Pinned WSP source: `ac55f13423620252bdbf848c7e8a280c3b84721e` (BIP352). |
 | macOS ARM64 | Scoped CI qualification passed on PR #3 (`d540e039b438aa0513e54779681d21a8e54e503a`) alongside local FC-31 engineering evidence on `02e0fbd4a32e0c4ce3bd41bdc0db7e94165ee6f7`. This is not full application or release acceptance. |
@@ -85,7 +85,7 @@ The checked-in source is **not** a ready-to-use mainnet wallet. Start in a clean
 ### 1. Check out the candidate and pinned WSP
 
 ```bash
-git clone --branch promax/main https://github.com/Urriki1502/wam-fusion-promax.git
+git clone --branch main https://github.com/Urriki1502/wam-fusion-promax.git
 cd wam-fusion-promax
 
 git clone https://github.com/Urriki1502/wam-silent-payments.git wsp-upstream
@@ -145,7 +145,7 @@ For platform-specific procedures and older exact-SHA results, use the [documenta
 
 The repository includes GitHub Actions for BIP352 vectors, genuine WAM Core, macOS, Windows and Linux contracts. Their outcomes are scoped to the **exact tested commit**. Failed, skipped, stale or blocked cases are not PASS.
 
-For the November 2026 baseline, PR #3 (`d540e039b438aa0513e54779681d21a8e54e503a`, merged into `promax/main` at `3b84db8c28f456f5c80a9f0b736c09f3c8a9c3c3`) passed all five GitHub Actions qualification workflows across macOS ARM64, Windows x64, and Linux x86_64, while local FC-31 evidence reported a scoped macOS qualification on `02e0fbd4a32e0c4ce3bd41bdc0db7e94165ee6f7`. Full user-facing and physical acceptance remains open; do not infer physical G6, independent G7, or production readiness from CI or historical records.
+For the November 2026 baseline, PR #3 (`d540e039b438aa0513e54779681d21a8e54e503a`, merged into `main` at `3b84db8c28f456f5c80a9f0b736c09f3c8a9c3c3`) passed all five GitHub Actions qualification workflows across macOS ARM64, Windows x64, and Linux x86_64, while local FC-31 evidence reported a scoped macOS qualification on `02e0fbd4a32e0c4ce3bd41bdc0db7e94165ee6f7`. Full user-facing and physical acceptance remains open; do not infer physical G6, independent G7, or production readiness from CI or historical records.
 
 Before a future release decision, the remaining evidence includes:
 

@@ -2,7 +2,7 @@
 
 This index groups architecture, platform, security, qualification and release documentation. File paths and historical reports remain stable to preserve source references and evidence provenance.
 
-**Start here:** [Project overview](../README.md) · [Acceptance definitions](ACCEPTANCE.md) · [Core v0.1.13 provenance](WAM_CORE_V013_PROVENANCE.md) · [Current source branch](https://github.com/Urriki1502/wam-fusion-promax/tree/promax/main)
+**Start here:** [Project overview](../README.md) · [Acceptance definitions](ACCEPTANCE.md) · [Core v0.1.13 provenance](WAM_CORE_V013_PROVENANCE.md) · [Current source branch](https://github.com/Urriki1502/wam-fusion-promax/tree/main)
 
 > **Status:** REGTEST-only engineering candidate. Historical RC1/v0.1.11 results and reports from earlier source SHAs are not current V1 acceptance. Check the exact source SHA, artifact hashes and test scope before interpreting any verdict.
 
